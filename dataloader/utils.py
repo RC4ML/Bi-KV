@@ -86,6 +86,33 @@ def find_goods_index(input_ids):
                 in_candidate = False
     return goods_list
 
+
+def find_user_history(input_ids):
+    '''找用户历史的长度'''
+    input_length = len(input_ids)
+    recording = False
+    history_length = -1
+    for i in range(input_length):
+        if input_ids[i] == 4955:
+            if i-2>=0 and input_ids[i-2] == 13 and (input_ids[i-1] == 4911 or input_ids[i-1] == 2659):
+                # print(f"Found <0x0A>_User_history in {i} Stop Record")
+                recording = True
+                start_ind = i
+        # 或者匹配到###▁Response
+        if input_ids[i] == 13291:
+            if i-2>=0 and input_ids[i-2] == 2277 and input_ids[i-1] == 29937 and recording:
+                recording = False
+                history_length = i - start_ind
+        if input_ids[i] == 11565:
+            # 往上查五个
+            if i-4>=0 and input_ids[i-4]==13 and (input_ids[i-3] == 29907 or input_ids[i-3] == 315) and input_ids[i-2] == 5380 and input_ids[i-1] == 403:
+                # 匹配到<0x0A>Candidate_pool/<0x0A>_Candidate_pool
+                # print(f"Found <0x0A>Candidate_pool in {i} Start Record")
+                recording = False
+                history_length = i - start_ind
+    return history_length
+        
+
 def find_goods_index_llama3(input_ids):
     '''
     针对目前Llama3 Tokenizer找的特征，如果prompt变了可能就得重新找\n

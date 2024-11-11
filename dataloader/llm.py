@@ -1,4 +1,4 @@
-from .utils import Prompter, find_goods_index,generate_goods_mask,find_goods_index_llama3,generate_position_ids,get_excel_column_name
+from .utils import Prompter, find_goods_index,generate_goods_mask,find_goods_index_llama3,generate_position_ids,get_excel_column_name,find_user_history
 
 import torch
 import random
@@ -28,6 +28,7 @@ def generate_and_tokenize_eval(args, data_point, tokenizer, prompter):
     tokenized_full_prompt["labels"] = ord(data_point["output"]) - ord('A')
     # 增加商品token位置列表
     tokenized_full_prompt["goods_index"] = find_goods_index(tokenized_full_prompt["input_ids"])
+    tokenized_full_prompt["history_length"] = find_user_history(tokenized_full_prompt["input_ids"])
     return tokenized_full_prompt
 
 

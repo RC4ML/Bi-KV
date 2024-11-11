@@ -10,7 +10,7 @@ dataset = dataset_factory(args)
 dataloader = LLMDataloader(args, dataset)
 llmDataset = dataloader._get_eval_dataset()
 
-llm_input = LLMInput(10,llmDataset)
+llm_input = LLMInput(10,500,llmDataset)
 generate_res = llm_input.Generate(10)
 for i in generate_res:
     print(i)
