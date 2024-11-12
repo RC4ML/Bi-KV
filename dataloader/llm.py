@@ -61,13 +61,6 @@ def seq_to_token_ids(args, seq, candidates, label, text_dict, tokenizer, prompte
         title_ = tokenizer.tokenize(title)[:args.llm_max_title_len]
         title = tokenizer.convert_tokens_to_string(title_)
         return title
-    if args.random_history:
-        # print("随机调整历史")
-        indices = list(range(len(seq)))
-        selected_indices = random.sample(indices, int(len(seq)*2/3))
-        # 保持原来的顺序
-        selected_indices.sort()
-        seq = [seq[i] for i in selected_indices]
 
     seq_t = ' \n '.join(['(' + str(idx + 1) + ') ' + truncate_title(text_dict[item]) 
                        for idx, item in enumerate(seq)])
@@ -120,14 +113,14 @@ class LLMDataloader():
         retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
                                                        'retrieved.pkl'), 'rb'))
         
-        print('******************** Constructing Validation Subset ********************')
-        self.val_probs = retrieved_file['val_probs']
-        self.val_labels = retrieved_file['val_labels']
-        self.val_metrics = retrieved_file['val_metrics']
-        self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
-                          if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
-        self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
-                                self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
+        # print('******************** Constructing Validation Subset ********************')
+        # self.val_probs = retrieved_file['val_probs']
+        # self.val_labels = retrieved_file['val_labels']
+        # self.val_metrics = retrieved_file['val_metrics']
+        # self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
+        #                   if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
+        # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
+        #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
 
         print('******************** Constructing Test Subset ********************')
         self.test_probs = retrieved_file['test_probs']
@@ -143,37 +136,6 @@ class LLMDataloader():
     @classmethod
     def code(cls):
         return 'llm'
-
-    def get_pytorch_dataloaders(self):
-        train_loader = self._get_train_loader()
-        val_loader = self._get_val_loader()
-        test_loader = self._get_test_loader()
-        return train_loader, val_loader, test_loader
-
-    def _get_train_loader(self):
-        dataset = self._get_train_dataset()
-        dataloader = data_utils.DataLoader(dataset, batch_size=self.args.lora_micro_batch_size,
-                                           shuffle=True, pin_memory=True, num_workers=self.args.num_workers,
-                                           worker_init_fn=worker_init_fn)
-        return dataloader
-
-    def _get_train_dataset(self):
-        dataset = LLMTrainDataset(self.args, self.train, self.max_len, self.rng,
-                                  self.text_dict, self.tokenizer, self.prompter)
-        return dataset
-
-    def _get_val_loader(self):
-        return self._get_eval_loader(mode='val')
-
-    def _get_test_loader(self):
-        return self._get_eval_loader(mode='test')
-
-    def _get_eval_loader(self, mode):
-        batch_size = self.args.val_batch_size if mode == 'val' else self.args.test_batch_size
-        dataset = self._get_eval_dataset(mode)
-        dataloader = data_utils.DataLoader(dataset, batch_size=batch_size, shuffle=True,
-                                           pin_memory=True, num_workers=self.args.num_workers)
-        return dataloader
 
     def _get_eval_dataset(self):
         dataset = LLMTestDataset(self.args, self.train, self.val, self.test, self.max_len, \

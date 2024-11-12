@@ -1,17 +1,19 @@
-import random
+from argparse import Namespace
+from datasets import dataset_factory
+from dataloader import LLMDataloader
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 from dataloader.llm import LLMTestDataset
 
 class LLMInput():
-    def __init__(self,k:int,poisson_lambda:500,dataset:LLMTestDataset) -> None:
-        self.k = k
-        self.dataset = dataset
+    def __init__(self,k:int,poisson_lambda:500,args:Namespace) -> None:
+        self.k = -1
+        self.args = args
+        self.reset_k(k)
         self.poisson_lambda = poisson_lambda
 
     def Generate(self,batch_size: int) -> List[Dict]:
-        # 生成一批空prompt，模拟用户历史和商品的token数量
         prompts = []
         poisson_numbers = np.random.poisson(lam=self.poisson_lambda, size=batch_size)
         for i in range(batch_size):
@@ -24,3 +26,14 @@ class LLMInput():
                 "timestamp": timestamp
             })
         return prompts
+    
+    def reset_k(self,k:int) -> None:
+        self.k = k
+        self.args.llm_negative_sample_size = k-1
+        self.dataset = self._init_dataset()
+    
+    def _init_dataset(self) -> LLMTestDataset:
+        dataset = dataset_factory(self.args)
+        dataloader = LLMDataloader(self.args, dataset)
+        llmDataset = dataloader._get_eval_dataset()
+        return llmDataset
