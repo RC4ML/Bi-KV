@@ -29,6 +29,8 @@ def generate_and_tokenize_eval(args, data_point, tokenizer, prompter):
     # 增加商品token位置列表
     tokenized_full_prompt["goods_index"] = find_goods_index(tokenized_full_prompt["input_ids"])
     tokenized_full_prompt["history_length"] = find_user_history(tokenized_full_prompt["input_ids"])
+    tokenized_full_prompt["user_id"] = data_point['user_id']
+    tokenized_full_prompt['candidates_id'] = data_point['candidates_id']
     return tokenized_full_prompt
 
 
@@ -56,7 +58,7 @@ def generate_and_tokenize_train(args, data_point, tokenizer, prompter):
     return tokenized_full_prompt
 
 
-def seq_to_token_ids(args, seq, candidates, label, text_dict, tokenizer, prompter, eval=False):
+def seq_to_token_ids(args, seq, candidates, label, text_dict, tokenizer, prompter, user_id=None,eval=False):
     def truncate_title(title):
         title_ = tokenizer.tokenize(title)[:args.llm_max_title_len]
         title = tokenizer.convert_tokens_to_string(title_)
@@ -74,6 +76,8 @@ def seq_to_token_ids(args, seq, candidates, label, text_dict, tokenizer, prompte
     if args.reverse_prompt:
         data_point['input'] = args.llm_input_template.format(can_t, seq_t)
     data_point['output'] = output
+    data_point['candidates_id'] = candidates
+    data_point['user_id'] = user_id
     # print(data_point)
     # return
     if eval:
@@ -130,8 +134,8 @@ class LLMDataloader():
                           if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
         self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
                                 self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
-        self.non_test_users = [u for u, (p, l) in enumerate(zip(self.test_probs, self.test_labels), start=1) \
-                               if l not in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
+        # self.non_test_users = [u for u, (p, l) in enumerate(zip(self.test_probs, self.test_labels), start=1) \
+                            #    if l not in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
 
     @classmethod
     def code(cls):
@@ -240,4 +244,4 @@ class LLMTestDataset(data_utils.Dataset):
         # assert answer in candidates
         # self.rng.shuffle(candidates)
 
-        return seq_to_token_ids(self.args, seq, candidates, answer, self.text_dict, self.tokenizer, self.prompter, eval=True)
+        return seq_to_token_ids(self.args, seq, candidates, answer, self.text_dict, self.tokenizer, self.prompter, user,eval=True)

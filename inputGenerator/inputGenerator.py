@@ -17,10 +17,13 @@ class LLMInput():
         prompts = []
         poisson_numbers = np.random.poisson(lam=self.poisson_lambda, size=batch_size)
         for i in range(batch_size):
-            user_history_tokens = self.dataset[i]["history_length"] # 用户历史的token数量
-            items = [{"token_count": len(j)} for j in self.dataset[i]["goods_index"]]
+            data_point = self.dataset[i]
+            user_id = data_point['user_id']
+            user_history_tokens = data_point["history_length"] # 用户历史的token数量
+            items = [{"item_id":data_point["candidates_id"][jnd],"token_count": len(j)} for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[i]  # 模拟timestamp
             prompts.append({
+                "user_id": user_id,
                 "user_history_tokens": user_history_tokens,
                 "items": items,
                 "timestamp": timestamp
