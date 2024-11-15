@@ -14,14 +14,15 @@ args.dataset_code = "games"
 set_template(args)
 
 class LLMScheduler:
-    def __init__(self, model_params: Dict):
+    def __init__(self, model_params: Dict, item_num):
         self.prompts = []
         total_capacity = 20000000000  # 20GB
         user_cache_ratio = 0.5
         model_layers = model_params.get("num_layers")
         vector_dim = model_params.get("head_size") * model_params.get("num_kv_heads")
         self.cache = KVCache(total_capacity=total_capacity, user_cache_ratio=user_cache_ratio, model_layers=model_layers, vector_dim=vector_dim)
-        self.llm_input = LLMInput(20,500,args)
+        self.llm_input = LLMInput(item_num,500,args)
+        self.item_num = item_num
 
         
     def schedule_prompts(self, batch_size: int):
@@ -37,6 +38,7 @@ class LLMScheduler:
         for ind, prompt in enumerate(self.prompts):
             prompt_order = self.PromptOrder(prompt)
             if prompt_order == "User History First":
+                # print("User first")
                 user_access_time += 1
                 user_data = self.cache.get(cache_type='user', key=ind)
                 computation_cost += sum([item["token_count"] for item in prompt["items"]])
@@ -48,10 +50,10 @@ class LLMScheduler:
                 # print("Current user cache keys:", list(self.cache.user_cache.cache.keys()))
                 # print("-" * 50)
             else:
-                assert len(prompt['items']) == 20
-                item_access_time += 20
+                assert len(prompt['items']) == self.item_num
+                item_access_time += self.item_num
                 computation_cost += prompt["user_history_tokens"]
-                # print("item first")
+                # print("Item first")
                 for i, item in enumerate(prompt["items"]):
                     item_data = self.cache.get(cache_type='item', key=i+10000*ind)
                     if item_data is None:
@@ -84,7 +86,7 @@ model_params = {
     "num_layers": 28 
 }
 
-scheduler = LLMScheduler(model_params)
+scheduler = LLMScheduler(model_params, 10)
 
 scheduler.schedule_prompts(batch_size=10)
 scheduler.schedule_prompts(batch_size=20)
