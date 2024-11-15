@@ -92,7 +92,7 @@ class LLMDataloader():
         self.rng = np.random
         self.save_folder = dataset._get_preprocessed_folder_path()
         seq_dataset = dataset.load_dataset() # 读预处理好的数据
-        self.train = seq_dataset['train'] # u2seq
+        self.train = seq_dataset['train'] # u2seq seq应该就是用户历史
         self.val = seq_dataset['val'] # u2val
         self.test = seq_dataset['test'] # u2ans
         self.umap = seq_dataset['umap']
@@ -117,14 +117,14 @@ class LLMDataloader():
         retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
                                                        'retrieved.pkl'), 'rb'))
         
-        print('******************** Constructing Validation Subset ********************')
-        self.val_probs = retrieved_file['val_probs']
-        self.val_labels = retrieved_file['val_labels']
-        self.val_metrics = retrieved_file['val_metrics']
-        self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
-                          if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
-        self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
-                                self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
+        # print('******************** Constructing Validation Subset ********************')
+        # self.val_probs = retrieved_file['val_probs']
+        # self.val_labels = retrieved_file['val_labels']
+        # self.val_metrics = retrieved_file['val_metrics']
+        # self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
+        #                   if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
+        # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
+        #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
 
         print('******************** Constructing Test Subset ********************')
         self.test_probs = retrieved_file['test_probs']
@@ -146,6 +146,9 @@ class LLMDataloader():
                                      self.rng, self.text_dict, self.tokenizer, self.prompter, self.test_users, \
                                      self.test_candidates)
         return dataset
+    
+    def _read_subset_data(self):
+        pass
 
 
 class LLMTrainDataset(data_utils.Dataset):
