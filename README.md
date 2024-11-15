@@ -6,3 +6,7 @@ Bipartite KVCache
 pip install transformers
 pip install sentencepiece
 ```
+## Run
+```
+python LLMScheduler.py
+```
