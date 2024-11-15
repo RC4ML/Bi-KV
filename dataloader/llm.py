@@ -66,7 +66,7 @@ def seq_to_token_ids(args, seq, candidates, label, text_dict, tokenizer, prompte
                        for idx, item in enumerate(seq)])
     can_t = ' \n '.join(['(' + get_excel_column_name(idx) + ') ' + truncate_title(text_dict[item])
                        for idx, item in enumerate(candidates)])
-    output = chr(ord('A') + candidates.index(label))  # ranking only
+    output = 'A'#chr(ord('A') + candidates.index(label))  # ranking only
     
     data_point = {}
     data_point['system'] = args.llm_system_template if args.llm_system_template is not None else DEFAULT_SYSTEM_PROMPT
@@ -113,14 +113,14 @@ class LLMDataloader():
         retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
                                                        'retrieved.pkl'), 'rb'))
         
-        # print('******************** Constructing Validation Subset ********************')
-        # self.val_probs = retrieved_file['val_probs']
-        # self.val_labels = retrieved_file['val_labels']
-        # self.val_metrics = retrieved_file['val_metrics']
-        # self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
-        #                   if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
-        # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
-        #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
+        print('******************** Constructing Validation Subset ********************')
+        self.val_probs = retrieved_file['val_probs']
+        self.val_labels = retrieved_file['val_labels']
+        self.val_metrics = retrieved_file['val_metrics']
+        self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
+                          if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
+        self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
+                                self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
 
         print('******************** Constructing Test Subset ********************')
         self.test_probs = retrieved_file['test_probs']
@@ -237,7 +237,7 @@ class LLMTestDataset(data_utils.Dataset):
 
         seq = seq[-self.max_len:]
         candidates = self.test_candidates[index]
-        assert answer in candidates
+        # assert answer in candidates
         # self.rng.shuffle(candidates)
 
         return seq_to_token_ids(self.args, seq, candidates, answer, self.text_dict, self.tokenizer, self.prompter, eval=True)

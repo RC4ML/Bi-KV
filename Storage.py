@@ -54,7 +54,7 @@ class LFUCache:
                 self.min_freq += 1
         self.freq_map[new_freq][key] = None  # Only storing the key, no value in freq_map
         
-        print(f"After get({key}): key_to_freq = {self.key_to_freq}")
+        # print(f"After get({key}): key_to_freq = {self.key_to_freq}")
         return value
 
     def put(self, key: int, value: np.ndarray):
@@ -88,7 +88,7 @@ class LFUCache:
         self.min_freq = 1  # Reset min frequency to 1 for new keys
         self.current_size += size
         
-        print(f"After put({key}): key_to_freq = {self.key_to_freq}")
+        # print(f"After put({key}): key_to_freq = {self.key_to_freq}")
 
 
 
@@ -141,16 +141,17 @@ def test_cache_eviction():
         cache.put(cache_type='user', key=i, sequence_length=sequence_length)
         print(f"Inserted user key={i}, sequence_length={sequence_length}")
         user_data = cache.get(cache_type='user', key=i)
-        print(f"Retrieved user data for key={i}, shape={user_data.shape if user_data is not None else 'None'}")
+        print(f"Retrieved user data for key={i}, shape={user_data.shape if user_data is not None else 'Cache Miss'}")
         print("Current user cache size:", cache.user_cache.current_size)
         print("Current user cache keys:", list(cache.user_cache.cache.keys()))
         print("-" * 50)
-
+    user_data = cache.get(cache_type='user', key=14)
+    print(f"Retrieved user data for key={14}, shape={user_data.shape if user_data is not None else 'Cache Miss'}")
     # 重复访问用户缓存中的特定键，以提升其在 LRU 中的优先级
     print("\nAccessing user cache key=6 and key=7 and key=8 multiple times to update LRU order:")
     for i in [6, 7,8]:  # 访问键 6 和 7,8
         user_data = cache.get(cache_type='user', key=i)
-        print(f"Accessed user data for key={i}, shape={user_data.shape if user_data is not None else 'None'}")
+        print(f"Accessed user data for key={i}, shape={user_data.shape if user_data is not None else 'Cache Miss'}")
     print("Current user cache keys after accessing key=6 and key=7 and key=8:", list(cache.user_cache.cache.keys()))
     print("-" * 50)
 
@@ -168,7 +169,7 @@ def test_cache_eviction():
         print(f"Inserted item key={i + 100}, sequence_length={sequence_length}")
         item_data = cache.get(cache_type='item', key=i + 100)
         print(f"got item key={i + 100}, freq ++")
-        print(f"Retrieved item data for key={i + 100}, shape={item_data.shape if item_data is not None else 'None'}")
+        print(f"Retrieved item data for key={i + 100}, shape={item_data.shape if item_data is not None else 'Cache Miss'}")
         print("Current item cache size:", cache.item_cache.current_size)
         print("Current item cache keys:", list(cache.item_cache.cache.keys()))
         print("-" * 50)
@@ -191,5 +192,5 @@ def test_cache_eviction():
         print("-" * 50)
 
 # 运行测试
-test_cache_eviction()
+# test_cache_eviction()
 

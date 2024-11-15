@@ -1,71 +1,71 @@
 import random
 from typing import List, Dict, Tuple
+from config import *
+from datasets import dataset_factory
+from dataloader import LLMDataloader
+from inputGenerator.inputGenerator import LLMInput
+from Storage import KVCache
 
-class LLMInput:
-    @staticmethod
-    def Generate(batch_size: int) -> List[Dict]:
-        # 生成一批空prompt，模拟用户历史和商品的token数量
-        prompts = []
-        for i in range(batch_size):
-            user_history_tokens = random.randint(5, 50)  # 用户历史的token数量
-            num_items = random.randint(1, 10)  # 商品数量
-            items = [{"token_count": random.randint(5, 20)} for _ in range(num_items)]
-            timestamp = random.randint(1, 1000)  # 模拟timestamp
-            prompts.append({
-                "user_history_tokens": user_history_tokens,
-                "items": items,
-                "timestamp": timestamp
-            })
-        return prompts
-    
-class LLMModel:
-    def __init__(self, model_params: Dict):
-        """
-        model_params: 包含LLM模型参数的字典
-        """
-        self.model_params = model_params
-
-    def PredictKVSize(self, prompt: Dict) -> Tuple[int, List[int]]:
-        # 基于模型参数计算每个token的KV Cache大小
-        kv_size_per_token = self.calculate_kv_size_per_token()
-
-        # 计算用户历史的KV大小
-        user_kv_size = prompt["user_history_tokens"] * kv_size_per_token
-
-        # 计算每个item的KV大小
-        item_kv_sizes = [item["token_count"] * kv_size_per_token for item in prompt["items"]]
-
-        return user_kv_size, item_kv_sizes
-
-    def calculate_kv_size_per_token(self) -> int:
-        # 使用模型参数计算每个token的KV Cache大小
-        head_size = self.model_params.get("head_size")
-        num_heads = self.model_params.get("num_kv_heads")
-        num_layers = self.model_params.get("num_layers")
-
-        kv_size_per_token = (head_size * num_heads) * num_layers * 2 # FP16
-        return kv_size_per_token
-
+# from huggingface_hub import login
+# login()
+args.model_code = 'llm'
+args.llm_retrieved_path = "/share/gnn_data/testmodel/LlamaRec/experiments/lru/games/"
+args.dataset_code = "games"
+set_template(args)
 
 class LLMScheduler:
     def __init__(self, model_params: Dict):
         self.prompts = []
-        self.model = LLMModel(model_params)
+        total_capacity = 20000000000  # 20GB
+        user_cache_ratio = 0.5
+        model_layers = model_params.get("num_layers")
+        vector_dim = model_params.get("head_size") * model_params.get("num_kv_heads")
+        self.cache = KVCache(total_capacity=total_capacity, user_cache_ratio=user_cache_ratio, model_layers=model_layers, vector_dim=vector_dim)
+        self.llm_input = LLMInput(20,500,args)
+
         
     def schedule_prompts(self, batch_size: int):
-        # 调用LLMInput.Generate生成prompt
-        self.prompts = LLMInput.Generate(batch_size)
 
-        # 仿真生成的每个prompt的KV大小
-        for prompt in self.prompts:
-            user_kv_size, item_kv_sizes = self.model.PredictKVSize(prompt)
+        generate_res = self.llm_input.Generate(batch_size)
+
+        self.prompts = generate_res
+        user_access_time = 0
+        item_access_time = 0
+        user_cache_miss_times = 0
+        item_cache_miss_times = 0
+        computation_cost = 0
+        for ind, prompt in enumerate(self.prompts):
             prompt_order = self.PromptOrder(prompt)
-            # 在打印时将 KV 大小转换为 MB
-            user_kv_size_mb = user_kv_size / (1024 * 1024)
-            item_kv_sizes_mb = [size / (1024 * 1024) for size in item_kv_sizes]
-            print(f"Prompt Timestamp: {prompt['timestamp']}, User KV Size: {user_kv_size_mb:.2f} MB, "
-                  f"Item KV Sizes: {[f'{size:.2f} MB' for size in item_kv_sizes_mb]}, Prompt Order: {prompt_order}")
-            
+            if prompt_order == "User History First":
+                user_access_time += 1
+                user_data = self.cache.get(cache_type='user', key=ind)
+                computation_cost += sum([item["token_count"] for item in prompt["items"]])
+                if user_data is None:
+                    user_cache_miss_times += 1
+                    self.cache.put(cache_type='user', key=ind, sequence_length=prompt["user_history_tokens"])
+                    computation_cost += prompt["user_history_tokens"]
+                # print("Current user cache size:", self.cache.user_cache.current_size)
+                # print("Current user cache keys:", list(self.cache.user_cache.cache.keys()))
+                # print("-" * 50)
+            else:
+                assert len(prompt['items']) == 20
+                item_access_time += 20
+                computation_cost += prompt["user_history_tokens"]
+                # print("item first")
+                for i, item in enumerate(prompt["items"]):
+                    item_data = self.cache.get(cache_type='item', key=i+10000*ind)
+                    if item_data is None:
+                        item_cache_miss_times += 1
+                        self.cache.put(cache_type='item', key=i+10000*ind, sequence_length=item["token_count"])
+                        computation_cost += item["token_count"]
+            # user_kv_size_mb = user_kv_size / (1024 * 1024)
+            # item_kv_sizes_mb = [size / (1024 * 1024) for size in item_kv_sizes]
+            # print(f"Prompt Timestamp: {prompt['timestamp']}, User KV Size: {user_kv_size_mb:.2f} MB, "
+            #       f"Item KV Sizes: {[f'{size:.2f} MB' for size in item_kv_sizes_mb]}, Prompt Order: {prompt_order}")
+        print("User Cache Hit Rate:", 1-user_cache_miss_times/(user_access_time))
+        print("Item Cache Hit Rate:", 1-item_cache_miss_times/(item_access_time))
+        print("Computation Cost: {} tokens".format(computation_cost))
+        
     def PromptOrder(self, prompt: Dict) -> str:
         user_tokens = prompt["user_history_tokens"]
         item_tokens = sum([item["token_count"] for item in prompt["items"]])
@@ -86,4 +86,5 @@ model_params = {
 
 scheduler = LLMScheduler(model_params)
 
-scheduler.schedule_prompts(batch_size=5)
+scheduler.schedule_prompts(batch_size=10)
+scheduler.schedule_prompts(batch_size=20)
