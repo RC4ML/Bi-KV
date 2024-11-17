@@ -130,12 +130,9 @@ class LLMDataloader():
         self.test_probs = retrieved_file['test_probs']
         self.test_labels = retrieved_file['test_labels']
         self.test_metrics = retrieved_file['test_metrics']
-        self.test_users = [u for u, (p, l) in enumerate(zip(self.test_probs, self.test_labels), start=1) \
-                          if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
+        self.test_users = [u for u, _ in enumerate(zip(self.test_probs, self.test_labels), start=1)]
         self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
                                 self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
-        # self.non_test_users = [u for u, (p, l) in enumerate(zip(self.test_probs, self.test_labels), start=1) \
-                            #    if l not in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
 
     @classmethod
     def code(cls):
