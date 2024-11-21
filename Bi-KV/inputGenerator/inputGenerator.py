@@ -1,11 +1,28 @@
 from argparse import Namespace
+
 from datasets import dataset_factory
 from dataloader import LLMDataloader
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Any
 import random
 
 from dataloader.llm import LLMTestDataset
+
+class PromptItem():
+    def __init__(self,item_id:int,token_count:int) -> None:
+        self.item_id = item_id
+        self.token_count = token_count
+    def __str__(self) -> str:
+        return f"{{item_id:{self.item_id}, token_count:{self.token_count}}}"
+    def __repr__(self) -> str:
+        return self.__str__()
+
+class InputPrompt():
+    def __init__(self,user_id:int,user_history_tokens:int,items:List[PromptItem],timestamp:int) -> None:
+        self.user_id = user_id
+        self.user_history_tokens = user_history_tokens
+        self.items = items
+        self.timestamp = timestamp
 
 class LLMInput():
     def __init__(self,k:int,poisson_lambda:500,args:Namespace) -> None:
@@ -15,21 +32,16 @@ class LLMInput():
         self.poisson_lambda = poisson_lambda
         self.random_name = ""
 
-    def Generate(self,batch_size: int) -> List[Dict]:
+    def Generate(self,batch_size: int) -> List[InputPrompt]:
         prompts = []
         poisson_numbers = np.random.poisson(lam=self.poisson_lambda, size=batch_size)
         for ind,i in enumerate(self._get_random_index(batch_size)):
             data_point = self.dataset[i]
             user_id = data_point['user_id']
             user_history_tokens = data_point["history_length"] # 用户历史的token数量
-            items = [{"item_id":data_point["candidates_id"][jnd],"token_count": len(j)} for jnd,j in enumerate(data_point["goods_index"])]
+            items = [PromptItem(data_point["candidates_id"][jnd],len(j)) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
-            prompts.append({
-                "user_id": user_id,
-                "user_history_tokens": user_history_tokens,
-                "items": items,
-                "timestamp": timestamp
-            })
+            prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp))
         return prompts
     
     def reset_k(self,k:int) -> None:
