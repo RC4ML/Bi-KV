@@ -1,8 +1,9 @@
 from argparse import Namespace
+
 from datasets import dataset_factory
 from dataloader import LLMDataloader
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Any
 import random
 
 from dataloader.llm import LLMTestDataset
@@ -24,12 +25,7 @@ class LLMInput():
             user_history_tokens = data_point["history_length"] # 用户历史的token数量
             items = [{"item_id":data_point["candidates_id"][jnd],"token_count": len(j)} for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
-            prompts.append({
-                "user_id": user_id,
-                "user_history_tokens": user_history_tokens,
-                "items": items,
-                "timestamp": timestamp
-            })
+            prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp))
         return prompts
     
     def reset_k(self,k:int) -> None:
@@ -59,3 +55,10 @@ class LLMInput():
             return sampled_index
         else:
             return list(range(batch_size))
+        
+class InputPrompt():
+    def __init__(self,user_id:int,user_history_tokens:int,items:List[dict[str,Any]],timestamp:int) -> None:
+        self.user_id = user_id
+        self.user_history_tokens = user_history_tokens
+        self.items = items
+        self.timestamp = timestamp
