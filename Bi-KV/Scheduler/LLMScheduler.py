@@ -1,5 +1,7 @@
 import random
 from typing import List, Dict, Tuple
+import torch.distributed.rpc as rpc
+
 from config import *
 from datasets import dataset_factory
 from dataloader import LLMDataloader
@@ -95,7 +97,44 @@ model_params = {
     "num_layers": 28 
 }
 
-scheduler = LLMScheduler(model_params, 10)
+# Scheduler 类
+class Scheduler:
+    def __init__(self, num_workers, worker_func,world_size):
+        self.num_workers = num_workers
+        self.worker_func = worker_func
+        self.world_size = world_size
+    
+    def start(self):
+        options = rpc.TensorPipeRpcBackendOptions(init_method='tcp://localhost:29500', num_worker_threads=256)
+        rpc.init_rpc(
+            name="master",
+            rank=0,
+            world_size=self.world_size,  # 假设有 2 个 worker 和 1 个 master
+            rpc_backend_options=options
+        )
+        print("Master initialized")
+        
+        # 创建请求对象
+        requests = [InputPrompt(user_id=i, user_history_tokens=i*10,items=[],timestamp=i*random.randint(1,100)) for i in range(1, 6)]
+        
+        # 发送请求到相应的 worker
+        futures = []
+        for req in requests:
+            target_worker = f"worker{req.user_id % self.num_workers}"
+            user_rref = rpc.remote(target_worker, InputPrompt, args=(req.user_id, req.user_history_tokens,req.items,req.timestamp))
+            future = rpc.rpc_async(target_worker, self.worker_func, args=(user_rref,))
+            futures.append(future)
+        
+        # 收集结果
+        results = [fut.wait() for fut in futures]
+        print(f"Results: {results}")
+    
+    def shutdown(self):
+        rpc.shutdown()
 
-scheduler.schedule_prompts_example(batch_size=10)
-scheduler.schedule_prompts_example(batch_size=20)
+
+if __name__ == "__main__":
+    scheduler = LLMScheduler(model_params, 10)
+
+    scheduler.schedule_prompts_example(batch_size=10)
+    scheduler.schedule_prompts_example(batch_size=20)
