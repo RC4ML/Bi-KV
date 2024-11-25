@@ -1,19 +1,14 @@
 import random
 from typing import List, Dict, Tuple
+import torch.distributed.rpc as rpc
+
 from config import *
 from datasets import dataset_factory
 from dataloader import LLMDataloader
 from inputGenerator.inputGenerator import InputPrompt, LLMInput
 from Storage import KVCache
 
-# from huggingface_hub import login
-# login()
-args.model_code = 'llm'
-args.llm_retrieved_path = "/share/gnn_data/testmodel/LlamaRec/experiments/lru/games/"
-args.dataset_code = "games"
-set_template(args)
-
-class LLMScheduler:
+class LLMSchedulerBackup:
     def __init__(self, model_params: Dict, item_num,num_workers:3):
         self.prompts = []
         total_capacity = 20000000000  # 20GB
@@ -86,16 +81,3 @@ class LLMScheduler:
             prompt_id = i.user_id
             worker_id = prompt_id%self.num_workers
             self._schedule(i,worker_id)
-
-# Qwen2 1.5B
-model_params = {
-    "head_size": 128,
-    "num_q_heads": 12, 
-    "num_kv_heads": 2,      
-    "num_layers": 28 
-}
-
-scheduler = LLMScheduler(model_params, 10)
-
-scheduler.schedule_prompts_example(batch_size=10)
-scheduler.schedule_prompts_example(batch_size=20)
