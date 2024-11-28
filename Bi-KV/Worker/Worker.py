@@ -1,3 +1,4 @@
+from turtle import forward
 import torch.distributed.rpc as rpc
 
 # Worker 类
@@ -16,7 +17,14 @@ class Worker:
             rpc_backend_options=options
         )
         print(f"{self.name} initialized")
+
+    def regester_worker(self):
+        target_worker = "master"
+        rpc.rpc_async(target_worker, self.worker_func)
+
+    def forward(self):
+        # TODO Add some detailed action
         pass
-    
+
     def shutdown(self):
         rpc.shutdown()

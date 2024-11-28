@@ -15,19 +15,19 @@ class LLMScheduler:
     def __init__(self, worker_func, world_size):
         self.worker_func = worker_func
         self.world_size = world_size
-        self.num_workers = world_size-1
+        self.num_workers = world_size - 1
     
     def start(self):
         options = rpc.TensorPipeRpcBackendOptions(init_method='tcp://localhost:29500', num_worker_threads=256)
         rpc.init_rpc(
             name="master",
             rank=0,
-            world_size=self.world_size,  # 假设有 2 个 worker 和 1 个 master
+            world_size=self.world_size,
             rpc_backend_options=options
         )
         print("Master initialized")
 
-    def schecudle(self,prompt_list: List[InputPrompt]):
+    def schedule(self,prompt_list: List[InputPrompt]):
         self.prompts = prompt_list
         res = self._send_prompt(prompt_list)
         user_cache_miss_times = sum(i['user_cache_miss_times'] for i in res)
@@ -52,6 +52,14 @@ class LLMScheduler:
         results = [fut.wait() for fut in futures]
         return results
     
+    def update_worker(self):
+        # TODO dynamic world_size
+        self.num_workers += 1
+
+    def strategy(self):
+        # schedule stategy
+        pass
+
     def shutdown(self):
         rpc.shutdown()
     

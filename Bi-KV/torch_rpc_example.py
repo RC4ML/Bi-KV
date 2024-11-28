@@ -65,7 +65,7 @@ def run_scheduler(world_size):
     generate_res = llm_input.Generate(100)
     scheduler = LLMScheduler(worker_func=read_cache_with_rref,world_size=world_size)
     scheduler.start()
-    scheduler.schecudle(generate_res)
+    scheduler.schedule(generate_res)
     scheduler.shutdown()
 
 if __name__ == "__main__":
