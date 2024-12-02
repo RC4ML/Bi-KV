@@ -4,7 +4,7 @@ import multiprocessing as mp
 from Worker.Worker import Worker
 from Scheduler.LLMScheduler import LLMScheduler,model_params,PromptOrder
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
-from Storage import KVCache
+from DistributedStorage.kvcache import KVCache
 from config import *
 
 args.model_code = 'llm'

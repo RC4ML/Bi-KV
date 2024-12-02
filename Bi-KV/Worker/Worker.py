@@ -13,7 +13,7 @@ class Worker:
         rpc.init_rpc(
             name=self.name,
             rank=self.rank,
-            world_size=self.world_size,  # 假设有 2 个 worker 和 1 个 master
+            world_size=self.world_size,
             rpc_backend_options=options
         )
         print(f"{self.name} initialized")

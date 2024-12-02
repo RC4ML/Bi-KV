@@ -12,10 +12,11 @@ model_params = {
 }
 
 class LLMScheduler:
-    def __init__(self, worker_func, world_size):
+    def __init__(self, worker_func, world_size:int):
         self.worker_func = worker_func
         self.world_size = world_size
         self.num_workers = world_size - 1
+        self.strategy_mode = "Default"
     
     def start(self):
         options = rpc.TensorPipeRpcBackendOptions(init_method='tcp://localhost:29500', num_worker_threads=256)
@@ -43,8 +44,7 @@ class LLMScheduler:
         # 发送请求到相应的 worker
         futures = []
         for ind,prompt in enumerate(prompt_list):
-            # TODO 根据一定策略调度worker
-            target_worker = f"worker{prompt.user_id % self.num_workers}"
+            target_worker = f"worker{self.strategy(prompt.user_id)}"
             user_rref = rpc.remote(target_worker, InputPrompt, args=(prompt.user_id, prompt.user_history_tokens,prompt.items,prompt.timestamp))
             future = rpc.rpc_async(target_worker, self.worker_func, args=(user_rref,ind))
             futures.append(future)
@@ -56,9 +56,12 @@ class LLMScheduler:
         # TODO dynamic world_size
         self.num_workers += 1
 
-    def strategy(self):
+    def strategy(self,user_id:int)->int:
         # schedule stategy
-        pass
+        if self.strategy_mode == "WIP":
+            pass
+        else:
+            return user_id%self.num_workers
 
     def shutdown(self):
         rpc.shutdown()
