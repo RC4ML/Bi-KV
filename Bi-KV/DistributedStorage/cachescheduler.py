@@ -3,6 +3,7 @@ import torch
 import torch.distributed as dist
 from threading import Lock, Thread
 from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+import time
 
 class CacheScheduler:
     def __init__(self, world_size):
@@ -57,7 +58,7 @@ class CacheScheduler:
 
             if not executable_requests:
                 # 如果没有可执行的请求，稍等片刻再检查
-                # time.sleep(0.1)
+                time.sleep(0.1)
                 continue
 
             # 按请求ID排序，优先处理较早的请求
