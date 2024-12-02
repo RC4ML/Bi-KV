@@ -6,6 +6,11 @@ from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 import time
 from kvcache import KVCache
 
+def _call_method(method, rref, *args, **kwargs):
+    r"""
+    a helper function to call a method on the given RRef
+    """
+    return method(rref.local_value(), *args, **kwargs)
 class CacheScheduler:
     def __init__(self, world_size):
         """初始化调度器"""
@@ -13,7 +18,13 @@ class CacheScheduler:
         self.request_table = {}  # 用字典来存储请求表
         self.gpu_state_table = {rank: {'status': 'idle'} for rank in range(1, world_size)}
         self.lock = Lock()
-
+        # kvcache's rref
+        self.cordinator_ref =rpc.RRef(self)
+        self.cache_ref =[]
+        for cache_rank in range (1,world_size):
+            cache_info=rpc.get_worker_info(f"KVCache{cache_rank}")
+            print(f"worker_info{cache_info}")
+            self.cache_ref.append(rpc.remote(to=cache_info,func=KVCache,args=(cache_rank,)))
     def add_requests(self, requests):
         """一次性添加多个请求到请求表"""
         for request in requests:
@@ -44,10 +55,10 @@ class CacheScheduler:
                     # 添加到可执行请求列表
                     executable_requests.append(request_id)
 
-            if not executable_requests:
-                # 如果没有可执行的请求，稍等片刻再检查
-                time.sleep(0.1)
-                continue
+            # if not executable_requests:
+            #     # 如果没有可执行的请求，稍等片刻再检查
+            #     time.sleep(0.1)
+            #     continue
 
             # 按请求ID排序，优先处理较早的请求
             executable_requests.sort()
@@ -64,6 +75,7 @@ class CacheScheduler:
             # 等待所有线程完成
             for thread in threads:
                 thread.join()
+            break
 
         print("[CacheScheduler] 所有请求处理完成")
         return
@@ -74,24 +86,16 @@ class CacheScheduler:
 
         # 发送发送任务到发送GPU（通过 RPC）
         task_info_send = [SIGNAL_SEND, request_id, send_gpu, recv_gpu]
-        rpc.rpc_async(f"worker{send_gpu}", KVCache.receive_task_info, args=(task_info_send))
-
-        # 发送接收任务到接收GPU（通过 RPC）
-        task_info_recv = [SIGNAL_RECV, request_id, send_gpu, recv_gpu]
-        confirmation_msg=rpc.rpc_async(f"worker{recv_gpu}", KVCache.receive_task_info, args=(task_info_recv))
-
-        if confirmation_msg == request_id:
-            print(f"[CacheScheduler] 请求 {request_id} 完成 - GPU {send_gpu} -> GPU {recv_gpu}")
-
-        with self.lock:
-            del self.request_table[request_id]  # 删除请求
-            self.gpu_state_table[send_gpu]['status'] = 'idle'
-            self.gpu_state_table[recv_gpu]['status'] = 'idle'
+        send_cache_ref=self.cache_ref[send_gpu-1]
+        # 获取发送 GPU 的拥有者，并在拥有者上调用 local_value
+        owner_worker_ref = send_cache_ref.owner()  # 获取 RRef 的拥有者
+        rpc.rpc_sync(to=owner_worker_ref, func=_call_method, args=(KVCache.receive_task_info,send_cache_ref, task_info_send),timeout=1)
+        print("传输结束")
 
     def send_terminate_signal(self):
         """通过 RPC 发送终止信号给所有 KVCache"""
         print("[CacheScheduler] 发送终止信号给所有 KVCache")
-        for gpu_rank in self.gpu_state_table.keys():
+        for send_cache_ref in self.cache_ref:
             # 使用 RPC 发送终止信号
-            rpc.rpc_async(f"worker{gpu_rank}", KVCache.terminate)
+            rpc.rpc_sync(to=send_cache_ref.owner(), func=_call_method, args=(KVCache.terminate,send_cache_ref),timeout=1)
         print("[CacheScheduler] 终止信号已发送")
