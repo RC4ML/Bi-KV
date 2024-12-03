@@ -65,7 +65,7 @@ def run_scheduler(world_size):
     generate_res = llm_input.Generate(100)
     scheduler = LLMScheduler(worker_func=read_cache_with_rref,world_size=world_size)
     scheduler.start()
-    scheduler.schedule(generate_res)
+    scheduler.schedule_prompt_list(generate_res)
     scheduler.shutdown()
 
 if __name__ == "__main__":
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     p = mp.Process(target=run_scheduler,args=(world_size,))
     p.start()
     processes.append(p)
-
+    options = rpc.TensorPipeRpcBackendOptions(init_method='tcp://localhost:29500', num_worker_threads=256, rpc_timeout=100)
     for p in processes:
         p.join()
 
