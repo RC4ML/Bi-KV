@@ -48,7 +48,8 @@ def init_process(rank, world_size):
         scheduler.add_requests(requests)  # 一次性添加多个请求
         scheduler.process_requests()
         # # scheduler.send_terminate_signal()
-        
+    
+    # dist.barrier()
     # dist.destroy_process_group()  # 清理分布式进程组, 注意要等rank0完成所有任务才能清理
     rpc.shutdown()  # 关闭 RPC
 
