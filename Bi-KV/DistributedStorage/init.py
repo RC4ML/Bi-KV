@@ -9,19 +9,32 @@ from kvcache import KVCache
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
-def init_rpc_backend(rpc_name, rank, world_size):
+def init_backend(rank, world_size):
     """初始化 RPC"""
     os.environ["MASTER_ADDR"] = "127.0.0.1"  # 设置主节点的 IP 地址
-    os.environ["MASTER_PORT"] = "29500"       # 设置主节点的通信端口
+    os.environ["MASTER_PORT"] = "29501"       # 设置主节点的通信端口
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
-    rpc.init_rpc(name=rpc_name, rank=rank, world_size=world_size)
-    print(f"[init_rpc_backend]rpc初始化{rpc_name}")
+    
+    dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+    print(f"初始化GPU NCCL后端rank:{rank}")
+    rpc.init_rpc(
+        name=f"worker{rank}",
+        rank=rank,
+        world_size=world_size
+    )
 
-def run_worker(rank, world_size):
+    
+def init_process(rank, world_size):
     """初始化每个进程"""
+    init_backend(rank, world_size)
+    device = torch.device(f'cuda:{rank}')
+    torch.cuda.set_device(device)
+    dist.barrier()
+   
     if rank == 0:
-        init_rpc_backend(f"CacheCoordinator{rank}", rank, world_size)
+        print(f"[Init][Rank {rank}] 初始化 CacheScheduler")        
         scheduler = CacheScheduler(world_size)
         time.sleep(1)
         requests = [
@@ -30,11 +43,10 @@ def run_worker(rank, world_size):
         ]
         scheduler.add_requests(requests)  # 一次性添加多个请求
         scheduler.process_requests()
-        #scheduler.send_terminate_signal()
-    else:
-        init_rpc_backend(f"KVCache{rank}", rank, world_size)
-
-    # 确保在销毁进程组之前，RPC 完成了所有操作
+        # # scheduler.send_terminate_signal()
+    
+    # dist.barrier()
+    # dist.destroy_process_group()  # 清理分布式进程组, 注意要等rank0完成所有任务才能清理
     rpc.shutdown()  # 关闭 RPC
     dist.barrier()   # 加入 barrier 确保所有进程同步完成
     if rank == 0:
