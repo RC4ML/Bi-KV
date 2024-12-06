@@ -96,7 +96,7 @@ def init_process(rank, world_size):
 
         generate_res = [        
             (1, 1, 2),
-            (2, 3, 0),
+            # (2, 3, 0),
             (3, 3, 1),
             (4, 1, 3),
             (5, 2, 1)

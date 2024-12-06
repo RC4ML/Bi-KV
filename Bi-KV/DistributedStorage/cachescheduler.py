@@ -101,8 +101,8 @@ class CacheScheduler:
     def send_terminate_signal(self):
         """通过 RPC 发送终止信号给所有 KVCache"""
         print("[CacheScheduler] 发送终止信号给所有 KVCache")
-        for cpu_rank in self.cpu_state_table.keys():
-            # 使用 RPC 发送终止信号
-            rpc.rpc_sync(f"worker{cpu_rank}", KVCache.terminate)
-        print("[CacheScheduler] 终止信号已发送")
+        # for cpu_rank in self.cpu_state_table.keys():
+        #     # 使用 RPC 发送终止信号
+        #     rpc.rpc_sync(f"kvcache{cpu_rank}", KVCache.terminate,args=(self.kvcache_ref[cpu_rank],))
+        # print("[CacheScheduler] 终止信号已发送")
         rpc.shutdown()
