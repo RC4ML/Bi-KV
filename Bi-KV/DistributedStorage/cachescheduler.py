@@ -53,10 +53,10 @@ class CacheScheduler:
                     # 添加到可执行请求列表
                     executable_requests.append(request_id)
 
-            # if not executable_requests:
-            #     # 如果没有可执行的请求，稍等片刻再检查
-            #     time.sleep(0.1)
-            #     continue
+            if not executable_requests:
+                # 如果没有可执行的请求，稍等片刻再检查
+                time.sleep(0.1)
+                continue
 
             # 按请求ID排序，优先处理较早的请求
             executable_requests.sort()
@@ -74,7 +74,6 @@ class CacheScheduler:
             # # 等待所有线程完成
             for thread in threads:
                 thread.join()
-            break
 
         print("[CacheScheduler] 所有请求处理完成")
         return
@@ -106,7 +105,7 @@ class CacheScheduler:
     def send_terminate_signal(self):
         """通过 RPC 发送终止信号给所有 KVCache"""
         print("[CacheScheduler] 发送终止信号给所有 KVCache")
-        for send_cache_ref in self.cache_ref:
+        for gpu_rank in self.gpu_state_table.keys():
             # 使用 RPC 发送终止信号
             rpc.rpc_sync(f"worker{gpu_rank}", KVCache.terminate)
         print("[CacheScheduler] 终止信号已发送")

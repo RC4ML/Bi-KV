@@ -43,5 +43,9 @@ class KVCache:
         """模拟接收任务信息的方法"""
         # 这里可以模拟任务的传入，或由调度器通过 RPC 给每个 GPU 发送任务信息
         print(f"[KVCache][RANK {self.rank}] taskinfo is{task_info}")
-        dist.barrier()  # 等待所有进程完成
-        dist.destroy_process_group()
+        task_type, request_id, send_gpu, recv_gpu = task_info
+        if task_type == SIGNAL_SEND:  # 发送数据
+            self.send_data(send_gpu, recv_gpu, request_id)
+        elif task_type == SIGNAL_RECV:  # 接收数据
+            self.receive_data(send_gpu, request_id)
+            return request_id           # 接收成功返回ACK

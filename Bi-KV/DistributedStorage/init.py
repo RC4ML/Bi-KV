@@ -36,10 +36,14 @@ def init_process(rank, world_size):
     if rank == 0:
         print(f"[Init][Rank {rank}] 初始化 CacheScheduler")        
         scheduler = CacheScheduler(world_size)
-        time.sleep(1)
+        time.sleep(0.5)
+        # 定义多个请求
         requests = [
             (1, 1, 2),
-            (2, 3, 4)
+            (2, 3, 4),
+            (3, 3, 1),
+            (4, 1, 3),
+            (5, 2, 1)
         ]
         scheduler.add_requests(requests)  # 一次性添加多个请求
         scheduler.process_requests()
@@ -48,13 +52,6 @@ def init_process(rank, world_size):
     # dist.barrier()
     # dist.destroy_process_group()  # 清理分布式进程组, 注意要等rank0完成所有任务才能清理
     rpc.shutdown()  # 关闭 RPC
-    dist.barrier()   # 加入 barrier 确保所有进程同步完成
-    if rank == 0:
-        print(f"Coordinator结束rank={rank}")
-    else:
-        print(f"KVcache结束rank={rank}")
-
-    dist.destroy_process_group()  # 清理分布式进程组
 
 def main():
     """主函数"""
@@ -62,7 +59,7 @@ def main():
     world_size = 5  # 动态获取可用 GPU 数量  4 GPU<kvcache> 1 CPU<cachescheduler>
     if world_size < 2:
         raise ValueError("需要至少 2 个 GPU 来运行此程序。")
-    mp.spawn(run_worker, args=(world_size,), nprocs=world_size, join=True)
+    mp.spawn(init_process, args=(world_size,), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
     main()
