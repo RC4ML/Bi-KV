@@ -2,31 +2,36 @@ import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
-
+from rpc_def import *
+# worker 2,3,4.5
+# cache  6,7,8,9
 class KVCache:
     def __init__(self, rank):
         """初始化 KVCache"""
-        self.rank = rank
+        self.rank = rank + KVCACHE_offset
+        self.gpu_index=rank
         self.cache_data = torch.full(
             (1024 * 1024 * 10,),  # Tensor 的大小（10MB）
             self.rank,
             device=f'cuda:{rank}',
             dtype=torch.float32
         )
-        print(f"[KVCache][GPU {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
+        print(f"[KVCache][GPU index:{rank}rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
     def send_data(self, send_gpu, recv_gpu, request_id):
         """GPU发送数据"""
         print(f"[KVCache][GPU {send_gpu}] 开始发送数据到 GPU {recv_gpu}, 请求ID={request_id}")
-        dist.send(tensor=self.cache_data, dst=recv_gpu)  # 使用 NCCL 后端进行 GPU 之间的数据传递
-        print(f"[KVCache][GPU {send_gpu}] 完成发送数据到 GPU {recv_gpu}, 请求ID={request_id}")
+        dst_rank=recv_gpu+KVCACHE_offset
+        dist.send(tensor=self.cache_data, dst=dst_rank)  # 使用 NCCL 后端进行 GPU 之间的数据传递
+        print(f"[KVCache][GPU {send_gpu}][rank{self.rank}] 完成发送数据到 GPU {recv_gpu},[rank{dst_rank}] 请求ID={request_id}")
 
     def receive_data(self, send_gpu, request_id):
         """GPU接收数据"""
         print(f"[KVCache][GPU {self.rank}] 开始接收数据从 GPU {send_gpu}, 请求ID={request_id}")
         received_tensor = torch.empty_like(self.cache_data)
-        dist.recv(tensor=received_tensor, src=send_gpu)  # 使用 NCCL 后端进行 GPU 之间的数据传递
-        print(f"[KVCache][GPU {self.rank}] 完成接收数据从 GPU {send_gpu}, 请求ID={request_id}, receive_data={received_tensor}")
+        src_rank=send_gpu+KVCACHE_offset
+        dist.recv(tensor=received_tensor, src=src_rank)  # 使用 NCCL 后端进行 GPU 之间的数据传递
+        print(f"[KVCache][GPU {self.gpu_index}] [rank{self.rank}]完成接收数据从 GPU {send_gpu}[rank{src_rank}], 请求ID={request_id}, receive_data={received_tensor}")
         # self.cache_data = received_tensor
 
     def send_confirmation(self, confirmation_msg):

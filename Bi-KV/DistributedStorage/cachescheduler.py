@@ -1,26 +1,25 @@
-import torch
-import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from threading import Lock, Thread
-from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
-import time
 from kvcache import KVCache
+import time
+from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 
 def call_receive_task_info(rref, task_info):
     """全局函数，用于调用 RRef 引用的 receive_task_info 方法"""
     return rref.rpc_sync().receive_task_info(task_info)
 
 class CacheScheduler:
-    def __init__(self, world_size):
+    def __init__(self, rank,world_size):
         """初始化调度器"""
         print("[CacheScheduler] 初始化调度器")
+        self.rank =rank
         self.request_table = {}  # 用字典来存储请求表
         self.gpu_state_table = {rank: {'status': 'idle'} for rank in range(1, world_size)}
         self.lock = Lock()
         self.kvcache_ref = []
         for i in range(world_size-1):
-            print(f"创建远程实例worker{i+1}")
-            self.kvcache_ref.append(rpc.remote(f"worker{i+1}", KVCache, args=(i+1,)))  # 创建远程实例)
+            print(f"[CacheScheduler]创建远程实例kvcache{i}")
+            self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例)
     
         
     def add_requests(self, requests):
@@ -84,12 +83,12 @@ class CacheScheduler:
         
         # 发送发送任务到发送GPU（通过 RPC）
         task_info_send = [SIGNAL_SEND, request_id, send_gpu, recv_gpu]
-        send_kvcache_ref = rpc.remote(f"worker{send_gpu}", KVCache, args=(send_gpu,))  # 创建远程实例)
+        # send_kvcache_ref = rpc.remote(f"worker{send_gpu}", KVCache, args=(send_gpu,))  # 创建远程实例)
         future_send = rpc.rpc_async(self.kvcache_ref[send_gpu-1].owner(), call_receive_task_info,  args=(self.kvcache_ref[send_gpu-1], task_info_send))
 
         # 发送接收任务到接收GPU（通过 RPC）
         task_info_recv = [SIGNAL_RECV, request_id, send_gpu, recv_gpu]
-        recv_kvcache_ref = rpc.remote(f"worker{recv_gpu}", KVCache, args=(recv_gpu,))  # 创建远程实例)
+        # recv_kvcache_ref = rpc.remote(f"worker{recv_gpu}", KVCache, args=(recv_gpu,))  # 创建远程实例)
         future_recv = rpc.rpc_async(self.kvcache_ref[recv_gpu-1].owner(), call_receive_task_info, args=(self.kvcache_ref[recv_gpu-1], task_info_recv))
         
         future_send.wait()  # 确保任务完成
