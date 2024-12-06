@@ -1,8 +1,8 @@
 import torch.distributed.rpc as rpc
 from threading import Lock, Thread
-from kvcache import KVCache
+from DistributedStorage.kvcache import KVCache
 import time
-from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 
 def call_receive_task_info(rref, task_info):
     """全局函数，用于调用 RRef 引用的 receive_task_info 方法"""

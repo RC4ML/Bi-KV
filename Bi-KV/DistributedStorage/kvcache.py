@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
-from Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from rpc_def import *
 # worker 2,3,4.5
 # cache  6,7,8,9

@@ -7,7 +7,6 @@ import torch.distributed.rpc as rpc
 from Scheduler.LLMScheduler import LLMScheduler
 from inputGenerator.inputGenerator import LLMInput
 from DistributedStorage.cachescheduler import CacheScheduler
-from DistributedStorage.kvcache import KVCache
 from Worker import Worker
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
@@ -58,35 +57,39 @@ def init_backend(rank, world_size,process_type,type_index):
     
     # 初始化分布式进程组
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
-    print(f"[init_backend] 初始化 nccl backend rank {rank}")
     
     # 根据进程类型进行初始化
     if process_type == 'scheduler':
-        print(f"[init_backend] scheduler{type_index}, CPU process")
+        current_device = torch.cuda.current_device()
+        print(f"[init_backend]  初始化 nccl backend rank {rank}scheduler{type_index}, CPU process,Current CUDA device index: {current_device}")
         rpc.init_rpc(
             name=f"scheduler{type_index}",
             rank=rank,
             world_size=world_size
         )
     elif process_type == 'coordinator':
-        print(f"[init_backend] coordinator{type_index}, CPU process")
+        current_device = torch.cuda.current_device()
+        print(f"[init_backend] 初始化 nccl backend rank {rank} coordinator{type_index}, CPU process,Current CUDA device index: {current_device}")
         rpc.init_rpc(
             name=f"coordinator{type_index}",
             rank=rank,
             world_size=world_size
         )
     elif process_type == 'inferworker':
-        
-        torch.cuda.set_device(type_index)
-        print(f"[init_backend] inferworker{type_index} 设置 GPU 索引: {type_index}")
+        device = torch.device(f'cuda:{type_index}')
+        torch.cuda.set_device(device)
+        current_device = torch.cuda.current_device()
+        print(f"[init_backend] 初始化 nccl backend rank {rank} inferworker{type_index} 设置 GPU 索引: {type_index}Current CUDA device index: {current_device}")
         rpc.init_rpc(
             name=f"inferworker{type_index}",
             rank=rank,
             world_size=world_size
         )
     elif process_type == 'kvcache':
-        torch.cuda.set_device(type_index)
-        print(f"[init_backend] kvcache{type_index} 设置 GPU 索引: {type_index}")
+        device = torch.device(f'cuda:{type_index}')
+        torch.cuda.set_device(device)
+        current_device = torch.cuda.current_device()
+        print(f"[init_backend]初始化 nccl backend rank {rank}  kvcache{type_index} 设置 GPU 索引: {type_index}Current CUDA device index: {current_device}")
         rpc.init_rpc(
             name=f"kvcache{type_index}",
             rank=rank,
@@ -99,12 +102,10 @@ def init_process(rank, world_size):
     """初始化每个进程"""
     process_type, type_index = get_process_info(rank)
     init_backend(rank, world_size,process_type,type_index)
-    
-    if process_type.startswith('inferworker') or process_type.startswith('kvcache'):
-        device = torch.device(f'cuda:{type_index}')
-        torch.cuda.set_device(device)
-    
     dist.barrier()
+    # if process_type.startswith('inferworker') or process_type.startswith('kvcache'):
+    #     device = torch.device(f'cuda:{type_index}')
+    #     torch.cuda.set_device(device)
    
     if process_type == 'scheduler':
         # print(f"[init_process][Rank {rank}] 初始化 LLMinput")        
@@ -117,7 +118,7 @@ def init_process(rank, world_size):
             (4, 1, 3),
             (5, 2, 1)
         ]
-
+        print("start test")
         scheduler = LLMScheduler(world_size=world_size)
 
         for rank in range (1,6):
@@ -137,10 +138,10 @@ def init_process(rank, world_size):
         
     
     # # 等待所有进程完成任务
-    # dist.barrier()
+    dist.barrier()
     # # 销毁分布式进程组，注意要等rank0完成所有任务才能清理
     # dist.destroy_process_group()
-    rpc.shutdown()  # 关闭 RPC
+    #rpc.shutdown()  # 关闭 RPC
 
 def main():
     """主函数"""
