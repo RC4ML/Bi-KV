@@ -84,12 +84,12 @@ class CacheScheduler:
         
         # 发送发送任务到发送GPU（通过 RPC）
         task_info_send = [SIGNAL_SEND, request_id, send_gpu, recv_gpu]
-        # send_kvcache_ref = rpc.remote(f"worker{send_gpu}", KVCache, args=(send_gpu,))  # 创建远程实例)
+        send_kvcache_ref = rpc.remote(f"worker{send_gpu}", KVCache, args=(send_gpu,))  # 创建远程实例)
         future_send = rpc.rpc_async(self.kvcache_ref[send_gpu-1].owner(), call_receive_task_info,  args=(self.kvcache_ref[send_gpu-1], task_info_send))
 
         # 发送接收任务到接收GPU（通过 RPC）
         task_info_recv = [SIGNAL_RECV, request_id, send_gpu, recv_gpu]
-        # recv_kvcache_ref = rpc.remote(f"worker{recv_gpu}", KVCache, args=(recv_gpu,))  # 创建远程实例)
+        recv_kvcache_ref = rpc.remote(f"worker{recv_gpu}", KVCache, args=(recv_gpu,))  # 创建远程实例)
         future_recv = rpc.rpc_async(self.kvcache_ref[recv_gpu-1].owner(), call_receive_task_info, args=(self.kvcache_ref[recv_gpu-1], task_info_recv))
         
         future_send.wait()  # 确保任务完成
