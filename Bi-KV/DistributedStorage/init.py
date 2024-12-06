@@ -15,9 +15,9 @@ def init_backend(rank, world_size):
     os.environ["MASTER_PORT"] = "29501"       # 设置主节点的通信端口
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
-    
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
+    if rank>0:
+        torch.cuda.set_device(rank)
     print(f"初始化GPU NCCL后端rank:{rank}")
     rpc.init_rpc(
         name=f"worker{rank}",
@@ -29,8 +29,9 @@ def init_backend(rank, world_size):
 def init_process(rank, world_size):
     """初始化每个进程"""
     init_backend(rank, world_size)
-    device = torch.device(f'cuda:{rank}')
-    torch.cuda.set_device(device)
+    if rank>0:
+        device = torch.device(f'cuda:{rank}')
+        torch.cuda.set_device(device)
     dist.barrier()
    
     if rank == 0:

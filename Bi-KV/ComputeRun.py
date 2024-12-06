@@ -4,7 +4,7 @@ import multiprocessing as mp
 from Worker.Worker import Worker
 from Scheduler.LLMScheduler import LLMScheduler,model_params,PromptOrder
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
-from Storage import KVCache
+# from Storage import KVCache
 from config import *
 
 args.model_code = 'llm'
@@ -18,7 +18,7 @@ model_layers = model_params.get("num_layers")
 vector_dim = model_params.get("head_size") * model_params.get("num_kv_heads")
 my_cache = KVCache(total_capacity=total_capacity, user_cache_ratio=user_cache_ratio, model_layers=model_layers, vector_dim=vector_dim)
 
-def read_cache_with_rref(prompt_rref,ind):
+def read_cache_with_rref(prompt_rref,ind):       # worker 的函数
     prompt:InputPrompt = prompt_rref.to_here()
     prompt_order = PromptOrder(prompt)
     user_access_time = 0
@@ -63,6 +63,7 @@ def run_scheduler(world_size):
     llm_input = LLMInput(20,500,args)
     llm_input.set_random("weighted")
     generate_res = llm_input.Generate(100)
+    print("[run_scheduler]init LLMinput finished")
     scheduler = LLMScheduler(worker_func=read_cache_with_rref,world_size=world_size)
     scheduler.start()
     scheduler.schecudle(generate_res)

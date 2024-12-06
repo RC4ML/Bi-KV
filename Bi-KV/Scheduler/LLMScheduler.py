@@ -1,6 +1,6 @@
 from typing import List
 import torch.distributed.rpc as rpc
-
+from  init import PROCESS_TYPES
 from inputGenerator.inputGenerator import InputPrompt
 
 # Qwen2 1.5B
@@ -13,9 +13,18 @@ model_params = {
 
 class LLMScheduler:
     def __init__(self, worker_func, world_size):
+        print("[LLMScheduler]init LLMScheduler")
         self.worker_func = worker_func
         self.world_size = world_size
         self.num_workers = world_size-1
+        self.inferworker_ref=[]
+        for i in range(0,):
+            print(f"创建远程实例worker{i+1}")
+            self.inferworker_ref.append(rpc.remote(f"worker{i+1}", KVCache, args=(i+1,)))  # 创建远程实例)
+        self.kvcache_ref = []
+        for i in range(world_size-1):
+            print(f"创建远程实例worker{i+1}")
+            self.kvcache_ref.append(rpc.remote(f"worker{i+1}", KVCache, args=(i+1,)))  # 创建远程实例)
     
     def start(self):
         options = rpc.TensorPipeRpcBackendOptions(init_method='tcp://localhost:29500', num_worker_threads=256)
@@ -46,7 +55,9 @@ class LLMScheduler:
             # TODO 根据一定策略调度worker
             target_worker = f"worker{prompt.user_id % self.num_workers}"
             user_rref = rpc.remote(target_worker, InputPrompt, args=(prompt.user_id, prompt.user_history_tokens,prompt.items,prompt.timestamp))
+            # 将InputPrompt初始化在worker上
             future = rpc.rpc_async(target_worker, self.worker_func, args=(user_rref,ind))
+            # self.worker_func rpc过渡函数          输入：对应的远程对象和对应数据序号
             futures.append(future)
         # 收集结果
         results = [fut.wait() for fut in futures]
