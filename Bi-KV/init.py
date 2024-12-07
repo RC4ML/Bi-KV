@@ -126,10 +126,11 @@ def init_process(rank, world_size):
         #     logging.info("输出检查通过。")
 
     # 等待所有进程完成任务
-    # dist.barrier()
+    dist.barrier()
     # 销毁分布式进程组
     # dist.destroy_process_group()
     rpc.shutdown()  # 关闭 RPC
+    dist.destroy_process_group()
 
 def main():
     """主函数"""
