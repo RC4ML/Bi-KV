@@ -1,0 +1,648 @@
+2024-12-06 19:59:49,306 - INFO - [Main] 启动分布式系统
+2024-12-06 19:59:49,306 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 19:59:51,983 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 19:59:51,984 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 19:59:51,985 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 19:59:51,987 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 19:59:51,988 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 19:59:51,989 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 19:59:51,990 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 19:59:51,991 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 19:59:51,992 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 19:59:51,993 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:00:00,123 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:00:00,123 - INFO - 开始测试
+2024-12-06 20:02:28,185 - INFO - [Main] 启动分布式系统
+2024-12-06 20:02:28,185 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:02:30,895 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:02:30,895 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:02:30,896 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:02:30,896 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:02:30,896 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:02:30,896 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:02:30,896 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:02:30,897 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:02:30,897 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:02:30,897 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:02:45,196 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:02:45,197 - INFO - 开始测试
+2024-12-06 20:11:29,782 - INFO - [Main] 启动分布式系统
+2024-12-06 20:11:29,782 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:11:31,563 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:11:31,565 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:11:31,566 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:11:31,567 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:11:31,567 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:11:31,568 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:11:31,568 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:11:31,569 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:11:31,569 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:11:31,569 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:11:56,117 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:11:56,119 - INFO - 开始测试
+2024-12-06 20:16:27,271 - INFO - [Main] 启动分布式系统
+2024-12-06 20:16:27,272 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:16:29,772 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:16:29,773 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:16:29,773 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:16:29,773 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:16:29,774 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:16:29,774 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:16:29,774 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:16:29,774 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:16:29,774 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:16:29,775 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:16:51,361 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:16:51,362 - INFO - 开始测试
+2024-12-06 20:17:23,436 - INFO - [Main] 启动分布式系统
+2024-12-06 20:17:23,436 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:17:25,291 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:17:25,291 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:17:25,291 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:17:25,291 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:17:25,291 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:17:25,291 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:17:25,292 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:17:25,292 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:17:25,292 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:17:25,292 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:17:40,713 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:17:40,713 - INFO - 开始测试
+2024-12-06 20:21:59,080 - INFO - [Main] 启动分布式系统
+2024-12-06 20:21:59,080 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:22:01,850 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:22:01,850 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:22:01,850 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:22:01,850 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:22:01,850 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:22:01,851 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:22:01,851 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:22:01,851 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:22:01,852 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:22:01,852 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:22:18,210 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:23:22,131 - INFO - [Main] 启动分布式系统
+2024-12-06 20:23:22,132 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:23:24,823 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:23:24,823 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:23:24,823 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:23:24,823 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:23:24,824 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:23:24,824 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:23:24,825 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:23:24,825 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:23:24,825 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:23:24,825 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:23:45,653 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:27:48,780 - INFO - [Main] 启动分布式系统
+2024-12-06 20:27:48,781 - INFO - [Main] world_size = 8，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 3), ('kvcache', 3)]
+2024-12-06 20:27:50,652 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:27:50,653 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:27:50,653 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:27:50,653 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:27:50,653 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 5
+2024-12-06 20:27:50,653 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:27:50,654 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 6
+2024-12-06 20:27:50,654 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 7
+2024-12-06 20:28:05,818 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:33:51,088 - INFO - [Main] 启动分布式系统
+2024-12-06 20:33:51,088 - INFO - [Main] world_size = 8，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 3), ('kvcache', 3)]
+2024-12-06 20:33:52,961 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:33:52,962 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:33:52,963 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:33:52,965 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:33:52,965 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 5
+2024-12-06 20:33:52,966 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 6
+2024-12-06 20:33:52,966 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:33:52,968 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 7
+2024-12-06 20:34:27,861 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:36:53,675 - INFO - [Main] 启动分布式系统
+2024-12-06 20:36:53,675 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:36:56,323 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:36:56,323 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:36:56,323 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:36:56,324 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:36:56,324 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:36:56,324 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:36:56,325 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:36:56,325 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:36:56,325 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:36:56,325 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:37:10,689 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:38:20,299 - INFO - [Main] 启动分布式系统
+2024-12-06 20:38:20,299 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:38:23,080 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:38:23,081 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:38:23,082 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:38:23,082 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:38:23,082 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:38:23,083 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:38:23,084 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:38:23,087 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:38:23,087 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:38:23,089 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:38:38,585 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:38:39,588 - INFO - 开始测试
+2024-12-06 20:39:20,130 - INFO - [Main] 启动分布式系统
+2024-12-06 20:39:20,130 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:39:22,929 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:39:22,930 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:39:22,930 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:39:22,930 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:39:22,931 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:39:22,931 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:39:22,932 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:39:22,932 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:39:22,932 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:39:22,932 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:39:44,420 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:39:45,424 - INFO - 开始测试
+2024-12-06 20:44:00,145 - INFO - [Main] 启动分布式系统
+2024-12-06 20:44:00,145 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:44:01,955 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:44:01,955 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:44:01,955 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:44:01,956 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:44:01,956 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:44:01,956 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:44:01,956 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:44:01,957 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:44:01,957 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:44:01,957 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:44:23,841 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:44:24,845 - INFO - 开始测试
+2024-12-06 20:48:55,064 - INFO - [Main] 启动分布式系统
+2024-12-06 20:48:55,064 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:48:57,684 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:48:57,685 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:48:57,685 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:48:57,685 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:48:57,685 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:48:57,686 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:48:57,686 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:48:57,687 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:48:57,687 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:48:57,687 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:49:11,588 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:49:12,592 - INFO - 开始测试
+2024-12-06 20:50:16,667 - INFO - [Main] 启动分布式系统
+2024-12-06 20:50:16,667 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:50:19,257 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:50:19,257 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:50:19,257 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:50:19,257 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:50:19,258 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:50:19,258 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:50:19,258 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:50:19,258 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:50:19,258 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:50:19,259 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:50:35,190 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:50:36,195 - INFO - 开始测试
+2024-12-06 20:52:59,952 - INFO - [Main] 启动分布式系统
+2024-12-06 20:52:59,952 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:53:02,419 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:53:02,420 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:53:02,420 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:53:02,421 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:53:02,421 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:53:02,421 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:53:02,422 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:53:02,422 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:53:02,422 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:53:02,423 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:53:24,412 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:53:25,416 - INFO - 开始测试
+2024-12-06 20:55:49,576 - INFO - [Main] 启动分布式系统
+2024-12-06 20:55:49,576 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:55:51,373 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:55:51,374 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:55:51,374 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:55:51,376 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:55:51,377 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:55:51,377 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:55:51,378 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:55:51,379 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:55:51,380 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:55:51,381 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:56:09,114 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:56:10,119 - INFO - 开始测试
+2024-12-06 20:58:04,810 - INFO - [Main] 启动分布式系统
+2024-12-06 20:58:04,810 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 20:58:06,620 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 20:58:06,621 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 20:58:06,621 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 20:58:06,621 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 20:58:06,623 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 20:58:06,623 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 20:58:06,624 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 20:58:06,624 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 20:58:06,624 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 20:58:06,624 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 20:58:35,562 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 20:58:36,568 - INFO - 开始测试
+2024-12-06 21:01:46,034 - INFO - [Main] 启动分布式系统
+2024-12-06 21:01:46,034 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:01:48,506 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:01:48,506 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:01:48,506 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:01:48,507 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:01:48,507 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:01:48,507 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:01:48,508 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:01:48,508 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:01:48,508 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:01:48,509 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:02:03,736 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:05:06,491 - INFO - [Main] 启动分布式系统
+2024-12-06 21:05:06,491 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:05:09,215 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:05:09,216 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:05:09,216 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:05:09,217 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:05:09,217 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:05:09,217 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:05:09,218 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:05:09,218 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:05:09,218 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:05:09,218 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:05:26,173 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:06:13,872 - INFO - [Main] 启动分布式系统
+2024-12-06 21:06:13,872 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:06:16,476 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:06:16,477 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:06:16,478 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:06:16,478 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:06:16,478 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:06:16,479 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:06:16,479 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:06:16,480 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:06:16,480 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:06:16,480 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:06:33,206 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:06:34,210 - INFO - 开始测试
+2024-12-06 21:06:59,662 - INFO - [Main] 启动分布式系统
+2024-12-06 21:06:59,662 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:07:02,322 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:07:02,322 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:07:02,323 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:07:02,325 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:07:02,326 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:07:02,327 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:07:02,328 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:07:02,330 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:07:02,331 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:07:02,331 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:07:20,197 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:07:21,202 - INFO - 开始测试
+2024-12-06 21:08:09,019 - INFO - [Main] 启动分布式系统
+2024-12-06 21:08:09,019 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:08:11,699 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:08:11,699 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:08:11,699 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:08:11,700 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:08:11,700 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:08:11,701 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:08:11,701 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:08:11,701 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:08:11,702 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:08:11,702 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:08:28,785 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:08:29,789 - INFO - 开始测试
+2024-12-06 21:19:41,369 - INFO - [Main] 启动分布式系统
+2024-12-06 21:19:41,370 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:19:43,181 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:19:43,182 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:19:43,182 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:19:43,183 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:19:43,184 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:19:43,185 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:19:43,185 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:19:43,186 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:19:43,186 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:19:43,187 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:20:00,585 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:20:01,588 - INFO - 开始测试
+2024-12-06 21:21:20,964 - INFO - [Main] 启动分布式系统
+2024-12-06 21:21:20,964 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:21:23,673 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:21:23,673 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:21:23,674 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:21:23,674 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:21:23,674 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:21:23,675 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:21:23,675 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:21:23,675 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:21:23,676 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:21:23,676 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:21:52,080 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:22:22,832 - INFO - [Main] 启动分布式系统
+2024-12-06 21:22:22,832 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:22:25,668 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:22:25,668 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:22:25,668 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:22:25,669 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:22:25,669 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:22:25,669 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:22:25,669 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:22:25,670 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:22:25,670 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:22:25,670 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:22:47,060 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:22:48,063 - INFO - 开始测试
+2024-12-06 21:27:46,393 - INFO - [Main] 启动分布式系统
+2024-12-06 21:27:46,394 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:27:49,131 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:27:49,131 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:27:49,131 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:27:49,132 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:27:49,132 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:27:49,132 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:27:49,133 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:27:49,133 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:27:49,133 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:27:49,134 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:28:10,865 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:28:11,869 - INFO - 开始测试
+2024-12-06 21:29:42,690 - INFO - [Main] 启动分布式系统
+2024-12-06 21:29:42,690 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:29:45,531 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:29:45,532 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:29:45,532 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:29:45,533 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:29:45,533 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:29:45,533 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:29:45,533 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:29:45,533 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:29:45,533 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:29:45,534 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:30:01,044 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:30:02,048 - INFO - 开始测试
+2024-12-06 21:30:47,539 - INFO - [Main] 启动分布式系统
+2024-12-06 21:30:47,539 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:30:59,382 - INFO - [Main] 启动分布式系统
+2024-12-06 21:30:59,382 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:31:01,479 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:31:18,621 - INFO - [Main] 启动分布式系统
+2024-12-06 21:31:18,621 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:31:21,454 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:31:21,456 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:31:21,456 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:31:21,456 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:31:21,458 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:31:21,459 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:31:21,461 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:31:21,461 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:31:21,463 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:31:21,464 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:31:38,809 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:31:39,813 - INFO - 开始测试
+2024-12-06 21:33:14,148 - INFO - [Main] 启动分布式系统
+2024-12-06 21:33:14,148 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:33:16,812 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:33:16,813 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:33:16,813 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:33:16,814 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:33:16,814 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:33:16,814 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:33:16,814 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:33:16,814 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:33:16,814 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:33:16,815 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:33:31,752 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:33:32,754 - INFO - 开始测试
+2024-12-06 21:35:40,475 - INFO - [Main] 启动分布式系统
+2024-12-06 21:35:40,476 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:35:42,297 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:35:42,297 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:35:42,297 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:35:42,297 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:35:42,297 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:35:42,299 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:35:42,299 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:35:42,301 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:35:42,301 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:35:42,301 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:36:00,001 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:36:01,006 - INFO - 开始测试
+2024-12-06 21:45:48,761 - INFO - [Main] 启动分布式系统
+2024-12-06 21:45:48,762 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:45:51,375 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:45:51,375 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:45:51,375 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:45:51,377 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:45:51,377 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:45:51,377 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:45:51,378 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:45:51,378 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:45:51,379 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:45:51,379 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:46:06,921 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:46:07,925 - INFO - 开始测试
+2024-12-06 21:50:28,500 - INFO - [Main] 启动分布式系统
+2024-12-06 21:50:28,500 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:50:31,181 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:50:31,182 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:50:31,183 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:50:31,184 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:50:31,184 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:50:31,186 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:50:31,187 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:50:31,187 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:50:31,187 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:50:31,187 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:50:46,678 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:50:47,682 - INFO - 开始测试
+2024-12-06 21:51:14,520 - INFO - [Main] 启动分布式系统
+2024-12-06 21:51:14,521 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:51:17,146 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:51:17,147 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:51:17,147 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:51:17,148 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:51:17,148 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:51:17,148 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:51:17,149 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:51:17,149 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:51:17,149 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:51:17,149 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:51:33,824 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:51:34,828 - INFO - 开始测试
+2024-12-06 21:53:04,464 - INFO - [Main] 启动分布式系统
+2024-12-06 21:53:04,465 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:53:07,282 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:53:07,282 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:53:07,283 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:53:07,283 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:53:07,284 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:53:07,284 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:53:07,284 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:53:07,284 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:53:07,284 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:53:07,285 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:53:22,982 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:53:23,985 - INFO - 开始测试
+2024-12-06 21:55:11,304 - INFO - [Main] 启动分布式系统
+2024-12-06 21:55:11,304 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:55:13,996 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:55:13,996 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:55:13,996 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:55:13,996 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:55:13,996 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:55:13,997 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:55:13,997 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:55:13,998 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:55:13,998 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:55:13,999 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:55:28,912 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:55:29,914 - INFO - 开始测试
+2024-12-06 21:56:16,776 - INFO - [Main] 启动分布式系统
+2024-12-06 21:56:16,776 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:56:19,448 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:56:19,449 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:56:19,449 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:56:19,450 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:56:19,450 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:56:19,450 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:56:19,451 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:56:19,451 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:56:19,451 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:56:19,451 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:56:42,321 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:56:43,325 - INFO - 开始测试
+2024-12-06 21:57:34,318 - INFO - [Main] 启动分布式系统
+2024-12-06 21:57:34,318 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:57:36,967 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:57:36,967 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:57:36,967 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:57:36,967 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:57:36,967 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:57:36,968 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:57:36,968 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:57:36,968 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:57:36,968 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:57:36,969 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 21:58:07,027 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 21:58:08,030 - INFO - 开始测试
+2024-12-06 21:59:42,454 - INFO - [Main] 启动分布式系统
+2024-12-06 21:59:42,455 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 21:59:44,281 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 21:59:44,281 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 21:59:44,282 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 21:59:44,284 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 21:59:44,284 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 21:59:44,285 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 21:59:44,285 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 21:59:44,286 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 21:59:44,286 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 21:59:44,288 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 22:00:08,289 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 22:00:09,291 - INFO - 开始测试
+2024-12-06 22:48:11,734 - INFO - [Main] 启动分布式系统
+2024-12-06 22:48:11,734 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-06 22:48:14,578 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-06 22:48:14,578 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-06 22:48:14,578 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-06 22:48:14,579 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-06 22:48:14,579 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-06 22:48:14,579 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-06 22:48:14,579 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-06 22:48:14,580 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-06 22:48:14,580 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-06 22:48:14,580 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-06 22:48:30,984 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-06 22:48:31,988 - INFO - 开始测试
+2024-12-07 09:32:27,285 - INFO - [Main] 启动分布式系统
+2024-12-07 09:32:27,286 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:32:29,131 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:32:29,132 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:32:29,132 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:32:29,132 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:32:29,132 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:32:29,133 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:32:29,133 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:32:29,133 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:32:29,134 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:32:29,136 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:32:44,337 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-07 09:32:45,339 - INFO - 开始测试
+2024-12-07 09:38:11,025 - INFO - [Main] 启动分布式系统
+2024-12-07 09:38:11,025 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:38:13,883 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:38:13,884 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:38:13,884 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:38:13,884 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:38:13,884 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:38:13,885 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:38:13,885 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:38:13,885 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:38:13,886 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:38:13,886 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:38:35,169 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-07 09:38:36,172 - INFO - 开始测试
+2024-12-07 09:39:09,267 - INFO - [Main] 启动分布式系统
+2024-12-07 09:39:09,267 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:39:12,070 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:39:12,070 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:39:12,070 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:39:12,071 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:39:12,071 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:39:12,071 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:39:12,071 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:39:12,072 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:39:12,072 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:39:12,072 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:39:28,749 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-07 09:39:29,754 - INFO - 开始测试
+2024-12-07 09:40:46,742 - INFO - [Main] 启动分布式系统
+2024-12-07 09:40:46,742 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:40:49,439 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:40:49,440 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:40:49,442 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:40:49,442 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:40:49,442 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:40:49,443 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:40:49,443 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:40:49,443 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:40:49,444 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:40:49,444 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:41:04,900 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-07 09:41:05,903 - INFO - 开始测试
+2024-12-07 09:41:30,538 - INFO - [Main] 启动分布式系统
+2024-12-07 09:41:30,538 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:41:32,894 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:41:32,895 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:41:32,895 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:41:32,895 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:41:32,895 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:41:32,896 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:41:32,896 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:41:32,896 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:41:32,896 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:41:32,896 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:41:55,149 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-07 09:42:13,702 - INFO - [Main] 启动分布式系统
+2024-12-07 09:42:13,703 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:42:16,398 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:42:16,398 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:42:16,398 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:42:16,399 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:42:16,399 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:42:16,399 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:42:16,399 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:42:16,400 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:42:16,400 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:42:16,400 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:42:31,432 - INFO - [init_process][Rank 0] 初始化 LLMScheduler
+2024-12-07 09:43:58,771 - INFO - [Main] 启动分布式系统
+2024-12-07 09:43:58,771 - INFO - [Main] world_size = 10，进程类型分布: [('scheduler', 1), ('coordinator', 1), ('inferworker', 4), ('kvcache', 4)]
+2024-12-07 09:44:00,592 - INFO - [init_backend] 初始化进程类型: scheduler0, Rank: 0
+2024-12-07 09:44:00,592 - INFO - [init_backend] 初始化进程类型: inferworker0, Rank: 2
+2024-12-07 09:44:00,592 - INFO - [init_backend] 初始化进程类型: inferworker1, Rank: 3
+2024-12-07 09:44:00,592 - INFO - [init_backend] 初始化进程类型: inferworker2, Rank: 4
+2024-12-07 09:44:00,592 - INFO - [init_backend] 初始化进程类型: coordinator0, Rank: 1
+2024-12-07 09:44:00,593 - INFO - [init_backend] 初始化进程类型: kvcache2, Rank: 8
+2024-12-07 09:44:00,594 - INFO - [init_backend] 初始化进程类型: inferworker3, Rank: 5
+2024-12-07 09:44:00,597 - INFO - [init_backend] 初始化进程类型: kvcache1, Rank: 7
+2024-12-07 09:44:00,598 - INFO - [init_backend] 初始化进程类型: kvcache0, Rank: 6
+2024-12-07 09:44:00,599 - INFO - [init_backend] 初始化进程类型: kvcache3, Rank: 9
+2024-12-07 09:44:18,262 - INFO - [init_process][Rank 0] 初始化 LLMScheduler

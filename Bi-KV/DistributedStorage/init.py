@@ -16,7 +16,7 @@ def init_backend(rank, world_size):
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
     
-    dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
+    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
     print(f"初始化GPU NCCL后端rank:{rank}")
     rpc.init_rpc(
