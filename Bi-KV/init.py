@@ -106,17 +106,19 @@ def init_process(rank, world_size):
         scheduler.process_prompt()
 
         # 输出检查：等待协调器处理请求并检查结果
-        future_call_coordin_process = rpc.rpc_sync(
+        future_call_coordin_process = rpc.rpc_async(
             scheduler.coordinator_ref[0].owner(),
             _call_cordinator_process,
             args=(scheduler.coordinator_ref[0],)
         )
-        future_call_terminate_process = rpc.rpc_sync(
+        future_call_coordin_process.wait()
+        future_call_terminate_process = rpc.rpc_async(
             scheduler.coordinator_ref[0].owner(),
             _call_terminate_process,
             args=(scheduler.coordinator_ref[0],)
         )
-
+        future_call_terminate_process.wait()
+        print("finish _call_terminate_process")
         # 这里可以添加更多的输出检查逻辑，例如验证结果是否符合预期
         # if result != expected_result:
         #     logging.error("输出检查失败！")

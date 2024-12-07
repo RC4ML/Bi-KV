@@ -8,11 +8,13 @@ from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIG
 def call_receive_task_info(rref, task_info):
     """全局函数，用于调用 RRef 引用的 receive_task_info 方法"""
     return rref.rpc_sync().receive_task_info(task_info)
-
+def call_kvcache_terminate(rref):
+    return rref.rpc_sync().terminate()
 class CacheScheduler:
     def __init__(self, rank, world_size):
         """初始化调度器"""
         print("[CacheScheduler] 初始化调度器")
+        self.world_size=world_size
         self.rank = rank
         self.request_table = {}  # 用字典来存储请求表
         self.cpu_state_table = {rank: {'status': 'idle'} for rank in range(1, world_size)}  # 修改为 CPU 状态
@@ -101,8 +103,8 @@ class CacheScheduler:
     def send_terminate_signal(self):
         """通过 RPC 发送终止信号给所有 KVCache"""
         print("[CacheScheduler] 发送终止信号给所有 KVCache")
-        # for cpu_rank in self.cpu_state_table.keys():
-        #     # 使用 RPC 发送终止信号
-        #     rpc.rpc_sync(f"kvcache{cpu_rank}", KVCache.terminate,args=(self.kvcache_ref[cpu_rank],))
-        # print("[CacheScheduler] 终止信号已发送")
-        rpc.shutdown()
+        for cpu_rank in range (0,self.world_size):
+            # 使用 RPC 发送终止信号
+            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), call_kvcache_terminate,args=(self.kvcache_ref[cpu_rank],))
+        print("[CacheScheduler] 终止信号已发送")
+        return

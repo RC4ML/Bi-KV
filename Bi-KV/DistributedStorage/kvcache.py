@@ -44,6 +44,7 @@ class KVCache:
     def terminate(self):
         """处理终止信号"""
         print(f"[KVCache][CPU {self.rank}] 收到终止信号，退出运行")
+        # rpc.shutdown()
         return "Terminated"
     
     def receive_task_info(self, task_info):
