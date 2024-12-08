@@ -8,5 +8,6 @@ pip install sentencepiece
 ```
 ## Run
 ```
-python LLMScheduler.py
+cd Bi-KV
+KVCACHE_NUM=5 WORKER_NUM=5 python init.py  # set number of kvcache and worker 
 ```
