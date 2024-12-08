@@ -22,7 +22,7 @@ KVCACHE_offset = WORKER_offset + WORKER_NUM  # worker结束后是kvcache的起�
 # 模拟宏定义，创建一个类型到函数的映射(如果有需要在其他地方动态创建实例时使用)
 typefunc_map = {
     'scheduler': 'LLMScheduler',
-    'coordinator': 'CacheScheduler',
+    'coordinator': 'CacheCoordinator',
     'inferworker': 'Worker',
     'kvcache': 'KVCache'
 }

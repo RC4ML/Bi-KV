@@ -4,8 +4,8 @@ import torch.distributed.rpc as rpc
 from inputGenerator.inputGenerator import InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
-from DistributedStorage.cachescheduler import CacheScheduler
-from Reomte.remote_call import _call_remote_method
+from DistributedStorage.cachescoordinator import CacheCoordinator
+from Remote.remote_call import _call_remote_method
 import time
 
 model_params = {
@@ -29,9 +29,9 @@ class LLMScheduler:
         for r in range(1, 1+1):  # coordinator只有1个，所以r=1
             proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
             rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
-            # 创建CacheScheduler实例，传入KVCACHE_NUM
+            # 创建CacheCoordinator实例，传入KVCACHE_NUM
             self.coordinator_ref.append(
-                rpc.remote(to=rpc_info, func=CacheScheduler, args=(r, KVCACHE_NUM))
+                rpc.remote(to=rpc_info, func=CacheCoordinator, args=(r, KVCACHE_NUM))
             )
             print("[LLMScheduler]finish init coordinator")
 
