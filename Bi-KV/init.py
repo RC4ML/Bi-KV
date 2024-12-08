@@ -6,11 +6,12 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from Scheduler.LLMScheduler import LLMScheduler
+from DistributedStorage.cachescheduler import CacheScheduler
 import warnings
 import logging
 from config import *
-from rpc_def import PROCESS_TYPES, KVCACHE_NUM, WORKER_NUM,_call_cordinator_process, _call_terminate_process, get_process_info
-
+from rpc_def import PROCESS_TYPES, KVCACHE_NUM, WORKER_NUM, get_process_info
+from Reomte.remote_call import _call_remote_method
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 args.model_code = 'llm'
@@ -54,7 +55,10 @@ def init_process(rank, world_size):
 
         generate_res = [        
             (1, 1, 2),
-            (2, 3, 0)
+            (2, 3, 0),
+            (3, 1, 4),
+            (4, 2, 4),
+            (5, 2, 1)
         ]
         scheduler.add_prompt_list(generate_res)
         logging.info("开始测试")
@@ -62,14 +66,14 @@ def init_process(rank, world_size):
 
         future_call_coordin_process = rpc.rpc_async(
             scheduler.coordinator_ref[0].owner(),
-            _call_cordinator_process,
-            args=(scheduler.coordinator_ref[0],)
+            _call_remote_method,
+            args=(CacheScheduler.process_requests,scheduler.coordinator_ref[0],)
         )
         future_call_coordin_process.wait()
         future_call_terminate_process = rpc.rpc_async(
             scheduler.coordinator_ref[0].owner(),
-            _call_terminate_process,
-            args=(scheduler.coordinator_ref[0],)
+            _call_remote_method,
+            args=(CacheScheduler.send_terminate_signal,scheduler.coordinator_ref[0],)
         )
         future_call_terminate_process.wait()
         print("finish _call_terminate_process")

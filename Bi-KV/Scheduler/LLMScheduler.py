@@ -5,6 +5,7 @@ from inputGenerator.inputGenerator import InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.cachescheduler import CacheScheduler
+from Reomte.remote_call import _call_remote_method
 import time
 
 model_params = {
@@ -13,9 +14,6 @@ model_params = {
     "num_kv_heads": 2,      
     "num_layers": 28 
 }
-
-def _call_Worker_method(method, rref, *args, **kwargs):
-    return method(rref.local_value(), *args, **kwargs)
 
 class LLMScheduler:
     def __init__(self, world_size:int):
@@ -63,7 +61,7 @@ class LLMScheduler:
         worker_id = recv_cpu  # 使用recv_cpu作为worker索引
         send_worker_ref = self.worker_ref[worker_id]
         owner_worker_ref = send_worker_ref.owner()  
-        future = rpc.rpc_sync(to=owner_worker_ref, func=_call_Worker_method, args=(Worker.receive_task_info, send_worker_ref, prompt))
+        future = rpc.rpc_sync(to=owner_worker_ref, func=_call_remote_method, args=(Worker.receive_task_info, send_worker_ref, prompt))
         return future
 
     def strategy(self, user_id: int) -> int:

@@ -1,8 +1,8 @@
 import os
 
 # 可通过环境变量指定，若未设置则使用默认值
-KVCACHE_NUM = int(os.environ.get("KVCACHE_NUM", "4"))
-WORKER_NUM = int(os.environ.get("WORKER_NUM", "4"))
+KVCACHE_NUM = int(os.environ.get("KVCACHE_NUM", "5"))
+WORKER_NUM = int(os.environ.get("WORKER_NUM", "5"))
 
 # 定义进程类型及其数量
 PROCESS_TYPES = [
@@ -46,10 +46,3 @@ def get_process_info(rank, process_types=PROCESS_TYPES):
         current_rank += count
     raise ValueError(f"Rank {rank} 超出定义的进程类型范围。")
 
-
-# 以下两个函数在 init.py 中通过 rpc_async 调用协调器
-def _call_cordinator_process(rref):
-    return rref.rpc_sync().process_requests()
-
-def _call_terminate_process(rref):
-    return rref.rpc_sync().send_terminate_signal()

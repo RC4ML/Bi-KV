@@ -3,12 +3,7 @@ from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 import time
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
-
-def call_receive_task_info(rref, task_info):
-    return rref.rpc_sync().receive_task_info(task_info)
-
-def call_kvcache_terminate(rref):
-    return rref.rpc_sync().terminate()
+from Reomte.remote_call import _call_remote_method
 
 class CacheScheduler:
     def __init__(self, rank, kvcache_num):
@@ -69,10 +64,10 @@ class CacheScheduler:
     def _execute_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheScheduler] 执行请求 {request_id} - CPU {send_cpu} -> CPU {recv_cpu}")
         task_info_send = [SIGNAL_SEND, request_id, send_cpu, recv_cpu]
-        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(), call_receive_task_info, args=(self.kvcache_ref[send_cpu], task_info_send))
+        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),_call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send))
 
         task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
-        future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), call_receive_task_info, args=(self.kvcache_ref[recv_cpu], task_info_recv))
+        future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv))
         
         future_send.wait()
         confirmation_msg = future_recv.wait()
@@ -87,6 +82,6 @@ class CacheScheduler:
     def send_terminate_signal(self):
         print("[CacheScheduler] 发送终止信号给所有 KVCache")
         for cpu_rank in range(self.kvcache_num):
-            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), call_kvcache_terminate, args=(self.kvcache_ref[cpu_rank],))
+            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), _call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
         print("[CacheScheduler] 终止信号已发送")
         return
