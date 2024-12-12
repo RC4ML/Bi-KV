@@ -2,7 +2,8 @@ import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
-from rpc_def import KVCACHE_offset
+from rpc_def import KVCACHE_offset,WORKER_offset
+from Remote.remote_call import _call_remote_method
 
 class KVCache:
     def __init__(self, rank):
@@ -18,7 +19,7 @@ class KVCache:
 
     def send_data(self, send_cpu, recv_cpu, request_id):
         print(f"[KVCache][CPU {send_cpu}] 开始发送数据到 CPU {recv_cpu}, 请求ID={request_id}")
-        dst_rank = recv_cpu + KVCACHE_offset
+        dst_rank = recv_cpu + WORKER_offset
         dist.send(tensor=self.cache_data, dst=dst_rank)
         print(f"[KVCache][CPU {send_cpu}] 完成发送数据到 CPU {recv_cpu}, [rank{dst_rank}] 请求ID={request_id}")
 
@@ -37,11 +38,14 @@ class KVCache:
         print(f"[KVCache][CPU {self.rank}] 收到终止信号，退出运行")
         return "Terminated"
     
-    def receive_task_info(self, task_info):
+    def receive_task_info(self, task_info, worker_ref):
+        from Worker.Worker import Worker
         print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
         task_type, request_id, send_cpu, recv_cpu = task_info
         if task_type == SIGNAL_SEND:
+            remote_recv = rpc.rpc_async(to=worker_ref.owner(), func=_call_remote_method, args=(Worker.receive_kvcache_data,worker_ref, task_info))
             self.send_data(send_cpu, recv_cpu, request_id)
+            remote_recv.wait()
         elif task_type == SIGNAL_RECV:
             self.receive_data(send_cpu, request_id)
             return request_id

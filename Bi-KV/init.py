@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from Scheduler.LLMScheduler import LLMScheduler
 from DistributedStorage.cachescoordinator import CacheCoordinator
+from inputGenerator.inputGenerator import LLMInput
 import warnings
 import logging
 from config import *
@@ -52,7 +53,9 @@ def init_process(rank, world_size):
     if process_type == 'scheduler':
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
-
+        # TODO 修改为使用InputGenerator
+        # input_generator = LLMInput(20,5,args)
+        # input_prompt_list = input_generator.Generate(10)
         generate_res = [        
             (1, 1, 2),
             (2, 3, 0),

@@ -11,6 +11,7 @@ class CacheCoordinator:
         print("[CacheCoordinator] 初始化调度器")
         self.kvcache_num = kvcache_num
         self.rank = rank
+        self.worker_ref = None
         self.request_table = {}
         # cpu_state_table记录每个kvcache的状态(0-based)
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
@@ -64,15 +65,15 @@ class CacheCoordinator:
     def _execute_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheCoordinator] 执行请求 {request_id} - CPU {send_cpu} -> CPU {recv_cpu}")
         task_info_send = [SIGNAL_SEND, request_id, send_cpu, recv_cpu]
-        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),_call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send))
+        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),_call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send,self.worker_ref[recv_cpu]))
 
         task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
-        future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv))
+        # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
         
         future_send.wait()
-        confirmation_msg = future_recv.wait()
-        if confirmation_msg == request_id:
-            print(f"[CacheCoordinator] 请求 {request_id} 完成 - CPU {send_cpu} -> CPU {recv_cpu}")
+        # confirmation_msg = future_recv.wait()
+        # if confirmation_msg == request_id:
+        #     print(f"[CacheCoordinator] 请求 {request_id} 完成 - CPU {send_cpu} -> CPU {recv_cpu}")
 
         with self.lock:
             del self.request_table[request_id]
@@ -85,3 +86,11 @@ class CacheCoordinator:
             rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), _call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
         print("[CacheCoordinator] 终止信号已发送")
         return
+
+    def set_workers_rref(self,workers_rref):
+        self.worker_ref = workers_rref
+        print(f"[CacheCoordinator] 已设置worker rref信息 长度为{len(self.worker_ref)}")
+        # send_worker_ref = self.worker_ref[0]
+        # owner_worker_ref = send_worker_ref.owner()  
+        # from Worker.Worker import Worker
+        # future = rpc.rpc_sync(to=owner_worker_ref, func=_call_remote_method, args=(Worker.receive_task_info, send_worker_ref, "测试消息传递"))

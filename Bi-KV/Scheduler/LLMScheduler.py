@@ -44,6 +44,11 @@ class LLMScheduler:
             self.worker_ref.append(
                 rpc.remote(to=rpc_info, func=Worker, args=(r, self.coordinator_ref[0]))
             )
+        # 将workers_rref同步到coordinator
+        for r in range(1, 1+1):  # coordinator只有1个，所以r=1
+            proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
+            rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
+            rpc.rpc_sync(to=rpc_info, func=_call_remote_method, args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
 
@@ -56,8 +61,10 @@ class LLMScheduler:
             future = self._send_prompt(prompt)
             futures.append(future)
         
-    def _send_prompt(self, prompt):
+    def _send_prompt(self, prompt:InputPrompt):
+        # TODO prompt后续处理 1. 指定设备 2. 拆分User History Token和Item Token
         request_id, send_cpu, recv_cpu = prompt
+        # worker_id = self.strategy(prompt.user_id)
         worker_id = recv_cpu  # 使用recv_cpu作为worker索引
         send_worker_ref = self.worker_ref[worker_id]
         owner_worker_ref = send_worker_ref.owner()  
