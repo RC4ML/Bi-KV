@@ -4,6 +4,7 @@ from DistributedStorage.kvcache import KVCache
 import time
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from Remote.remote_call import _call_remote_method
+from rpc_def import KVCACHE_offset,WORKER_offset
 
 class CacheCoordinator:
     def __init__(self, rank, kvcache_num):
@@ -27,7 +28,7 @@ class CacheCoordinator:
             self.add_request(request_id, send_cpu, recv_cpu)
 
     def add_request(self, request_id, send_cpu, recv_cpu):
-        print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 发送CPU={send_cpu}, 接收CPU={recv_cpu}")
+        print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 发送Rank={send_cpu+KVCACHE_offset}, 接收Rank={recv_cpu+WORKER_offset}")
         self.request_table[request_id] = {'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False}
 
     def process_requests(self):
@@ -63,7 +64,7 @@ class CacheCoordinator:
         return
 
     def _execute_request(self, request_id, send_cpu, recv_cpu):
-        print(f"[CacheCoordinator] 执行请求 {request_id} - CPU {send_cpu} -> CPU {recv_cpu}")
+        print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_cpu+KVCACHE_offset} -> Rank {recv_cpu+WORKER_offset}")
         task_info_send = [SIGNAL_SEND, request_id, send_cpu, recv_cpu]
         future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),_call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send,self.worker_ref[recv_cpu]))
 
