@@ -29,6 +29,7 @@ class Worker:
             print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
             request_id, send_cpu = task_info
             rpc.rpc_sync(to=coordinator_owner, func=call_remote_method, args=(CacheCoordinator.add_request,self.coordinator_rref, request_id, send_cpu, self.worker_index))
+        print(f"[Worker][RANK {self.rank}] Poll requests...")
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, args=(CacheCoordinator.process_requests,self.coordinator_rref))
         future_call_poll.wait()
 

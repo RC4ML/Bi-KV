@@ -63,14 +63,31 @@ class LLMScheduler:
             futures.append(future)
         
     def _send_prompt(self, prompt:InputPrompt):
-        # TODO prompt后续处理 1. 拆分User History Token和Item Token
-        request_id = prompt.user_id
-        send_cpu = self.strategy(prompt.user_id)
-        task_info = (request_id, send_cpu)
-        send_worker_ref = self.worker_ref[send_cpu]
-        owner_worker_ref = send_worker_ref.owner()  
-        future = rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, args=(Worker.receive_task_info, send_worker_ref, [task_info]))
-        return future
+        prompt_order = PromptOrder(prompt)
+        # 历史优先，调度用户历史kvcache
+        if prompt_order == "User History First":
+            print(f"[LLMScheduler] Schedule a user history request")
+            request_id = prompt.user_id
+            send_cpu = self.strategy(prompt.user_id)
+            task_info = (request_id, send_cpu)
+            send_worker_ref = self.worker_ref[send_cpu]
+            owner_worker_ref = send_worker_ref.owner()  
+            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, args=(Worker.receive_task_info, send_worker_ref, [task_info]))
+        # 商品优先，调度*一组*商品kvcache
+        elif prompt_order == "Item First":
+            print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)})")
+            task_info_list = []
+            for i in prompt.items:
+                request_id = i.item_id
+                send_cpu = self.strategy(i.item_id)
+                task_info = (request_id, send_cpu) 
+                task_info_list.append(task_info)
+            # TODO 这里显然有问题！按照设计应该是发给不同的worker
+            # 目前纯粹是取最后一个用到的worker，以后要改
+            # 此外还需要解决cache是否miss的问题
+            send_worker_ref = self.worker_ref[send_cpu]
+            owner_worker_ref = send_worker_ref.owner() 
+            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, args=(Worker.receive_task_info, send_worker_ref, task_info_list))
 
     def strategy(self, user_id: int) -> int:
         return user_id % self.num_workers
