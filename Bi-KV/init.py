@@ -12,7 +12,7 @@ import warnings
 import logging
 from config import *
 from rpc_def import PROCESS_TYPES, KVCACHE_NUM, WORKER_NUM, get_process_info
-from Remote.remote_call import _call_remote_method
+from Remote.remote_call import call_remote_method
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 args.model_code = 'llm'
@@ -66,15 +66,15 @@ def init_process(rank, world_size):
         logging.info("开始测试")
         scheduler.process_prompt()
 
-        future_call_coordin_process = rpc.rpc_async(
-            scheduler.coordinator_ref[0].owner(),
-            _call_remote_method,
-            args=(CacheCoordinator.process_requests,scheduler.coordinator_ref[0],)
-        )
-        future_call_coordin_process.wait()
+        # future_call_coordin_process = rpc.rpc_async(
+        #     scheduler.coordinator_ref[0].owner(),
+        #     call_remote_method,
+        #     args=(CacheCoordinator.process_requests,scheduler.coordinator_ref[0],)
+        # )
+        # future_call_coordin_process.wait()
         future_call_terminate_process = rpc.rpc_async(
             scheduler.coordinator_ref[0].owner(),
-            _call_remote_method,
+            call_remote_method,
             args=(CacheCoordinator.send_terminate_signal,scheduler.coordinator_ref[0],)
         )
         future_call_terminate_process.wait()

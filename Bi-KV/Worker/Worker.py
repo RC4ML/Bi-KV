@@ -1,9 +1,10 @@
+from ast import List
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
 from DistributedStorage.cachescoordinator import CacheCoordinator
-from Remote.remote_call import _call_remote_method
+from Remote.remote_call import call_remote_method
 import torch
 
 
@@ -22,17 +23,19 @@ class Worker:
         )
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
-    def forward(self, task_info):
+    def forward(self, task_info_list:List):
         coordinator_owner = self.coordinator_rref.owner()
-        print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
-        request_id, send_cpu = task_info
-        # TODO 拆分 add_request 和 poll
-        future_call_coordin = rpc.rpc_async(to=coordinator_owner, func=_call_remote_method, args=(CacheCoordinator.add_request,self.coordinator_rref, request_id, send_cpu, self.worker_index))
-        future_call_coordin.wait()
+        for task_info in task_info_list:
+            print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
+            request_id, send_cpu = task_info
+            rpc.rpc_sync(to=coordinator_owner, func=call_remote_method, args=(CacheCoordinator.add_request,self.coordinator_rref, request_id, send_cpu, self.worker_index))
+        future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, args=(CacheCoordinator.process_requests,self.coordinator_rref))
+        future_call_poll.wait()
 
-    def receive_task_info(self, task_info):
-        print(f"[Worker][RANK {self.rank}] Recv taskinfo {task_info} from scheduler")
-        self.forward(task_info)
+
+    def receive_task_info(self, task_info_list):
+        print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
+        self.forward(task_info_list)
 
     def receive_kvcache_data(self, task_info):
         print(f"[Worker][RANK {self.rank}] Recv kvcache data {task_info} from kvcache")

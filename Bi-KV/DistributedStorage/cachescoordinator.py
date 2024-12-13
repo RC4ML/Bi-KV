@@ -5,7 +5,7 @@ import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
-from Remote.remote_call import _call_remote_method
+from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
 
 class CacheCoordinator:
@@ -101,7 +101,7 @@ class CacheCoordinator:
     def _execute_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_cpu+KVCACHE_offset} -> Rank {recv_cpu+WORKER_offset}")
         task_info_send = [SIGNAL_SEND, request_id, send_cpu, recv_cpu]
-        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),_call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send,self.worker_ref[recv_cpu]))
+        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send,self.worker_ref[recv_cpu]))
 
         # task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
         # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
@@ -119,7 +119,7 @@ class CacheCoordinator:
     def send_terminate_signal(self):
         print("[CacheCoordinator] 发送终止信号给所有 KVCache")
         for cpu_rank in range(self.kvcache_num):
-            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), _call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
+            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
         print("[CacheCoordinator] 终止信号已发送")
         return
 

@@ -3,7 +3,7 @@ import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from rpc_def import KVCACHE_offset,WORKER_offset
-from Remote.remote_call import _call_remote_method
+from Remote.remote_call import call_remote_method
 
 class KVCache:
     def __init__(self, rank):
@@ -43,7 +43,7 @@ class KVCache:
         print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
         task_type, request_id, send_cpu, recv_cpu = task_info
         if task_type == SIGNAL_SEND:
-            remote_recv = rpc.rpc_async(to=worker_ref.owner(), func=_call_remote_method, args=(Worker.receive_kvcache_data,worker_ref, task_info))
+            remote_recv = rpc.rpc_async(to=worker_ref.owner(), func=call_remote_method, args=(Worker.receive_kvcache_data,worker_ref, task_info))
             self.send_data(send_cpu, recv_cpu, request_id)
             remote_recv.wait()
             return request_id

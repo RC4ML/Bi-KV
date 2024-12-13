@@ -5,7 +5,7 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.cachescoordinator import CacheCoordinator
-from Remote.remote_call import _call_remote_method
+from Remote.remote_call import call_remote_method
 import time
 
 model_params = {
@@ -49,7 +49,7 @@ class LLMScheduler:
         for r in range(1, 1+1):  # coordinator只有1个，所以r=1
             proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
             rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
-            rpc.rpc_sync(to=rpc_info, func=_call_remote_method, args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
+            rpc.rpc_sync(to=rpc_info, func=call_remote_method, args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
 
@@ -69,7 +69,7 @@ class LLMScheduler:
         task_info = (request_id, send_cpu)
         send_worker_ref = self.worker_ref[send_cpu]
         owner_worker_ref = send_worker_ref.owner()  
-        future = rpc.rpc_sync(to=owner_worker_ref, func=_call_remote_method, args=(Worker.receive_task_info, send_worker_ref, task_info))
+        future = rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, args=(Worker.receive_task_info, send_worker_ref, [task_info]))
         return future
 
     def strategy(self, user_id: int) -> int:
