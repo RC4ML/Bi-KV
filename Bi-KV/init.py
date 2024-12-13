@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # 禁用所有GPU
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""  # 禁用所有GPU
 import time
 import torch
 import torch.multiprocessing as mp
@@ -54,16 +54,16 @@ def init_process(rank, world_size):
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
         # TODO 修改为使用InputGenerator
-        # input_generator = LLMInput(20,5,args)
-        # input_prompt_list = input_generator.Generate(10)
-        generate_res = [        
-            (1, 1, 2),
-            (2, 3, 0),
-            (3, 1, 4),
-            (4, 2, 4),
-            (5, 2, 1)
-        ]
-        scheduler.add_prompt_list(generate_res)
+        input_generator = LLMInput(20,5,args)
+        input_prompt_list = input_generator.Generate(10)
+        # generate_res = [        
+        #     (1, 1, 2),
+        #     (2, 3, 0),
+        #     (3, 1, 4),
+        #     (4, 2, 4),
+        #     (5, 2, 1)
+        # ]
+        scheduler.add_prompt_list(input_prompt_list)
         logging.info("开始测试")
         scheduler.process_prompt()
 

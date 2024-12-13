@@ -46,6 +46,7 @@ class KVCache:
             remote_recv = rpc.rpc_async(to=worker_ref.owner(), func=_call_remote_method, args=(Worker.receive_kvcache_data,worker_ref, task_info))
             self.send_data(send_cpu, recv_cpu, request_id)
             remote_recv.wait()
+            return request_id
         elif task_type == SIGNAL_RECV:
             self.receive_data(send_cpu, request_id)
             return request_id

@@ -68,13 +68,13 @@ class CacheCoordinator:
         task_info_send = [SIGNAL_SEND, request_id, send_cpu, recv_cpu]
         future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),_call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send,self.worker_ref[recv_cpu]))
 
-        task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
+        # task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
         # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
         
-        future_send.wait()
+        confirmation_msg = future_send.wait()
         # confirmation_msg = future_recv.wait()
-        # if confirmation_msg == request_id:
-        #     print(f"[CacheCoordinator] 请求 {request_id} 完成 - CPU {send_cpu} -> CPU {recv_cpu}")
+        if confirmation_msg == request_id:
+            print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {send_cpu+KVCACHE_offset} -> Rank {recv_cpu+WORKER_offset}")
 
         with self.lock:
             del self.request_table[request_id]

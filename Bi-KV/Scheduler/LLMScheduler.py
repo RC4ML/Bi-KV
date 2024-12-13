@@ -62,13 +62,13 @@ class LLMScheduler:
             futures.append(future)
         
     def _send_prompt(self, prompt:InputPrompt):
-        # TODO prompt后续处理 1. 指定设备 2. 拆分User History Token和Item Token
-        request_id, send_cpu, recv_cpu = prompt
-        # worker_id = self.strategy(prompt.user_id)
-        worker_id = recv_cpu  # 使用recv_cpu作为worker索引
-        send_worker_ref = self.worker_ref[worker_id]
+        # TODO prompt后续处理 1. 拆分User History Token和Item Token
+        request_id = prompt.user_id
+        send_cpu = self.strategy(prompt.user_id)
+        task_info = (request_id, send_cpu)
+        send_worker_ref = self.worker_ref[send_cpu]
         owner_worker_ref = send_worker_ref.owner()  
-        future = rpc.rpc_sync(to=owner_worker_ref, func=_call_remote_method, args=(Worker.receive_task_info, send_worker_ref, prompt))
+        future = rpc.rpc_sync(to=owner_worker_ref, func=_call_remote_method, args=(Worker.receive_task_info, send_worker_ref, task_info))
         return future
 
     def strategy(self, user_id: int) -> int:

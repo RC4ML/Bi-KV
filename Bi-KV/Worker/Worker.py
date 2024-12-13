@@ -12,6 +12,8 @@ class Worker:
         self.rank = rank
         self.worker_index=rank-WORKER_offset
         self.coordinator_rref = coordinator_rref
+        self.gpu_index = rank
+        self.device = torch.device(f"cuda:{self.gpu_index}")
         self.compute_buffer = torch.full(
             (1024 * 1024 * 10,),
             self.rank,
@@ -23,9 +25,9 @@ class Worker:
     def forward(self, task_info):
         coordinator_owner = self.coordinator_rref.owner()
         print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
-        request_id, send_cpu, recv_cpu = task_info
+        request_id, send_cpu = task_info
         # TODO 拆分 add_request 和 poll
-        future_call_coordin = rpc.rpc_async(to=coordinator_owner, func=_call_remote_method, args=(CacheCoordinator.add_request,self.coordinator_rref, request_id, send_cpu, recv_cpu))
+        future_call_coordin = rpc.rpc_async(to=coordinator_owner, func=_call_remote_method, args=(CacheCoordinator.add_request,self.coordinator_rref, request_id, send_cpu, self.worker_index))
         future_call_coordin.wait()
 
     def receive_task_info(self, task_info):
@@ -42,5 +44,8 @@ class Worker:
         print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}")
         received_tensor = torch.empty_like(self.compute_buffer)
         dist.recv(tensor=received_tensor, src=src_rank)
-        print(f"[Worker][RANK {self.rank}] Recv tensor: {received_tensor}")
+        print(f"[Worker][RANK {self.rank}] Recv tensor from Rank {src_rank}: {received_tensor}")
+        # TODO 将compute_buffer移动到GPU，目前同一GPU使用to(device)会导致后续dist.recv卡死
+        # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
+        # received_tensor = received_tensor.to(f"cuda:{self.gpu_index}")
         self.compute_buffer = received_tensor
