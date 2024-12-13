@@ -1,7 +1,9 @@
+import time
+from collections import deque
+
 import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
-import time
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from Remote.remote_call import _call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
@@ -13,6 +15,8 @@ class CacheCoordinator:
         self.kvcache_num = kvcache_num
         self.rank = rank
         self.worker_ref = None
+        # TODO request_table转为队列
+        # self.request_table = deque()
         self.request_table = {}
         # cpu_state_table记录每个kvcache的状态(0-based)
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
@@ -30,6 +34,37 @@ class CacheCoordinator:
     def add_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 发送Rank={send_cpu+KVCACHE_offset}, 接收Rank={recv_cpu+WORKER_offset}")
         self.request_table[request_id] = {'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False}
+        # self.request_table.append({'request_id':request_id,'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False})
+
+    def process_requests_plan(self):
+        print("[CacheCoordinator] 开始处理请求")
+        while self.request_table:
+            executable_requests = []
+            for req in self.request_table:
+                request_id, send_cpu, recv_cpu, executing = req['request_id'], req['send_cpu'], req['recv_cpu'], req['executing']
+                # 如果能执行就执行
+                if not executing and self.cpu_state_table[send_cpu]['status'] == 'idle' and self.cpu_state_table[recv_cpu]['status'] == 'idle':
+                    with self.lock:
+                        self.cpu_state_table[send_cpu]['status'] = 'sending'
+                        self.cpu_state_table[recv_cpu]['status'] = 'receiving'
+                        req['executing'] = True
+                    executable_requests.append(req)
+            if not executable_requests:
+                time.sleep(0.1)
+                continue
+
+            executable_requests.sort()
+            threads = []
+            for req in executable_requests:
+                request_id, send_cpu, recv_cpu = req['request_id'], req['send_cpu'], req['recv_cpu']
+                thread = Thread(target=self._execute_request, args=(request_id, send_cpu, recv_cpu))
+                threads.append(thread)
+                thread.start()
+
+            for thread in threads:
+                thread.join()
+
+        print("[CacheCoordinator] 所有请求处理完成")
 
     def process_requests(self):
         print("[CacheCoordinator] 开始处理请求")

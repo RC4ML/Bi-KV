@@ -1,7 +1,7 @@
 from typing import List
 import random
 import torch.distributed.rpc as rpc
-from inputGenerator.inputGenerator import InputPrompt
+from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.cachescoordinator import CacheCoordinator
@@ -23,6 +23,7 @@ class LLMScheduler:
         self.worker_ref = []
         self.kvcache_ref = []
         self.prompt_list = []
+        self.prompt_generator:LLMInput = None
         
         # 获取coordinator的rpc info
         # 根据PROCESS_TYPES: scheduler=0, coordinator=1, workers=2...(2+WORKER_NUM-1), kvcache后面
@@ -73,9 +74,18 @@ class LLMScheduler:
 
     def strategy(self, user_id: int) -> int:
         return user_id % self.num_workers
+    
+    def set_prompt_generator(self, prompt_generator:LLMInput):
+        self.prompt_generator = prompt_generator
 
-    def shutdown(self):
-        rpc.shutdown()
+    def start(self, iter_round:int, batchsize:int):
+        # TODO 搞清楚到底是要做什么
+        if not self.prompt_generator:
+            print("[LLMScheduler] Error: prompt_generator IS None!")
+            return
+        for _ in range(iter_round):
+            input_prompt_list = self.prompt_generator.Generate(batchsize)
+            self.add_prompt_list(input_prompt_list)
 
 def PromptOrder(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens

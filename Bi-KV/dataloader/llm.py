@@ -113,7 +113,7 @@ class LLMDataloader():
         self.prompter = Prompter()
         
         self.llm_retrieved_path = args.llm_retrieved_path
-        print('Loading retrieved file from {}'.format(self.llm_retrieved_path))
+        print('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
         retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
                                                        'retrieved.pkl'), 'rb'))
         
@@ -126,7 +126,7 @@ class LLMDataloader():
         # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
         #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
 
-        print('******************** Constructing Test Subset ********************')
+        print('[Dataloader] Constructing Test Subset...Please wait...')
         self.test_probs = retrieved_file['test_probs']
         self.test_labels = retrieved_file['test_labels']
         self.test_metrics = retrieved_file['test_metrics']
