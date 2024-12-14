@@ -36,6 +36,8 @@ class Worker:
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                                          args=(CacheCoordinator.process_requests,self.coordinator_rref))
         future_call_poll.wait()
+        print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
+        self.compute_buffer.to(self.device)
 
 
     def receive_task_info(self, task_info_list):
@@ -53,7 +55,5 @@ class Worker:
         received_tensor = torch.empty_like(self.compute_buffer)
         dist.recv(tensor=received_tensor, src=src_rank)
         print(f"[Worker][RANK {self.rank}] Recv tensor from Rank {src_rank}: {received_tensor}")
-        # TODO 将compute_buffer移动到GPU，目前同一GPU使用to(device)会导致后续dist.recv卡死
-        # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
-        # received_tensor = received_tensor.to(f"cuda:{self.gpu_index}")
+        # 在这里使用to(device)会导致卡死
         self.compute_buffer = received_tensor
