@@ -54,17 +54,9 @@ def init_process(rank, world_size):
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
         input_generator = LLMInput(20,5,args)
-        input_prompt_list = input_generator.Generate(10)
-        # generate_res = [        
-        #     (1, 1, 2),
-        #     (2, 3, 0),
-        #     (3, 1, 4),
-        #     (4, 2, 4),
-        #     (5, 2, 1)
-        # ]
-        scheduler.add_prompt_list(input_prompt_list)
         logging.info("开始测试")
-        scheduler.process_prompt()
+        scheduler.set_prompt_generator(input_generator)
+        scheduler.start(3,5)
 
         # future_call_coordin_process = rpc.rpc_async(
         #     scheduler.coordinator_ref[0].owner(),

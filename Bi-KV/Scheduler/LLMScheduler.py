@@ -78,20 +78,21 @@ class LLMScheduler:
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
             print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)})")
-            task_info_list = []
+            task_info_list = {}
             for i in prompt.items:
                 request_id = i.item_id
                 send_cpu = self.strategy(i.item_id)
                 task_info = (request_id, send_cpu) 
-                task_info_list.append(task_info)
-            # TODO 这里显然有问题！按照设计应该是发给不同的worker
-            # 目前纯粹是取最后一个用到的worker，以后要改
-            # 此外还需要解决cache是否miss的问题
-            # 或者说这样，这里也进行拆分，分为发送请求和进行forward
-            send_worker_ref = self.worker_ref[send_cpu]
-            owner_worker_ref = send_worker_ref.owner() 
-            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
-                         args=(Worker.receive_task_info, send_worker_ref, task_info_list))
+                if task_info_list.get(send_cpu):
+                    task_info_list[send_cpu].append(task_info)
+                else:
+                    task_info_list[send_cpu]=[task_info]
+            # TODO 还需要解决cache是否miss的问题
+            for send_cpu in task_info_list:
+                send_worker_ref = self.worker_ref[send_cpu]
+                owner_worker_ref = send_worker_ref.owner() 
+                rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
+                            args=(Worker.receive_task_info, send_worker_ref, task_info_list[send_cpu]))
 
     def strategy(self, user_id: int) -> int:
         return user_id % self.num_workers
@@ -102,11 +103,12 @@ class LLMScheduler:
     def start(self, iter_round:int, batchsize:int):
         # TODO 搞清楚到底是要做什么
         if not self.prompt_generator:
-            print("[LLMScheduler] Error: prompt_generator IS None!")
+            print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
         for _ in range(iter_round):
             input_prompt_list = self.prompt_generator.Generate(batchsize)
             self.add_prompt_list(input_prompt_list)
+        self.process_prompt()
 
 def PromptOrder(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens

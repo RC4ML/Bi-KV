@@ -15,9 +15,7 @@ class CacheCoordinator:
         self.kvcache_num = kvcache_num
         self.rank = rank
         self.worker_ref = None
-        # TODO request_table转为队列
         self.request_table = Queue()
-        # self.request_table = {}
         # cpu_state_table记录每个kvcache的状态(0-based)
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
         self.lock = Lock()
@@ -33,7 +31,6 @@ class CacheCoordinator:
 
     def add_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 发送Rank={send_cpu+KVCACHE_offset}, 接收Rank={recv_cpu+WORKER_offset}")
-        # self.request_table[request_id] = {'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False}
         self.request_table.put({'request_id':request_id,'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False})
 
     def process_requests(self):
@@ -52,7 +49,7 @@ class CacheCoordinator:
                         req['executing'] = True
                     executable_requests.append(req)
                 else:
-                    # 无法执行则加入不无法执行list，后续重新入队
+                    # 无法执行则加入无法执行list，后续重新入队
                     unexecutable_requests.append(req)
             for req in unexecutable_requests:
                 self.request_table.put_nowait(req)
