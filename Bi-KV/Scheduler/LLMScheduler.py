@@ -49,7 +49,8 @@ class LLMScheduler:
         for r in range(1, 1+1):  # coordinator只有1个，所以r=1
             proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
             rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
-            rpc.rpc_sync(to=rpc_info, func=call_remote_method, args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
+            rpc.rpc_sync(to=rpc_info, func=call_remote_method, 
+                         args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
 
@@ -72,7 +73,8 @@ class LLMScheduler:
             task_info = (request_id, send_cpu)
             send_worker_ref = self.worker_ref[send_cpu]
             owner_worker_ref = send_worker_ref.owner()  
-            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, args=(Worker.receive_task_info, send_worker_ref, [task_info]))
+            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
+                         args=(Worker.receive_task_info, send_worker_ref, [task_info]))
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
             print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)})")
@@ -85,9 +87,11 @@ class LLMScheduler:
             # TODO 这里显然有问题！按照设计应该是发给不同的worker
             # 目前纯粹是取最后一个用到的worker，以后要改
             # 此外还需要解决cache是否miss的问题
+            # 或者说这样，这里也进行拆分，分为发送请求和进行forward
             send_worker_ref = self.worker_ref[send_cpu]
             owner_worker_ref = send_worker_ref.owner() 
-            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, args=(Worker.receive_task_info, send_worker_ref, task_info_list))
+            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
+                         args=(Worker.receive_task_info, send_worker_ref, task_info_list))
 
     def strategy(self, user_id: int) -> int:
         return user_id % self.num_workers

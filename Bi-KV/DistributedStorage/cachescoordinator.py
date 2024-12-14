@@ -1,5 +1,5 @@
 import time
-from collections import deque
+from queue import Queue
 
 import torch.distributed.rpc as rpc
 from threading import Lock, Thread
@@ -16,8 +16,8 @@ class CacheCoordinator:
         self.rank = rank
         self.worker_ref = None
         # TODO request_table转为队列
-        # self.request_table = deque()
-        self.request_table = {}
+        self.request_table = Queue()
+        # self.request_table = {}
         # cpu_state_table记录每个kvcache的状态(0-based)
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
         self.lock = Lock()
@@ -33,30 +33,38 @@ class CacheCoordinator:
 
     def add_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 发送Rank={send_cpu+KVCACHE_offset}, 接收Rank={recv_cpu+WORKER_offset}")
-        self.request_table[request_id] = {'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False}
-        # self.request_table.append({'request_id':request_id,'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False})
+        # self.request_table[request_id] = {'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False}
+        self.request_table.put({'request_id':request_id,'send_cpu': send_cpu, 'recv_cpu': recv_cpu, 'executing': False})
 
-    def process_requests_plan(self):
+    def process_requests(self):
         print("[CacheCoordinator] 开始处理请求")
-        while self.request_table:
+        while not self.request_table.empty():
             executable_requests = []
-            for req in self.request_table:
-                request_id, send_cpu, recv_cpu, executing = req['request_id'], req['send_cpu'], req['recv_cpu'], req['executing']
-                # 如果能执行就执行
+            unexecutable_requests = []
+            while not self.request_table.empty():
+                req = self.request_table.get_nowait()
+                request_id = req['request_id']
+                send_cpu, recv_cpu, executing = req['send_cpu'], req['recv_cpu'], req['executing']
                 if not executing and self.cpu_state_table[send_cpu]['status'] == 'idle' and self.cpu_state_table[recv_cpu]['status'] == 'idle':
                     with self.lock:
                         self.cpu_state_table[send_cpu]['status'] = 'sending'
                         self.cpu_state_table[recv_cpu]['status'] = 'receiving'
                         req['executing'] = True
                     executable_requests.append(req)
+                else:
+                    # 无法执行则加入不无法执行list，后续重新入队
+                    unexecutable_requests.append(req)
+            for req in unexecutable_requests:
+                self.request_table.put_nowait(req)
             if not executable_requests:
                 time.sleep(0.1)
                 continue
 
-            executable_requests.sort()
+            executable_requests.sort(key=lambda x: x['request_id'])
             threads = []
             for req in executable_requests:
-                request_id, send_cpu, recv_cpu = req['request_id'], req['send_cpu'], req['recv_cpu']
+                request_id = req['request_id']
+                send_cpu, recv_cpu = req['send_cpu'], req['recv_cpu']
                 thread = Thread(target=self._execute_request, args=(request_id, send_cpu, recv_cpu))
                 threads.append(thread)
                 thread.start()
@@ -66,7 +74,7 @@ class CacheCoordinator:
 
         print("[CacheCoordinator] 所有请求处理完成")
 
-    def process_requests(self):
+    def process_requests_old(self):
         print("[CacheCoordinator] 开始处理请求")
         while self.request_table:
             executable_requests = []
@@ -101,7 +109,12 @@ class CacheCoordinator:
     def _execute_request(self, request_id, send_cpu, recv_cpu):
         print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_cpu+KVCACHE_offset} -> Rank {recv_cpu+WORKER_offset}")
         task_info_send = [SIGNAL_SEND, request_id, send_cpu, recv_cpu]
-        future_send = rpc.rpc_async(self.kvcache_ref[send_cpu].owner(),call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[send_cpu], task_info_send,self.worker_ref[recv_cpu]))
+        future_send = rpc.rpc_async(
+            self.kvcache_ref[send_cpu].owner(),
+            call_remote_method, 
+            args=(KVCache.receive_task_info,
+                self.kvcache_ref[send_cpu], 
+                task_info_send,self.worker_ref[recv_cpu]))
 
         # task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
         # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
@@ -112,14 +125,15 @@ class CacheCoordinator:
             print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {send_cpu+KVCACHE_offset} -> Rank {recv_cpu+WORKER_offset}")
 
         with self.lock:
-            del self.request_table[request_id]
+            # del self.request_table[request_id]
             self.cpu_state_table[send_cpu]['status'] = 'idle'
             self.cpu_state_table[recv_cpu]['status'] = 'idle'
 
     def send_terminate_signal(self):
         print("[CacheCoordinator] 发送终止信号给所有 KVCache")
         for cpu_rank in range(self.kvcache_num):
-            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
+            rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), 
+                          call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
         print("[CacheCoordinator] 终止信号已发送")
         return
 

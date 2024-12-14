@@ -43,7 +43,9 @@ class KVCache:
         print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
         task_type, request_id, send_cpu, recv_cpu = task_info
         if task_type == SIGNAL_SEND:
-            remote_recv = rpc.rpc_async(to=worker_ref.owner(), func=call_remote_method, args=(Worker.receive_kvcache_data,worker_ref, task_info))
+            remote_recv = rpc.rpc_async(
+                to=worker_ref.owner(), func=call_remote_method, 
+                args=(Worker.receive_kvcache_data,worker_ref, task_info))
             self.send_data(send_cpu, recv_cpu, request_id)
             remote_recv.wait()
             return request_id
