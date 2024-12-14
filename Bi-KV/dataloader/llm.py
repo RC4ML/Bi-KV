@@ -128,9 +128,7 @@ class LLMDataloader():
 
         print('[Dataloader] Constructing Test Subset...Please wait...')
         self.test_probs = retrieved_file['test_probs']
-        self.test_labels = retrieved_file['test_labels']
-        self.test_metrics = retrieved_file['test_metrics']
-        self.test_users = [u for u, _ in enumerate(zip(self.test_probs, self.test_labels), start=1)]
+        self.test_users = range(1,len(self.test_probs)+1)
         self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
                                 self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
 
