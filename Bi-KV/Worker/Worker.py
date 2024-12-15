@@ -37,7 +37,7 @@ class Worker:
                                          args=(CacheCoordinator.process_requests,self.coordinator_rref))
         future_call_poll.wait()
         print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
-        self.compute_buffer.to(self.device)
+        # self.compute_buffer.to(self.device)
 
 
     def receive_task_info(self, task_info_list):
