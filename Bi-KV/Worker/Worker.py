@@ -19,7 +19,7 @@ class Worker:
             (1024 * 1024 * 10,),
             self.rank,
             device='cpu',
-            dtype=torch.float32
+            dtype=torch.float16
         )
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
@@ -55,11 +55,11 @@ class Worker:
 
     def write_compute_buffer(self, task_info):
         send_worker = task_info['send_worker']
-        token_num = task_info['token_num']
+        data_length = task_info['data_length']
         src_rank = send_worker + KVCACHE_offset
-        print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}")
+        print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}, length: {data_length}")
         # received_tensor = torch.empty_like(self.compute_buffer)
-        received_tensor = torch.empty(token_num)
+        received_tensor = torch.empty(data_length, dtype=torch.float16)
         dist.recv(tensor=received_tensor, src=src_rank)
         print(f"[Worker][RANK {self.rank}] Recv tensor from Rank {src_rank}: {received_tensor}")
         # 在这里使用to(device)会导致卡死

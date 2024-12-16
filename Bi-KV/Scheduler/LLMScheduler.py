@@ -87,8 +87,9 @@ class LLMScheduler:
                 request_id = i.item_id
                 recv_worker = self.strategy(i.item_id)
                 token_num = i.token_count
+                data_length = self.calculate_data_len(token_num)
                 # task_info = (request_id, recv_worker) 
-                task_info = {"request_id":request_id, "recv_worker":recv_worker, "token_num":token_num}
+                task_info = {"request_id":request_id, "recv_worker":recv_worker, "token_num":token_num,"data_length":data_length}
                 if task_info_list_dict.get(recv_worker):
                     task_info_list_dict[recv_worker].append(task_info)
                 else:
@@ -115,6 +116,9 @@ class LLMScheduler:
             input_prompt_list = self.prompt_generator.Generate(batchsize)
             self.add_prompt_list(input_prompt_list)
         self.process_prompt()
+
+    def calculate_data_len(self,token_num:int):
+        return token_num*model_params["head_size"]*model_params["num_q_heads"]*model_params["num_layers"]*model_params["num_kv_heads"]
 
 def PromptOrder(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens

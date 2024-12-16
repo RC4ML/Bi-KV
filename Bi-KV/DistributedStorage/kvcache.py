@@ -14,18 +14,18 @@ class KVCache:
             (1024 * 1024 * 10,),
             self.rank,
             device='cpu',
-            dtype=torch.float32
+            dtype=torch.float16
         )
         print(f"[KVCache][CPU index:{rank} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
     def send_data(self,task_info:Dict):
         dst_rank = task_info['recv_worker'] + WORKER_offset
         request_id = task_info['request_id']
-        token_num = task_info['token_num']
-        print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}")
+        data_length = task_info['data_length']
+        print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
         # TODO 实际的读写逻辑大概不是这样
-        dist.send(tensor=self.cache_data[:token_num], dst=dst_rank)
-        print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}")
+        dist.send(tensor=self.cache_data[:data_length], dst=dst_rank)
+        print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
 
     def receive_data(self, send_cpu, request_id):
         src_rank = send_cpu + KVCACHE_offset
