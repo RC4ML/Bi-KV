@@ -1,8 +1,8 @@
 import os
 
 # 可通过环境变量指定，若未设置则使用默认值
-KVCACHE_NUM = int(os.environ.get("KVCACHE_NUM", "5"))
-WORKER_NUM = int(os.environ.get("WORKER_NUM", "5"))
+KVCACHE_NUM = int(os.environ.get("KVCACHE_NUM", "4"))
+WORKER_NUM = int(os.environ.get("WORKER_NUM", "4"))
 
 # 定义进程类型及其数量
 PROCESS_TYPES = [
