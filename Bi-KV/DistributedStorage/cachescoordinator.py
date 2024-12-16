@@ -140,7 +140,7 @@ class CacheCoordinator:
 
     def set_workers_rref(self,workers_rref):
         self.worker_ref = workers_rref
-        print(f"[CacheCoordinator] 已设置worker rref信息 长度为{len(self.worker_ref)}")
+        print(f"[CacheCoordinator] 已设置workers rref信息 长度为{len(self.worker_ref)}")
         # send_worker_ref = self.worker_ref[0]
         # owner_worker_ref = send_worker_ref.owner()  
         # from Worker.Worker import Worker

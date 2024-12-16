@@ -1,3 +1,4 @@
+import token
 from typing import List
 import random
 import torch.distributed.rpc as rpc
@@ -71,31 +72,33 @@ class LLMScheduler:
             # TODO 全局req id
             request_id = prompt.user_id
             recv_worker = self.strategy(prompt.user_id)
+            token_num = prompt.user_history_tokens
             # task_info = (request_id, send_worker)
-            task_info = {"request_id":request_id, "recv_worker":recv_worker}
-            send_worker_ref = self.worker_ref[recv_worker]
-            owner_worker_ref = send_worker_ref.owner()  
+            task_info = {"request_id":request_id, "recv_worker":recv_worker, "token_num":token_num}
+            recv_worker_ref = self.worker_ref[recv_worker]
+            owner_worker_ref = recv_worker_ref.owner()
             rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
-                         args=(Worker.receive_task_info, send_worker_ref, [task_info]))
+                         args=(Worker.receive_task_info, recv_worker_ref, [task_info]))
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
             print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)})")
-            task_info_list = {}
+            task_info_list_dict = {}
             for i in prompt.items:
                 request_id = i.item_id
                 recv_worker = self.strategy(i.item_id)
+                token_num = i.token_count
                 # task_info = (request_id, recv_worker) 
-                task_info = {"request_id":request_id, "recv_worker":recv_worker}
-                if task_info_list.get(recv_worker):
-                    task_info_list[recv_worker].append(task_info)
+                task_info = {"request_id":request_id, "recv_worker":recv_worker, "token_num":token_num}
+                if task_info_list_dict.get(recv_worker):
+                    task_info_list_dict[recv_worker].append(task_info)
                 else:
-                    task_info_list[recv_worker]=[task_info]
+                    task_info_list_dict[recv_worker]=[task_info]
             # TODO 还需要解决cache是否miss的问题
-            for recv_worker in task_info_list:
-                send_worker_ref = self.worker_ref[recv_worker]
-                owner_worker_ref = send_worker_ref.owner() 
+            for recv_worker in task_info_list_dict:
+                recv_worker_ref = self.worker_ref[recv_worker]
+                owner_worker_ref = recv_worker_ref.owner() 
                 rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
-                            args=(Worker.receive_task_info, send_worker_ref, task_info_list[recv_worker]))
+                            args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
