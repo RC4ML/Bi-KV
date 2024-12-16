@@ -18,10 +18,13 @@ class KVCache:
         )
         print(f"[KVCache][CPU index:{rank} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
-    def send_data(self, recv_cpu, request_id):
-        dst_rank = recv_cpu + WORKER_offset
+    def send_data(self,task_info:Dict):
+        dst_rank = task_info['recv_worker'] + WORKER_offset
+        request_id = task_info['request_id']
+        token_num = task_info['token_num']
         print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}")
-        dist.send(tensor=self.cache_data, dst=dst_rank)
+        # TODO 实际的读写逻辑大概不是这样
+        dist.send(tensor=self.cache_data[:token_num], dst=dst_rank)
         print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}")
 
     def receive_data(self, send_cpu, request_id):
@@ -46,11 +49,10 @@ class KVCache:
         task_type = task_info['task_type']
         request_id = task_info['request_id']
         if task_type == SIGNAL_SEND:
-            recv_worker = task_info['recv_worker']
             remote_recv = rpc.rpc_async(
                 to=worker_ref.owner(), func=call_remote_method, 
                 args=(Worker.receive_kvcache_data,worker_ref, task_info))
-            self.send_data(recv_worker, request_id)
+            self.send_data(task_info)
             remote_recv.wait()
             return request_id
         elif task_type == SIGNAL_RECV:
