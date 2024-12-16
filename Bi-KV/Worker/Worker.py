@@ -25,13 +25,18 @@ class Worker:
 
     def forward(self, task_info_list:List):
         coordinator_owner = self.coordinator_rref.owner()
-        for task_info in task_info_list:
-            print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
-            request_id, send_cpu = task_info
-            rpc.rpc_sync(to=coordinator_owner, 
+        print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
+        rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
-                         args=(CacheCoordinator.add_request,self.coordinator_rref, 
-                               request_id, send_cpu, self.worker_index))
+                         args=(CacheCoordinator.add_requests,self.coordinator_rref, 
+                               task_info_list))
+        # for task_info in task_info_list:
+        #     print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
+        #     request_id, recv_worker = task_info['request_id'], task_info['recv_worker']
+        #     rpc.rpc_sync(to=coordinator_owner, 
+        #                  func=call_remote_method, 
+        #                  args=(CacheCoordinator.add_request,self.coordinator_rref, 
+        #                        task_info))
         print(f"[Worker][RANK {self.rank}] Poll requests...")
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                                          args=(CacheCoordinator.process_requests,self.coordinator_rref))
@@ -49,8 +54,8 @@ class Worker:
         self.write_compute_buffer(task_info)
 
     def write_compute_buffer(self, task_info):
-        task_type, request_id, send_cpu, recv_cpu = task_info
-        src_rank = send_cpu + KVCACHE_offset
+        send_worker = task_info['send_worker']
+        src_rank = send_worker + KVCACHE_offset
         print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}")
         received_tensor = torch.empty_like(self.compute_buffer)
         dist.recv(tensor=received_tensor, src=src_rank)

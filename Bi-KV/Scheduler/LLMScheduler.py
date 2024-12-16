@@ -58,20 +58,22 @@ class LLMScheduler:
         self.prompt_list = prompt_list
 
     def process_prompt(self):
-        futures = []
+        # futures = []
         for prompt in self.prompt_list:
-            future = self._send_prompt(prompt)
-            futures.append(future)
+            self._send_prompt(prompt)
+            # futures.append(future)
         
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
         # 历史优先，调度用户历史kvcache
         if prompt_order == "User History First":
             print(f"[LLMScheduler] Schedule a user history request")
+            # TODO 全局req id
             request_id = prompt.user_id
-            send_cpu = self.strategy(prompt.user_id)
-            task_info = (request_id, send_cpu)
-            send_worker_ref = self.worker_ref[send_cpu]
+            recv_worker = self.strategy(prompt.user_id)
+            # task_info = (request_id, send_worker)
+            task_info = {"request_id":request_id, "recv_worker":recv_worker}
+            send_worker_ref = self.worker_ref[recv_worker]
             owner_worker_ref = send_worker_ref.owner()  
             rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
                          args=(Worker.receive_task_info, send_worker_ref, [task_info]))
@@ -81,21 +83,22 @@ class LLMScheduler:
             task_info_list = {}
             for i in prompt.items:
                 request_id = i.item_id
-                send_cpu = self.strategy(i.item_id)
-                task_info = (request_id, send_cpu) 
-                if task_info_list.get(send_cpu):
-                    task_info_list[send_cpu].append(task_info)
+                recv_worker = self.strategy(i.item_id)
+                # task_info = (request_id, recv_worker) 
+                task_info = {"request_id":request_id, "recv_worker":recv_worker}
+                if task_info_list.get(recv_worker):
+                    task_info_list[recv_worker].append(task_info)
                 else:
-                    task_info_list[send_cpu]=[task_info]
+                    task_info_list[recv_worker]=[task_info]
             # TODO 还需要解决cache是否miss的问题
-            for send_cpu in task_info_list:
-                send_worker_ref = self.worker_ref[send_cpu]
+            for recv_worker in task_info_list:
+                send_worker_ref = self.worker_ref[recv_worker]
                 owner_worker_ref = send_worker_ref.owner() 
                 rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
-                            args=(Worker.receive_task_info, send_worker_ref, task_info_list[send_cpu]))
+                            args=(Worker.receive_task_info, send_worker_ref, task_info_list[recv_worker]))
 
-    def strategy(self, user_id: int) -> int:
-        return user_id % self.num_workers
+    def strategy(self, req_id: int) -> int:
+        return req_id % self.num_workers
     
     def set_prompt_generator(self, prompt_generator:LLMInput):
         self.prompt_generator = prompt_generator

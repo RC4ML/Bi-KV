@@ -1,3 +1,4 @@
+from ast import Dict
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
@@ -17,7 +18,7 @@ class KVCache:
         )
         print(f"[KVCache][CPU index:{rank} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
-    def send_data(self, send_cpu, recv_cpu, request_id):
+    def send_data(self, recv_cpu, request_id):
         dst_rank = recv_cpu + WORKER_offset
         print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}")
         dist.send(tensor=self.cache_data, dst=dst_rank)
@@ -38,17 +39,21 @@ class KVCache:
         print(f"[KVCache][Rank {self.rank}] 收到终止信号，退出运行")
         return "Terminated"
     
-    def receive_task_info(self, task_info, worker_ref):
+    def receive_task_info(self, task_info:Dict, worker_ref):
         from Worker.Worker import Worker
         print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
-        task_type, request_id, send_cpu, recv_cpu = task_info
+        # task_type, request_id, send_worker, recv_worker = task_info
+        task_type = task_info['task_type']
+        request_id = task_info['request_id']
         if task_type == SIGNAL_SEND:
+            recv_worker = task_info['recv_worker']
             remote_recv = rpc.rpc_async(
                 to=worker_ref.owner(), func=call_remote_method, 
                 args=(Worker.receive_kvcache_data,worker_ref, task_info))
-            self.send_data(send_cpu, recv_cpu, request_id)
+            self.send_data(recv_worker, request_id)
             remote_recv.wait()
             return request_id
         elif task_type == SIGNAL_RECV:
-            self.receive_data(send_cpu, request_id)
+            send_worker = task_info['send_worker']
+            self.receive_data(send_worker, request_id)
             return request_id
