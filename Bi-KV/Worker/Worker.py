@@ -43,7 +43,11 @@ class Worker:
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                                          args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
         res = future_call_poll.wait()
-        # TODO 处理poll结果
+        # TODO 更细致地处理poll结果
+        if res:
+            print(f"[Worker][RANK {self.rank}] Requests finished")
+        else:
+            print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 

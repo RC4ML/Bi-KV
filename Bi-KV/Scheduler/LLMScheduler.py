@@ -114,9 +114,9 @@ class LLMScheduler:
             self.add_prompt_list(input_prompt_list)
         self.process_prompt()
         self.set_worker_call.wait()
-        print("[LLMScheduler] Finished all prompts. Stoping the system...")
-        rpc.rpc_sync(to=self.coordinator_ref[0], func=call_remote_method, 
-                         args=(CacheCoordinator.stop_process,self.coordinator_ref[0]))
+        # print("[LLMScheduler] Finished all prompts. Stoping the system...")
+        # rpc.rpc_sync(to=self.coordinator_ref[0], func=call_remote_method, 
+        #                  args=(CacheCoordinator.stop_process,self.coordinator_ref[0]))
         print("[LLMScheduler] Trying to send terminate signal...")
         future_call_terminate_process = rpc.rpc_async(to=self.coordinator_ref[0], func=call_remote_method, 
                          args=(CacheCoordinator.send_terminate_signal,self.coordinator_ref[0]))

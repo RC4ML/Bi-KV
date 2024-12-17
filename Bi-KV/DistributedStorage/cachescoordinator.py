@@ -208,7 +208,7 @@ class CacheCoordinator:
     def poll(self,task_info_list: List[Dict]):
         res_list = []
         for i in task_info_list:
-            res = self.finished_table[i['request_id']]
+            res = self.finished_table.get(i['request_id'],False)
             res_list.append(res)
         return False in res_list
 
