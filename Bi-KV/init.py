@@ -64,13 +64,13 @@ def init_process(rank, world_size):
         #     args=(CacheCoordinator.process_requests,scheduler.coordinator_ref[0],)
         # )
         # future_call_coordin_process.wait()
-        future_call_terminate_process = rpc.rpc_async(
-            scheduler.coordinator_ref[0].owner(),
-            call_remote_method,
-            args=(CacheCoordinator.send_terminate_signal,scheduler.coordinator_ref[0],)
-        )
-        future_call_terminate_process.wait()
-        print("finish _call_terminate_process")
+        # future_call_terminate_process = rpc.rpc_async(
+        #     scheduler.coordinator_ref[0].owner(),
+        #     call_remote_method,
+        #     args=(CacheCoordinator.send_terminate_signal,scheduler.coordinator_ref[0],)
+        # )
+        # future_call_terminate_process.wait()
+        # print("finish _call_terminate_process")
 
     dist.barrier()
     rpc.shutdown()

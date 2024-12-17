@@ -38,10 +38,13 @@ class Worker:
         #                  args=(CacheCoordinator.add_request,self.coordinator_rref, 
         #                        task_info))
         print(f"[Worker][RANK {self.rank}] Poll requests...")
+        # future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
+        #                                  args=(CacheCoordinator.process_requests,self.coordinator_rref))
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-                                         args=(CacheCoordinator.process_requests,self.coordinator_rref))
-        future_call_poll.wait()
-        print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
+                                         args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
+        res = future_call_poll.wait()
+        # TODO 处理poll结果
+        # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 
 
