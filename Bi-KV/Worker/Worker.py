@@ -1,4 +1,5 @@
 from ast import List
+import time
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from inputGenerator.inputGenerator import InputPrompt
@@ -37,17 +38,20 @@ class Worker:
         #                  func=call_remote_method, 
         #                  args=(CacheCoordinator.add_request,self.coordinator_rref, 
         #                        task_info))
-        print(f"[Worker][RANK {self.rank}] Poll requests...")
-        # future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-        #                                  args=(CacheCoordinator.process_requests,self.coordinator_rref))
-        future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
+        res = False
+        while not res:
+            print(f"[Worker][RANK {self.rank}] Poll requests...")
+            # future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
+            #                                  args=(CacheCoordinator.process_requests,self.coordinator_rref))
+            future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                                          args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
-        res = future_call_poll.wait()
-        # TODO 更细致地处理poll结果
-        if res:
-            print(f"[Worker][RANK {self.rank}] Requests finished")
-        else:
-            print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
+            res = future_call_poll.wait()
+            # TODO 更细致地处理poll结果
+            if res:
+                print(f"[Worker][RANK {self.rank}] Requests finished")
+            else:
+                print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
+                time.sleep(1)
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 

@@ -66,6 +66,7 @@ class LLMScheduler:
         
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
+        # prompt_order = "User History First"
         # 历史优先，调度用户历史kvcache
         if prompt_order == "User History First":
             print(f"[LLMScheduler] Schedule a user history request")
@@ -118,10 +119,11 @@ class LLMScheduler:
         # rpc.rpc_sync(to=self.coordinator_ref[0], func=call_remote_method, 
         #                  args=(CacheCoordinator.stop_process,self.coordinator_ref[0]))
         print("[LLMScheduler] Trying to send terminate signal...")
-        future_call_terminate_process = rpc.rpc_async(to=self.coordinator_ref[0], func=call_remote_method, 
-                         args=(CacheCoordinator.send_terminate_signal,self.coordinator_ref[0]))
-        future_call_terminate_process.wait()
-        print("[LLMScheduler] finish _call_terminate_process")
+        # TODO 搞明白为什么这玩意会炸
+        # future_call_terminate_process = rpc.rpc_async(to=self.coordinator_ref[0], func=call_remote_method, 
+        #                  args=(CacheCoordinator.send_terminate_signal,self.coordinator_ref[0]))
+        # future_call_terminate_process.wait()
+        # print("[LLMScheduler] finish _call_terminate_process")
         
 
     def calculate_data_len(self,token_num:int):

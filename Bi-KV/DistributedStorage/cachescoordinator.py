@@ -79,6 +79,7 @@ class CacheCoordinator:
     def process_request_new(self):
         print("[CacheCoordinator] 开始处理请求")
         idle_time_counter = 0
+        has_excuted = False
         while self.process_flag:
             executable_requests = []
             unexecutable_requests = []
@@ -91,13 +92,15 @@ class CacheCoordinator:
                         self.cpu_state_table[recv_worker]['status'] = 'receiving'
                         req['executing'] = True
                     executable_requests.append(req)
+                    has_excuted = True
                 else:
                     # 无法执行则加入无法执行list，后续重新入队
                     unexecutable_requests.append(req)
             for req in unexecutable_requests:
                 self.request_table.put_nowait(req)
-            if not executable_requests:
+            if not executable_requests and not has_excuted:
                 time.sleep(0.1)
+                print(f"[CacheCoordinator] Empty executable_requests. Waiting...")
                 continue
 
             executable_requests.sort(key=lambda x: x['request_id'])
@@ -111,14 +114,15 @@ class CacheCoordinator:
             for thread in threads:
                 thread.join()
 
+            if idle_time_counter>3 and self.request_table.empty():
+                print(f"[CacheCoordinator] Empty request table. B R E A K")
+                break
+
             if self.request_table.empty():
-                print(f"[CacheCoordinator] Empty request table. Waiting...")
-                idle_time_counter=1
+                print(f"[CacheCoordinator] Empty request table. Waiting...({idle_time_counter})")
+                idle_time_counter+=1
                 time.sleep(5)
                 continue
-            if idle_time_counter>0 and self.request_table.empty():
-                print(f"[CacheCoordinator] Empty request table. BREAK")
-                break
 
         print("[CacheCoordinator] 所有请求处理完成")
 
