@@ -64,6 +64,15 @@ class Worker:
         print(f"[Worker][RANK {self.rank}] Recv kvcache data {task_info} from kvcache")
         self.write_compute_buffer(task_info)
 
+    def send_kvcache_data(self, task_info):
+        dst_rank = task_info['recv_worker'] + KVCACHE_offset
+        request_id = task_info['request_id']
+        data_length = task_info['data_length']
+        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        # TODO 实际发的数据从哪里来
+        dist.send(tensor=self.compute_buffer[:data_length], dst=dst_rank)
+        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+
     def write_compute_buffer(self, task_info):
         send_worker = task_info['send_worker']
         data_length = task_info['data_length']

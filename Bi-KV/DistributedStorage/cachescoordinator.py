@@ -188,6 +188,7 @@ class CacheCoordinator:
         print("[CacheCoordinator] 发送终止信号给所有 KVCache")
         futures = []
         for cpu_rank in range(self.kvcache_num):
+            print(f"[CacheCoordinator] Trying to terminate KVCache {cpu_rank}")
             fut = rpc.rpc_async(self.kvcache_ref[cpu_rank].owner(), 
                           call_remote_method, args=(KVCache.terminate,self.kvcache_ref[cpu_rank],))
             futures.append(fut)

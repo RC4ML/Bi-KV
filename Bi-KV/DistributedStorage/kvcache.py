@@ -27,12 +27,14 @@ class KVCache:
         dist.send(tensor=self.cache_data[:data_length], dst=dst_rank)
         print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
 
-    def receive_data(self, send_cpu, request_id):
-        src_rank = send_cpu + KVCACHE_offset
+    def receive_data(self, task_info:Dict):
+        request_id = task_info['request_id']
+        send_worker = task_info['send_worker']
+        src_rank = send_worker + KVCACHE_offset
         print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
         received_tensor = torch.empty_like(self.cache_data)
         dist.recv(tensor=received_tensor, src=src_rank)
-        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_cpu} [rank{src_rank}], 请求ID={request_id}, receive_data={received_tensor}")
+        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}, receive_data={received_tensor}")
 
     def send_confirmation(self, confirmation_msg):
         print(f"[KVCache][Rank {self.rank}] 发送确认消息到调度器: 请求ID={confirmation_msg}")
