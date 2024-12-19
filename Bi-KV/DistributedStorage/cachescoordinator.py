@@ -116,6 +116,7 @@ class CacheCoordinator:
 
             if idle_time_counter>3 and self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. B R E A K")
+                self.send_terminate_signal()
                 break
 
             if self.request_table.empty():

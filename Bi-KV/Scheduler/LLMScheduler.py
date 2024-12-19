@@ -118,12 +118,12 @@ class LLMScheduler:
         # print("[LLMScheduler] Finished all prompts. Stoping the system...")
         # rpc.rpc_sync(to=self.coordinator_ref[0], func=call_remote_method, 
         #                  args=(CacheCoordinator.stop_process,self.coordinator_ref[0]))
-        print("[LLMScheduler] Trying to send terminate signal...")
-        # TODO 搞明白为什么这玩意会炸
-        future_call_terminate_process = rpc.rpc_async(to=self.coordinator_ref[0], func=call_remote_method, 
-                         args=(CacheCoordinator.send_terminate_signal,self.coordinator_ref[0]))
-        future_call_terminate_process.wait()
-        print("[LLMScheduler] finish _call_terminate_process")
+        # print("[LLMScheduler] Trying to send terminate signal...")
+        # # TODO 搞明白为什么这玩意会炸
+        # future_call_terminate_process = rpc.rpc_async(to=self.coordinator_ref[0], func=call_remote_method, 
+        #                  args=(CacheCoordinator.send_terminate_signal,self.coordinator_ref[0]))
+        # future_call_terminate_process.wait()
+        # print("[LLMScheduler] finish _call_terminate_process")
         
 
     def calculate_data_len(self,token_num:int):
