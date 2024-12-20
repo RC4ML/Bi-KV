@@ -24,7 +24,7 @@ class CacheCoordinator:
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
         self.lock = Lock()
         self.kvcache_ref = []
-        self.stop_limit = 10
+        self.stop_limit = 3
         for i in range(self.kvcache_num):
             print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
             self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
@@ -50,6 +50,7 @@ class CacheCoordinator:
             executable_requests = []
             unexecutable_requests = []
             while not self.request_table.empty():
+                idle_time_counter = 0
                 req = self.request_table.get_nowait()
                 send_worker, recv_worker, executing = req['send_worker'], req['recv_worker'], req['executing']
                 if not executing and self.cpu_state_table[send_worker]['status'] == 'idle' and self.cpu_state_table[recv_worker]['status'] == 'idle':
@@ -90,7 +91,7 @@ class CacheCoordinator:
             if self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. Waiting...({idle_time_counter})")
                 idle_time_counter+=1
-                time.sleep(10)
+                time.sleep(3)
                 continue
 
         print("[CacheCoordinator] 所有请求处理完成")

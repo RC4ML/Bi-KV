@@ -42,7 +42,10 @@ def init_backend(rank, world_size, process_type, type_index):
     rpc.init_rpc(
         name=f"{process_type}{type_index}",
         rank=rank,
-        world_size=world_size
+        world_size=world_size,
+        rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
+            rpc_timeout = 120
+        )
     )
 
 def init_process(rank, world_size):
@@ -57,20 +60,6 @@ def init_process(rank, world_size):
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
         scheduler.start(1,5)
-
-        # future_call_coordin_process = rpc.rpc_async(
-        #     scheduler.coordinator_ref[0].owner(),
-        #     call_remote_method,
-        #     args=(CacheCoordinator.process_requests,scheduler.coordinator_ref[0],)
-        # )
-        # future_call_coordin_process.wait()
-        # future_call_terminate_process = rpc.rpc_async(
-        #     scheduler.coordinator_ref[0].owner(),
-        #     call_remote_method,
-        #     args=(CacheCoordinator.send_terminate_signal,scheduler.coordinator_ref[0],)
-        # )
-        # future_call_terminate_process.wait()
-        # print("finish _call_terminate_process")
 
     dist.barrier()
     rpc.shutdown()

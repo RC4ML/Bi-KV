@@ -43,7 +43,7 @@ class Worker:
                 print(f"[Worker][RANK {self.rank}] Requests finished")
             else:
                 print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
-                time.sleep(1)
+                time.sleep(5)
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 
