@@ -59,10 +59,8 @@ class LLMScheduler:
         self.prompt_list.extend(prompt_list)
 
     def process_prompt(self):
-        # futures = []
         for prompt in self.prompt_list:
             self._send_prompt(prompt)
-            # futures.append(future)
         
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
@@ -72,8 +70,9 @@ class LLMScheduler:
             print(f"[LLMScheduler] Schedule a user history request")
             recv_worker = self.strategy(prompt.user_id)
             token_num = prompt.user_history_tokens
+            data_length = self.calculate_data_len(token_num) 
             self._id_counter += 1
-            task_info = {"request_id":prompt.user_id,"id":prompt.user_id, "recv_worker":recv_worker, "token_num":token_num}
+            task_info = {"request_id":prompt.user_id,"id":prompt.user_id, "recv_worker":recv_worker, "token_num":token_num,'data_length':data_length}
             recv_worker_ref = self.worker_ref[recv_worker]
             owner_worker_ref = recv_worker_ref.owner()
             rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
@@ -83,8 +82,8 @@ class LLMScheduler:
             print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)})")
             task_info_list_dict = {}
             self._id_counter += 1
+            recv_worker = self.strategy(prompt.user_id)
             for i in prompt.items:
-                recv_worker = self.strategy(i.item_id)
                 token_num = i.token_count
                 data_length = self.calculate_data_len(token_num) 
                 task_info = {"request_id":self._id_counter,"id":i.item_id, "recv_worker":recv_worker, "token_num":token_num,"data_length":data_length}
@@ -115,15 +114,7 @@ class LLMScheduler:
             self.add_prompt_list(input_prompt_list)
         self.process_prompt()
         self.set_worker_call.wait()
-        # print("[LLMScheduler] Finished all prompts. Stoping the system...")
-        # rpc.rpc_sync(to=self.coordinator_ref[0], func=call_remote_method, 
-        #                  args=(CacheCoordinator.stop_process,self.coordinator_ref[0]))
-        # print("[LLMScheduler] Trying to send terminate signal...")
-        # # TODO 搞明白为什么这玩意会炸
-        # future_call_terminate_process = rpc.rpc_async(to=self.coordinator_ref[0], func=call_remote_method, 
-        #                  args=(CacheCoordinator.send_terminate_signal,self.coordinator_ref[0]))
-        # future_call_terminate_process.wait()
-        # print("[LLMScheduler] finish _call_terminate_process")
+        # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
 
     def calculate_data_len(self,token_num:int):

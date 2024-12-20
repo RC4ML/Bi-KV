@@ -17,12 +17,14 @@ class CacheCoordinator:
         self.rank = rank
         self.worker_ref = None
         self.request_table = Queue()
-        self.finished_table = {}
+        self.finished_counter_table = {}
+        self.finished_flag_table = {}
         self.process_flag = False
         # cpu_state_table记录每个kvcache的状态(0-based)
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
         self.lock = Lock()
         self.kvcache_ref = []
+        self.stop_limit = 10
         for i in range(self.kvcache_num):
             print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
             self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
@@ -55,6 +57,8 @@ class CacheCoordinator:
                         self.cpu_state_table[send_worker]['status'] = 'sending'
                         self.cpu_state_table[recv_worker]['status'] = 'receiving'
                         req['executing'] = True
+                    self.finished_counter_table[req['request_id']] = 0
+                    self.finished_flag_table[req['request_id']] = False
                     executable_requests.append(req)
                     has_excuted = True
                 else:
@@ -64,13 +68,13 @@ class CacheCoordinator:
                 self.request_table.put_nowait(req)
             if not executable_requests and not has_excuted:
                 time.sleep(0.1)
-                print(f"[CacheCoordinator] Empty executable_requests. Waiting...")
+                # print(f"[CacheCoordinator] Empty executable_requests. Waiting...")
                 continue
 
             executable_requests.sort(key=lambda x: x['request_id'])
             threads = []
             for req in executable_requests:
-                # print(f"[CacheCoordinator]About to execute {req}")
+                # print(f"[CacheCoordinator] About to execute {req}")
                 thread = Thread(target=self._execute_request, args=(req,))
                 threads.append(thread)
                 thread.start()
@@ -78,7 +82,7 @@ class CacheCoordinator:
             for thread in threads:
                 thread.join()
 
-            if idle_time_counter>3 and self.request_table.empty():
+            if idle_time_counter>self.stop_limit and self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. B R E A K")
                 self.send_terminate_signal()
                 break
@@ -86,14 +90,14 @@ class CacheCoordinator:
             if self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. Waiting...({idle_time_counter})")
                 idle_time_counter+=1
-                time.sleep(5)
+                time.sleep(10)
                 continue
 
         print("[CacheCoordinator] 所有请求处理完成")
 
     def _execute_request(self, req:Dict):
         request_id, send_worker, recv_worker = req['request_id'], req['send_worker'], req['recv_worker']
-        self.finished_table[request_id] = False
+        self.finished_counter_table[request_id] -= 1
         print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
         req["task_type"] = SIGNAL_SEND
         future_send = rpc.rpc_async(
@@ -115,7 +119,8 @@ class CacheCoordinator:
             # del self.request_table[request_id]
             self.cpu_state_table[send_worker]['status'] = 'idle'
             self.cpu_state_table[recv_worker]['status'] = 'idle'
-        self.finished_table[request_id] = True
+        self.finished_counter_table[request_id] += 1
+        self.finished_flag_table[request_id] = True
 
     def send_terminate_signal(self):
         print("[CacheCoordinator] 发送终止信号给所有 KVCache")
@@ -135,20 +140,20 @@ class CacheCoordinator:
         print(f"[CacheCoordinator] 已设置workers rref信息 长度为{len(self.worker_ref)}")
         self.process_flag = True
         self.process_requests()
-        # send_worker_ref = self.worker_ref[0]
-        # owner_worker_ref = send_worker_ref.owner()  
-        # from Worker.Worker import Worker
-        # future = rpc.rpc_sync(to=owner_worker_ref, func=_call_remote_method, args=(Worker.receive_task_info, send_worker_ref, "测试消息传递"))
     
     def strategy(self, req_id: int) -> int:
         return req_id % self.kvcache_num
     
-    def poll(self,task_info_list: List[Dict]):
-        res_list = []
-        for i in task_info_list:
-            res = self.finished_table.get(i['request_id'],False)
-            res_list.append(res)
-        return False in res_list
+    def poll(self,request_id:int):
+        # 一组task_info_list应该用的是同一个request_id
+        res_counter = self.finished_counter_table.get(request_id,-1)
+        res_flag = self.finished_flag_table.get(request_id, False)
+        if res_counter == 0 and res_flag:
+            return True
+        return False
 
     def stop_process(self):
         self.process_flag = False
+
+    def set_stop_limit(self, stop_limit:int):
+        self.stop_limit = stop_limit

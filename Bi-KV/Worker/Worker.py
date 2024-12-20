@@ -26,27 +26,19 @@ class Worker:
 
     def forward(self, task_info_list:List):
         coordinator_owner = self.coordinator_rref.owner()
+        # 一组task_info_list应该用的是同一个request_id
+        req_id = task_info_list[0]['request_id']
         print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                task_info_list))
-        # for task_info in task_info_list:
-        #     print(f"[Worker][RANK {self.rank}] Add request{task_info} to coordinator")
-        #     request_id, recv_worker = task_info['request_id'], task_info['recv_worker']
-        #     rpc.rpc_sync(to=coordinator_owner, 
-        #                  func=call_remote_method, 
-        #                  args=(CacheCoordinator.add_request,self.coordinator_rref, 
-        #                        task_info))
         res = False
         while not res:
             print(f"[Worker][RANK {self.rank}] Poll requests...")
-            # future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-            #                                  args=(CacheCoordinator.process_requests,self.coordinator_rref))
             future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-                                         args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
+                                         args=(CacheCoordinator.poll,self.coordinator_rref,req_id))
             res = future_call_poll.wait()
-            # TODO 更细致地处理poll结果
             if res:
                 print(f"[Worker][RANK {self.rank}] Requests finished")
             else:
