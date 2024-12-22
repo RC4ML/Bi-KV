@@ -25,6 +25,7 @@ class LLMScheduler:
         self.prompt_list = []
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
+        self.batchsize = 8
         
         # 获取coordinator的rpc info
         # 根据PROCESS_TYPES: scheduler=0, coordinator=1, workers=2...(2+WORKER_NUM-1), kvcache后面
@@ -60,11 +61,18 @@ class LLMScheduler:
 
     def process_prompt(self):
         future_list = []
+        cnt = 0
         for prompt in self.prompt_list:
             # self._send_prompt(prompt)
             future_list.append(self._send_prompt(prompt))
-        for future in future_list:
-            future.wait()
+            cnt += 1
+            if cnt % (self.num_workers * self.batchsize) == 0:
+                for future in future_list:
+                    future.wait()
+                future_list = []
+        if len(future_list) > 0:    
+            for future in future_list:
+                future.wait()
         
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
@@ -127,7 +135,7 @@ class LLMScheduler:
 def PromptOrder(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
-
+    print(f"user {user_tokens}, item {item_tokens}")
     if user_tokens > item_tokens:
         return "User History First"
     else:

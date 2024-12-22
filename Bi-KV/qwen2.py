@@ -46,7 +46,7 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
 from vllm.model_executor.model_loader.weight_utils import (
     default_weight_loader, maybe_remap_kv_scale_name)
 from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.sequence import IntermediateTensors, SamplerOutput
+from vllm.sequence import IntermediateTensors #, SamplerOutput
 from vllm.distributed import (ensure_model_parallel_initialized,
                               init_distributed_environment,
                               set_custom_all_reduce)
@@ -441,13 +441,13 @@ class Qwen2ForCausalLM(nn.Module):
                         device=device),
         })
 
-    def sample(
-        self,
-        logits: torch.Tensor,
-        sampling_metadata: SamplingMetadata,
-    ) -> Optional[SamplerOutput]:
-        next_tokens = self.sampler(logits, sampling_metadata)
-        return next_tokens
+    # def sample(
+    #     self,
+    #     logits: torch.Tensor,
+    #     sampling_metadata: SamplingMetadata,
+    # ) -> Optional[SamplerOutput]:
+    #     next_tokens = self.sampler(logits, sampling_metadata)
+    #     return next_tokens
 
     def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
         stacked_params_mapping = [
