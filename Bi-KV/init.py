@@ -59,7 +59,7 @@ def init_process(rank, world_size):
         input_generator = LLMInput(20,5,args)
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
-        scheduler.start(1,5)
+        scheduler.start(5,5)
 
     dist.barrier()
     rpc.shutdown()

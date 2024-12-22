@@ -59,8 +59,12 @@ class LLMScheduler:
         self.prompt_list.extend(prompt_list)
 
     def process_prompt(self):
+        future_list = []
         for prompt in self.prompt_list:
-            self._send_prompt(prompt)
+            # self._send_prompt(prompt)
+            future_list.append(self._send_prompt(prompt))
+        for future in future_list:
+            future.wait()
         
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
@@ -75,7 +79,7 @@ class LLMScheduler:
             task_info = {"request_id":self._id_counter,"id":prompt.user_id, "recv_worker":recv_worker, "token_num":token_num,'data_length':data_length}
             recv_worker_ref = self.worker_ref[recv_worker]
             owner_worker_ref = recv_worker_ref.owner()
-            rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
+            return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
                          args=(Worker.receive_task_info, recv_worker_ref, [task_info]))
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
@@ -95,7 +99,7 @@ class LLMScheduler:
             for recv_worker in task_info_list_dict:
                 recv_worker_ref = self.worker_ref[recv_worker]
                 owner_worker_ref = recv_worker_ref.owner() 
-                rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
+                return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
                             args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
 
     def strategy(self, req_id: int) -> int:
