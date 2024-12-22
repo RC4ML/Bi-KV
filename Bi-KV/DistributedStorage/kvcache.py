@@ -5,6 +5,7 @@ import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from rpc_def import KVCACHE_offset,WORKER_offset
 from Remote.remote_call import call_remote_method
+from config import *
 
 class KVCache:
     def __init__(self, rank):
@@ -22,31 +23,38 @@ class KVCache:
         dst_rank = task_info['recv_worker'] + WORKER_offset
         request_id = task_info['request_id']
         data_length = task_info['data_length']
-        print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
         # TODO 实际的读写逻辑大概不是这样
         dist.send(tensor=self.cache_data[:data_length], dst=dst_rank)
-        print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
 
     def receive_data(self, task_info:Dict):
         request_id = task_info['request_id']
         send_worker = task_info['send_worker']
         src_rank = send_worker + KVCACHE_offset
-        print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
         received_tensor = torch.empty_like(self.cache_data)
         dist.recv(tensor=received_tensor, src=src_rank)
-        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}, receive_data={received_tensor}")
+        if DEBUG:
+            print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}, receive_data={received_tensor}")
 
     def send_confirmation(self, confirmation_msg):
-        print(f"[KVCache][Rank {self.rank}] 发送确认消息到调度器: 请求ID={confirmation_msg}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 发送确认消息到调度器: 请求ID={confirmation_msg}")
         return confirmation_msg
 
     def terminate(self):
-        print(f"[KVCache][Rank {self.rank}] 收到终止信号，退出运行")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 收到终止信号，退出运行")
         return "Terminated"
     
     def receive_task_info(self, task_info:Dict, worker_ref):
         from Worker.Worker import Worker
-        print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
+        if DEBUG:
+            print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
         # task_type, request_id, send_worker, recv_worker = task_info
         task_type = task_info['task_type']
         request_id = task_info['request_id']

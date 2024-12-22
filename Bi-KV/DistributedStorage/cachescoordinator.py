@@ -8,6 +8,7 @@ from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
+from config import *
 
 class CacheCoordinator:
     def __init__(self, rank, kvcache_num):
@@ -36,7 +37,8 @@ class CacheCoordinator:
     def add_request(self, task_info:Dict):
         request_id = task_info["request_id"]
         recv_worker = task_info["recv_worker"]
-        print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Rank={recv_worker+WORKER_offset}")
+        if DEBUG:
+            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Rank={recv_worker+WORKER_offset}")
         # TODO 需要补全cache miss逻辑，且用strategy庖代
         task_info["send_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
@@ -99,7 +101,8 @@ class CacheCoordinator:
 
     def _execute_request(self, req:Dict):
         request_id, send_worker, recv_worker = req['request_id'], req['send_worker'], req['recv_worker']
-        print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
+        if DEBUG:
+            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
         req["task_type"] = SIGNAL_SEND
         future_send = rpc.rpc_async(
             self.kvcache_ref[send_worker].owner(),
@@ -114,7 +117,8 @@ class CacheCoordinator:
         confirmation_msg = future_send.wait()
         # confirmation_msg = future_recv.wait()
         if confirmation_msg == request_id:
-            print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
+            if DEBUG:
+                print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
             self.finished_counter_table[request_id] += 1
             self.finished_flag_table[request_id] = True
 

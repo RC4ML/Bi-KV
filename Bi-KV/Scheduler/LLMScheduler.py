@@ -67,22 +67,22 @@ class LLMScheduler:
         # prompt_order = "User History First"
         # 历史优先，调度用户历史kvcache
         if prompt_order == "User History First":
-            print(f"[LLMScheduler] Schedule a user history request")
             recv_worker = self.strategy(prompt.user_id)
             token_num = prompt.user_history_tokens
             data_length = self.calculate_data_len(token_num) 
             self._id_counter += 1
-            task_info = {"request_id":prompt.user_id,"id":prompt.user_id, "recv_worker":recv_worker, "token_num":token_num,'data_length':data_length}
+            print(f"[LLMScheduler] Schedule a user history request to worker {recv_worker}, request id {self._id_counter}")
+            task_info = {"request_id":self._id_counter,"id":prompt.user_id, "recv_worker":recv_worker, "token_num":token_num,'data_length':data_length}
             recv_worker_ref = self.worker_ref[recv_worker]
             owner_worker_ref = recv_worker_ref.owner()
             rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
                          args=(Worker.receive_task_info, recv_worker_ref, [task_info]))
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
-            print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)})")
             task_info_list_dict = {}
             self._id_counter += 1
             recv_worker = self.strategy(prompt.user_id)
+            print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {recv_worker}, request id {self._id_counter})")
             for i in prompt.items:
                 token_num = i.token_count
                 data_length = self.calculate_data_len(token_num) 
