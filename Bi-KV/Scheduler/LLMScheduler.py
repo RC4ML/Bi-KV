@@ -4,7 +4,7 @@ import torch.distributed.rpc as rpc
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
-from DistributedStorage.cachescoordinator import CacheCoordinator
+from DistributedStorage.cachescoordinator import CacheCoordinator, KVCache
 from Remote.remote_call import call_remote_method
 import time
 
@@ -141,6 +141,34 @@ class LLMScheduler:
         
     def calculate_data_len(self,token_num:int):
         return token_num*model_params["head_size"]*model_params["num_q_heads"]*model_params["num_layers"]*model_params["num_kv_heads"]
+    
+    def test_write_cache(self):
+        print(f"[LLMScheduler] Write test start")
+        send_worker = 1
+        recv_worker = 2
+        simulate_task_info = {
+            "request_id":42,
+            "id":42, 
+            "recv_worker":recv_worker,
+            'send_worker':send_worker, 
+            "token_num":42,
+            "data_length": 1234,
+            'index':0
+        }
+        
+        print(f"[LLMScheduler] Start recv")
+        recv_data_call = rpc.rpc_async(to=self.coordinator_ref[0].owner(), func=call_remote_method, 
+                         args=(CacheCoordinator.test_write,self.coordinator_ref[0],simulate_task_info))
+        print(f"[LLMScheduler] Start send")
+        send_worker_ref = self.worker_ref[send_worker]
+        owner_worker_ref = send_worker_ref.owner() 
+        send_data_call = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
+                            args=(Worker.send_kvcache_data, send_worker_ref, simulate_task_info))
+        send_data_call.wait()
+        recv_data_call.wait()
+        print(f"[LLMScheduler] Write test success!")
+        
+
 
 def PromptOrder(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens

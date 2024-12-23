@@ -165,3 +165,11 @@ class CacheCoordinator:
 
     def set_stop_limit(self, stop_limit:int):
         self.stop_limit = stop_limit
+
+    def test_write(self, task_info:Dict):
+        recv_worker = task_info['recv_worker']
+        recv_cache_ref = self.kvcache_ref[recv_worker]
+        print(f"[CacheCoordinator] Trying send message to kvcache{recv_worker}")
+        owner_cache_ref = recv_cache_ref.owner()
+        rpc.rpc_sync(to=owner_cache_ref, func=call_remote_method, 
+                            args=(KVCache.receive_data, recv_cache_ref, task_info))

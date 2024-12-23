@@ -92,7 +92,8 @@ class Worker:
         request_id = task_info['request_id']
         data_length = task_info['data_length']
         ind = task_info['index']
-        start_pos,offest = self.buffer_control_dict[request_id][ind]
+        # start_pos,offest = self.buffer_control_dict[request_id][ind]
+        start_pos,offest = 24,24+42
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
         # TODO 实际发的数据从哪里来

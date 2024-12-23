@@ -51,13 +51,17 @@ class KVCache:
     def receive_data(self, task_info:Dict):
         request_id = task_info['request_id']
         send_worker = task_info['send_worker']
-        src_rank = send_worker + KVCACHE_offset
+        token_num = task_info['token_num']
+        src_rank = send_worker + WORKER_offset
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
-        received_tensor = torch.empty_like(self.cache_data)
-        dist.recv(tensor=received_tensor, src=src_rank)
+        recv_tensor = torch.empty(
+            (token_num,) + token_shape, 
+            dtype=torch.float16
+        )
+        dist.recv(tensor=recv_tensor, src=src_rank)
         if DEBUG:
-            print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}, receive_data={received_tensor}")
+            print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}")
 
     def send_confirmation(self, confirmation_msg):
         if DEBUG:
