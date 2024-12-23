@@ -84,7 +84,13 @@ class LLMScheduler:
             data_length = self.calculate_data_len(token_num) 
             self._id_counter += 1
             print(f"[LLMScheduler] Schedule a user history request to worker {recv_worker}, request id {self._id_counter}")
-            task_info = {"request_id":self._id_counter,"id":prompt.user_id, "recv_worker":recv_worker, "token_num":token_num,'data_length':data_length}
+            task_info = {"request_id":self._id_counter,
+                         "id":prompt.user_id, 
+                         "recv_worker":recv_worker, 
+                         "token_num":token_num,
+                         'data_length':data_length,
+                         'index': 0
+                         }
             recv_worker_ref = self.worker_ref[recv_worker]
             owner_worker_ref = recv_worker_ref.owner()
             return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
@@ -95,10 +101,15 @@ class LLMScheduler:
             self._id_counter += 1
             recv_worker = self.strategy(prompt.user_id)
             print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {recv_worker}, request id {self._id_counter})")
-            for i in prompt.items:
+            for ind,i in enumerate(prompt.items):
                 token_num = i.token_count
                 data_length = self.calculate_data_len(token_num) 
-                task_info = {"request_id":self._id_counter,"id":i.item_id, "recv_worker":recv_worker, "token_num":token_num,"data_length":data_length}
+                task_info = {"request_id":self._id_counter,
+                             "id":i.item_id, 
+                             "recv_worker":recv_worker, 
+                             "token_num":token_num,
+                             "data_length":data_length,
+                             'index':ind}
                 if task_info_list_dict.get(recv_worker):
                     task_info_list_dict[recv_worker].append(task_info)
                 else:
@@ -128,7 +139,6 @@ class LLMScheduler:
         self.set_worker_call.wait()
         # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
-
     def calculate_data_len(self,token_num:int):
         return token_num*model_params["head_size"]*model_params["num_q_heads"]*model_params["num_layers"]*model_params["num_kv_heads"]
 

@@ -1,4 +1,6 @@
 from ast import Dict
+import random
+
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
@@ -7,12 +9,26 @@ from rpc_def import KVCACHE_offset,WORKER_offset
 from Remote.remote_call import call_remote_method
 from config import *
 
+# TODO 提取model_params作为公共参数
+model_params = {
+    "head_size": 128,
+    "num_q_heads": 12, 
+    "num_kv_heads": 2,      
+    "num_layers": 28 
+}
+
+token_shape = (model_params['head_size'],
+               model_params['num_q_heads'],
+               model_params['num_kv_heads'],
+               model_params['num_layers'])
+
 class KVCache:
     def __init__(self, rank):
         self.rank = rank + KVCACHE_offset
         self.cpu_index = rank
+        self.cache_size = 1000
         self.cache_data = torch.full(
-            (1024 * 1024 * 10,),
+            (self.cache_size,) + token_shape, 
             self.rank,
             device='cpu',
             dtype=torch.float16
@@ -22,13 +38,15 @@ class KVCache:
     def send_data(self,task_info:Dict):
         dst_rank = task_info['recv_worker'] + WORKER_offset
         request_id = task_info['request_id']
-        data_length = task_info['data_length']
+        token_num = task_info['token_num']
         if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+            print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
         # TODO 实际的读写逻辑大概不是这样
-        dist.send(tensor=self.cache_data[:data_length], dst=dst_rank)
+        start_pos = random.randint(0,self.cache_size/2)
+        send_tensor = self.cache_data[start_pos:start_pos+token_num]
+        dist.send(tensor=send_tensor, dst=dst_rank)
         if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
 
     def receive_data(self, task_info:Dict):
         request_id = task_info['request_id']
