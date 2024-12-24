@@ -18,7 +18,6 @@ model_params = {
 }
 
 token_shape = (model_params['head_size'],
-               model_params['num_q_heads'],
                model_params['num_kv_heads'],
                model_params['num_layers'])
 

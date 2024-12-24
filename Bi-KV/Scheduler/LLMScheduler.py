@@ -4,7 +4,7 @@ import torch.distributed.rpc as rpc
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
-from DistributedStorage.cachescoordinator import CacheCoordinator, KVCache
+from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
 from Remote.remote_call import call_remote_method
 import time
 

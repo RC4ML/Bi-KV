@@ -7,7 +7,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from Scheduler.LLMScheduler import LLMScheduler
-from DistributedStorage.cachescoordinator import CacheCoordinator
+from DistributedStorage.CacheCoordinator import CacheCoordinator
 from inputGenerator.inputGenerator import LLMInput
 import warnings
 import logging

@@ -5,6 +5,7 @@ from queue import Queue
 import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
+from DistributedStorage.Storage import LRUCache
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
@@ -29,6 +30,8 @@ class CacheCoordinator:
         for i in range(self.kvcache_num):
             print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
             self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
+        self.lru_capacity = 1000
+        self.lru = LRUCache(self.lru_capacity, self.kvcache_num)
     
     def add_requests(self, requests:List[Dict]):
         for request in requests:
@@ -64,6 +67,10 @@ class CacheCoordinator:
                         self.finished_counter_table[req['request_id']] = 0
                     self.finished_flag_table[req['request_id']] = False
                     executable_requests.append(req)
+                    if self.lru.get(req)==None:
+                        if DEBUG:
+                            print(f"[CacheCoordinator] Cache Miss! id = {req['id']}")
+                        self.lru.put(req)
                     has_excuted = True
                 else:
                     # 无法执行则加入无法执行list，后续重新入队

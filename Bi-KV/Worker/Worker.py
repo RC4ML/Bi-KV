@@ -4,7 +4,7 @@ import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
-from DistributedStorage.cachescoordinator import CacheCoordinator
+from DistributedStorage.CacheCoordinator import CacheCoordinator
 from Remote.remote_call import call_remote_method
 import torch
 from config import *
@@ -18,7 +18,6 @@ model_params = {
 }
 
 token_shape = (model_params['head_size'],
-               model_params['num_q_heads'],
                model_params['num_kv_heads'],
                model_params['num_layers'])
 

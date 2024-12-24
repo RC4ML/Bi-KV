@@ -4,7 +4,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
-from cachescoordinator import CacheCoordinator
+from CacheCoordinator import CacheCoordinator
 from kvcache import KVCache
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
@@ -56,7 +56,7 @@ def init_process(rank, world_size):
 def main():
     """主函数"""
     print("[Main] 启动分布式系统")
-    world_size = 5  # 动态获取可用 GPU 数量  4 GPU<kvcache> 1 CPU<cachescoordinator>
+    world_size = 5  # 动态获取可用 GPU 数量  4 GPU<kvcache> 1 CPU<CacheCoordinator>
     if world_size < 2:
         raise ValueError("需要至少 2 个 GPU 来运行此程序。")
     mp.spawn(init_process, args=(world_size,), nprocs=world_size, join=True)
