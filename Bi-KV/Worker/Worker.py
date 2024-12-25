@@ -2,6 +2,7 @@ from ast import List
 import time
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
+from wandb import finish
 from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
@@ -54,13 +55,17 @@ class Worker:
             future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                                          args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
             res = future_call_poll.wait()
-            if res:
+            finished_signal = res[0]
+            cache_miss_list = res[1]
+            if finished_signal:
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests finished")
             else:
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
                 time.sleep(5)
+            if 2 in cache_miss_list:
+                print(f"[Worker][RANK {self.rank}] Cache miss detected")
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 

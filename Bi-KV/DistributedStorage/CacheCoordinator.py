@@ -32,6 +32,7 @@ class CacheCoordinator:
             self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
         self.lru_capacity = 1000
         self.lru = LRUCache(self.lru_capacity, self.kvcache_num)
+        self.lru_miss_dict = {}
     
     def add_requests(self, requests:List[Dict]):
         for request in requests:
@@ -71,6 +72,9 @@ class CacheCoordinator:
                         if DEBUG:
                             print(f"[CacheCoordinator] Cache Miss! id = {req['id']}")
                         self.lru.put(req)
+                        self.lru_miss_dict[req['id']] = 2
+                    else:
+                        self.lru_miss_dict[req['id']] = 1
                     has_excuted = True
                 else:
                     # 无法执行则加入无法执行list，后续重新入队
@@ -157,15 +161,18 @@ class CacheCoordinator:
         return req_id % self.kvcache_num
     
     def poll(self,task_info_list:List[Dict]):
+        cache_miss_list = []
         # 一组task_info_list应该用的是同一个request_id
         request_id = task_info_list[0]['request_id']
         task_list_length = len(task_info_list)
         res_counter = self.finished_counter_table.get(request_id,-1)
         res_flag = self.finished_flag_table.get(request_id, False)
         # print(f"[CacheCoordinator] counter: {res_counter} length:{task_list_length}")
+        for i in task_info_list:
+            cache_miss_list.append(self.lru_miss_dict.get(i['id'],-1))
         if res_counter == task_list_length and res_flag:
-            return True
-        return False
+            return True, cache_miss_list
+        return False, cache_miss_list
 
     def stop_process(self):
         self.process_flag = False

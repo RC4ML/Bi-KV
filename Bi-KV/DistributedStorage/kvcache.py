@@ -26,12 +26,14 @@ class KVCache:
         self.rank = rank + KVCACHE_offset
         self.cpu_index = rank
         self.cache_size = 1000
+        self.cache_control_dict = {}
         self.cache_data = torch.full(
             (self.cache_size,) + token_shape, 
             self.rank,
             device='cpu',
             dtype=torch.float16
         )
+        self.start_pos = 0
         print(f"[KVCache][CPU index:{rank} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
     def send_data(self,task_info:Dict):
@@ -51,6 +53,7 @@ class KVCache:
         request_id = task_info['request_id']
         send_worker = task_info['send_worker']
         token_num = task_info['token_num']
+        item_id = task_info['id']
         src_rank = send_worker + WORKER_offset
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
@@ -61,6 +64,13 @@ class KVCache:
         dist.recv(tensor=recv_tensor, src=src_rank)
         if DEBUG:
             print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}")
+        next_pos = self.start_pos + token_num
+        if next_pos > self.cache_size:
+            self.start_pos = 0
+            next_pos = self.start_pos + token_num
+        # self.cache_data[self.start_pos:next_pos] = recv_tensor
+        self.cache_control_dict[item_id] = (self.start_pos,next_pos)
+        self.start_pos = next_pos
 
     def send_confirmation(self, confirmation_msg):
         if DEBUG:
