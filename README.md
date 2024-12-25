@@ -5,6 +5,8 @@ Bipartite KVCache
 ```
 pip install transformers
 pip install sentencepiece
+pip install flashinfer -i https://flashinfer.ai/whl/cu121/torch2.4/
+pip install vllm
 ```
 ## Run
 ```
