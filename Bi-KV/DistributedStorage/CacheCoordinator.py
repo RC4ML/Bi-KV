@@ -58,6 +58,7 @@ class CacheCoordinator:
             while not self.request_table.empty():
                 idle_time_counter = 0
                 req = self.request_table.get_nowait()
+                # print(f"[CacheCoordinator] Processing request type: {req['task_type']}")
                 send_worker, recv_worker, executing = req['send_worker'], req['recv_worker'], req['executing']
                 if not executing and self.cpu_state_table[send_worker]['status'] == 'idle' and self.cpu_state_table[recv_worker]['status'] == 'idle':
                     with self.lock:
@@ -121,7 +122,7 @@ class CacheCoordinator:
         if DEBUG:
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
         # 若这里仍然是Check，则不执行
-        if req['task_type'] == SIGNAL_CHECK:
+        if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_ACK:
             confirmation_msg = request_id
         else:
             future_send = rpc.rpc_async(

@@ -1,11 +1,12 @@
 # import uuid
+from typing import List
 
 import torch.distributed.rpc as rpc
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
-from DistributedStorage.Signals import SIGNAL_CHECK
+from DistributedStorage.Signals import SIGNAL_ACK, SIGNAL_CHECK, SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
 import time
 
@@ -121,6 +122,7 @@ class LLMScheduler:
                             "token_num":recomputing_tokens,
                             "data_length":-1,
                             'index':-1,
+                            'task_type': SIGNAL_ACK,
                             'type':'compute'}                                            
             task_info_list_dict[recv_worker].append(task_info)
             recv_worker_ref = self.worker_ref[recv_worker]
@@ -142,6 +144,7 @@ class LLMScheduler:
                              "token_num":token_num,
                              "data_length":data_length,
                              'index':ind,
+                             'task_type': SIGNAL_CHECK,
                              'type':'item cache'}
                 if task_info_list_dict.get(recv_worker):
                     task_info_list_dict[recv_worker].append(task_info)
@@ -154,6 +157,7 @@ class LLMScheduler:
                 "token_num":prompt.user_history_tokens,
                 "data_length":-1,
                 'index':-1,
+                'task_type': SIGNAL_ACK,
                 'type':'compute'}
             task_info_list_dict[recv_worker].append(task_info)
             # TODO 还需要解决cache是否miss的问题
@@ -183,6 +187,7 @@ class LLMScheduler:
                             "token_num":token_num,
                             'data_length':data_length,
                             'index': 0,
+                            'task_type': SIGNAL_CHECK,
                             'type': 'user cache'
                             }
                 if task_info_list_dict.get(recv_worker):
@@ -199,6 +204,7 @@ class LLMScheduler:
                                 "token_num":recomputing_tokens,
                                 "data_length":-1,
                                 'index':-1,
+                                'task_type': SIGNAL_ACK,
                                 'type':'compute'}                                            
                 task_info_list_dict[recv_worker].append(task_info)
 
@@ -216,6 +222,7 @@ class LLMScheduler:
                                 "token_num":token_num,
                                 "data_length":data_length,
                                 'index':ind,
+                                'task_type': SIGNAL_CHECK,
                                 'type':'item cache'}
                     if task_info_list_dict.get(recv_worker):
                         task_info_list_dict[recv_worker].append(task_info)
@@ -228,6 +235,7 @@ class LLMScheduler:
                     "token_num":prompt.user_history_tokens,
                     "data_length":-1,
                     'index':-1,
+                    'task_type': SIGNAL_ACK,
                     'type':'compute'}
                 task_info_list_dict[recv_worker].append(task_info)
 
@@ -255,8 +263,8 @@ class LLMScheduler:
         for _ in range(iter_round):
             input_prompt_list = self.prompt_generator.Generate(batchsize)
             self.add_prompt_list(input_prompt_list)
-        # self.process_prompt()
-        self.process_prompt_batch()
+        self.process_prompt()
+        # self.process_prompt_batch()
         self.set_worker_call.wait()
         # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
