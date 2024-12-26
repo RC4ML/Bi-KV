@@ -10,7 +10,7 @@ from vllm.config import (CacheConfig, LoRAConfig, MultiModalConfig,
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.model_loader.loader import build_model
 from vllm.model_executor.models import ModelRegistry
-from vllm.multimodal import BatchedTensors
+# from vllm.multimodal import BatchedTensors
 from vllm.utils import is_pin_memory_available
 
 
@@ -54,44 +54,44 @@ def init_vllm_registered_model(
     )
 
 
-def merge_multimodal_embeddings(input_ids: torch.Tensor,
-                                inputs_embeds: torch.Tensor,
-                                multimodal_embeddings: BatchedTensors,
-                                placeholder_token_id: int) -> torch.Tensor:
-    """
-    Merge ``multimodal_embeddings`` into ``inputs_embeds`` by overwriting the
-    positions in ``inputs_embeds`` corresponding to placeholder tokens in
-    ``input_ids``.
+# def merge_multimodal_embeddings(input_ids: torch.Tensor,
+#                                 inputs_embeds: torch.Tensor,
+#                                 multimodal_embeddings: BatchedTensors,
+#                                 placeholder_token_id: int) -> torch.Tensor:
+#     """
+#     Merge ``multimodal_embeddings`` into ``inputs_embeds`` by overwriting the
+#     positions in ``inputs_embeds`` corresponding to placeholder tokens in
+#     ``input_ids``.
 
-    Note:
-        This updates ``inputs_embeds`` in place.
-    """
-    mask = (input_ids == placeholder_token_id)
-    num_expected_tokens = mask.sum()
+#     Note:
+#         This updates ``inputs_embeds`` in place.
+#     """
+#     mask = (input_ids == placeholder_token_id)
+#     num_expected_tokens = mask.sum()
 
-    if isinstance(multimodal_embeddings, torch.Tensor):
-        batch_size, batch_tokens, *_, embed_dim = multimodal_embeddings.shape
-        total_tokens = batch_size * batch_tokens
-        if num_expected_tokens != total_tokens:
-            expr = f"{batch_size} x {batch_tokens}"
-            raise ValueError(
-                f"Attempted to assign {expr} = {total_tokens} "
-                f"multimodal tokens to {num_expected_tokens} placeholders")
+#     if isinstance(multimodal_embeddings, torch.Tensor):
+#         batch_size, batch_tokens, *_, embed_dim = multimodal_embeddings.shape
+#         total_tokens = batch_size * batch_tokens
+#         if num_expected_tokens != total_tokens:
+#             expr = f"{batch_size} x {batch_tokens}"
+#             raise ValueError(
+#                 f"Attempted to assign {expr} = {total_tokens} "
+#                 f"multimodal tokens to {num_expected_tokens} placeholders")
 
-        inputs_embeds[mask] = multimodal_embeddings.view(
-            total_tokens, embed_dim)
-    else:
-        size_per_batch = [t.shape[0] for t in multimodal_embeddings]
-        total_tokens = sum(size_per_batch)
-        if num_expected_tokens != total_tokens:
-            expr = ' + '.join(map(str, size_per_batch))
-            raise ValueError(
-                f"Attempted to assign {expr} = {total_tokens} "
-                f"multimodal tokens to {num_expected_tokens} placeholders")
+#         inputs_embeds[mask] = multimodal_embeddings.view(
+#             total_tokens, embed_dim)
+#     else:
+#         size_per_batch = [t.shape[0] for t in multimodal_embeddings]
+#         total_tokens = sum(size_per_batch)
+#         if num_expected_tokens != total_tokens:
+#             expr = ' + '.join(map(str, size_per_batch))
+#             raise ValueError(
+#                 f"Attempted to assign {expr} = {total_tokens} "
+#                 f"multimodal tokens to {num_expected_tokens} placeholders")
 
-        inputs_embeds[mask] = torch.cat(multimodal_embeddings)
+#         inputs_embeds[mask] = torch.cat(multimodal_embeddings)
 
-    return inputs_embeds
+#     return inputs_embeds
 
 
 class LayerFn(Protocol):
@@ -178,26 +178,43 @@ def maybe_offload_to_cpu(module: torch.nn.Module) -> torch.nn.Module:
     return module
 
 
+# def make_layers(
+#     num_hidden_layers: int,
+#     layer_fn: LayerFn,
+#     prefix: str,
+# ) -> Tuple[int, int, torch.nn.ModuleList]:
+#     """Make a list of layers with the given layer function, taking
+#     pipeline parallelism into account.
+#     """
+#     from vllm.distributed.parallel_state import get_pp_group
+#     from vllm.distributed.utils import get_pp_indices
+#     start_layer, end_layer = get_pp_indices(num_hidden_layers,
+#                                             get_pp_group().rank_in_group,
+#                                             get_pp_group().world_size)
+#     modules = torch.nn.ModuleList(
+#         [PPMissingLayer() for _ in range(start_layer)] + [
+#             maybe_offload_to_cpu(layer_fn(prefix=f"{prefix}.{idx}"))
+#             for idx in range(start_layer, end_layer)
+#         ] + [PPMissingLayer() for _ in range(end_layer, num_hidden_layers)])
+#     return start_layer, end_layer, modules
+
+
 def make_layers(
     num_hidden_layers: int,
     layer_fn: LayerFn,
     prefix: str,
 ) -> Tuple[int, int, torch.nn.ModuleList]:
-    """Make a list of layers with the given layer function, taking
-    pipeline parallelism into account.
+    """Make a list of layers with the given layer function, without
+    pipeline parallelism support.
     """
-    from vllm.distributed.parallel_state import get_pp_group
-    from vllm.distributed.utils import get_pp_indices
-    start_layer, end_layer = get_pp_indices(num_hidden_layers,
-                                            get_pp_group().rank_in_group,
-                                            get_pp_group().world_size)
-    modules = torch.nn.ModuleList(
-        [PPMissingLayer() for _ in range(start_layer)] + [
-            maybe_offload_to_cpu(layer_fn(prefix=f"{prefix}.{idx}"))
-            for idx in range(start_layer, end_layer)
-        ] + [PPMissingLayer() for _ in range(end_layer, num_hidden_layers)])
+    # All layers are created directly without considering parallelism.
+    start_layer = 0
+    end_layer = num_hidden_layers
+    modules = torch.nn.ModuleList([
+        maybe_offload_to_cpu(layer_fn(prefix=f"{prefix}.{idx}"))
+        for idx in range(start_layer, end_layer)
+    ])
     return start_layer, end_layer, modules
-
 
 # NOTE: don't use lru_cache here because it can prevent garbage collection
 _model_to_pp_missing_layer_names: Dict[int, List[str]] = {}

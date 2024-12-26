@@ -57,7 +57,7 @@ import time
 
 PREFIXLEN = 8192
 
-SUFFIXLEN = 256
+SUFFIXLEN = 5120
 
 class Qwen2MLP(nn.Module):
 
@@ -152,19 +152,19 @@ class Qwen2Attention(nn.Module):
         self.max_kv_cache_blocks = 128
         
         self.shared_k_data_cpu = torch.randn(
-            self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.bfloat16, device="cpu"
+            self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.float16, device="cpu"
         )
         
         self.shared_v_data_cpu = torch.randn(
-                self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.bfloat16, device="cpu"
+                self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.float16, device="cpu"
         )        
         
         self.shared_k_data = torch.randn(
-            self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.bfloat16, device="cuda:0"
+            self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.float16, device="cuda:0"
         )
         
         self.shared_v_data = torch.randn(
-                self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.bfloat16, device="cuda:0"
+                self.shared_prefix_len, num_kv_heads, self.head_dim, dtype=torch.float16, device="cuda:0"
         )
     
         qo_indptr = torch.tensor(
@@ -209,17 +209,23 @@ class Qwen2Attention(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
+        # print(f"hidden state shape {hidden_states.shape}")
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+        # print(f"q shape {q.shape}")
+
         q, k = self.rotary_emb(positions, q, k)
-        q = torch.zeros(self.nnz_qo, self.num_heads, self.head_dim, dtype=torch.bfloat16, device="cuda:0")
-        # q = q.view(self.nnz_qo, self.num_heads, self.head_dim)#.half()
+        # q = torch.zeros(self.nnz_qo, self.num_heads, self.head_dim, dtype=torch.float16, device="cuda:0")
+        q = q.view(self.nnz_qo, self.num_heads, self.head_dim).half()
         # attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
         attn_output = self.prefill_wrapper.forward(
             q, self.shared_k_data, self.shared_v_data, kv_cache, causal=True
         )
+        # print(f"attn_output shape {attn_output.shape}")
+
         attn_output = attn_output.view(self.nnz_qo, self.num_heads * self.head_dim)#.float()
         output, _ = self.o_proj(attn_output)
+        # print(f"output shape {output.shape}")
         return output
 
 
@@ -309,6 +315,7 @@ class Qwen2Model(nn.Module):
                                              quant_config=quant_config),
             prefix=f"{prefix}.layers",
         )
+        print(f"start layer {self.start_layer}, end layer {self.end_layer}")
 
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
@@ -537,7 +544,7 @@ kv_cache_block_size = 64
 max_kv_cache_blocks = 128
 if __name__ == '__main__':
     init_worker_distributed_environment()
-    torch.set_default_dtype(torch.bfloat16)
+    torch.set_default_dtype(torch.float16)
     model_config = Qwen2Config(hidden_size = hidden_size,
                                 intermediate_size = intermediate_size,
                                 num_hidden_layers = num_hidden_layers,
@@ -545,7 +552,7 @@ if __name__ == '__main__':
                                 num_key_value_heads = num_key_value_heads)
     kv_caches = [
         torch.randn(
-        max_kv_cache_blocks, 2, kv_cache_block_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device="cuda:0"
+        max_kv_cache_blocks, 2, kv_cache_block_size, num_key_value_heads, head_dim, dtype=torch.float16, device="cuda:0"
         ) for _ in range(num_hidden_layers)
     ]
 
