@@ -6,7 +6,7 @@ import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Storage import LRUCache
-from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
 from config import *
@@ -68,13 +68,19 @@ class CacheCoordinator:
                         self.finished_counter_table[req['request_id']] = 0
                     self.finished_flag_table[req['request_id']] = False
                     executable_requests.append(req)
-                    if self.lru.get(req)==None:
-                        if DEBUG:
-                            print(f"[CacheCoordinator] Cache Miss! id = {req['id']}")
+                    if req['task_type'] == SIGNAL_CHECK:
+                        if self.lru.get(req)==None:
+                            if DEBUG:
+                                print(f"[CacheCoordinator] Cache Miss! id = {req['id']}")
+                            # 改为在worker写入cache后再put
+                            # self.lru.put(req)
+                            self.lru_miss_dict[req['id']] = 0
+                        else:
+                            # cache hit 调取数据
+                            self.lru_miss_dict[req['id']] = 1
+                            req['task_type'] = SIGNAL_SEND
+                    if req['task_type'] == SIGNAL_RECV:
                         self.lru.put(req)
-                        self.lru_miss_dict[req['id']] = 2
-                    else:
-                        self.lru_miss_dict[req['id']] = 1
                     has_excuted = True
                 else:
                     # 无法执行则加入无法执行list，后续重新入队
@@ -114,19 +120,22 @@ class CacheCoordinator:
         request_id, send_worker, recv_worker = req['request_id'], req['send_worker'], req['recv_worker']
         if DEBUG:
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
-        req["task_type"] = SIGNAL_SEND
-        future_send = rpc.rpc_async(
-            self.kvcache_ref[send_worker].owner(),
-            call_remote_method, 
-            args=(KVCache.receive_task_info,
-                self.kvcache_ref[send_worker], 
-                req,self.worker_ref[recv_worker]))
+        # 若这里仍然是Check，则不执行
+        if req['task_type'] == SIGNAL_CHECK:
+            confirmation_msg = request_id
+        else:
+            future_send = rpc.rpc_async(
+                self.kvcache_ref[send_worker].owner(),
+                call_remote_method, 
+                args=(KVCache.receive_task_info,
+                    self.kvcache_ref[send_worker], 
+                    req,self.worker_ref[recv_worker]))
 
-        # task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
-        # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
-        
-        confirmation_msg = future_send.wait()
-        # confirmation_msg = future_recv.wait()
+            # task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
+            # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
+            
+            confirmation_msg = future_send.wait()
+            # confirmation_msg = future_recv.wait()
         if confirmation_msg == request_id:
             if DEBUG:
                 print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
@@ -183,7 +192,7 @@ class CacheCoordinator:
     def test_write(self, task_info:Dict):
         recv_worker = task_info['recv_worker']
         recv_cache_ref = self.kvcache_ref[recv_worker]
-        print(f"[CacheCoordinator] Trying send message to kvcache{recv_worker}")
+        # print(f"[CacheCoordinator] Trying send message to kvcache{recv_worker}")
         owner_cache_ref = recv_cache_ref.owner()
         rpc.rpc_sync(to=owner_cache_ref, func=call_remote_method, 
                             args=(KVCache.receive_data, recv_cache_ref, task_info))

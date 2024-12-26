@@ -19,6 +19,7 @@ class LRUCache:
         return self.cache[cache_id]
 
     def put(self, task_info: Dict):
+        '''put目前只看task_info的id和token_num'''
         cache_id = task_info['id']
         size = task_info['token_num']
         if cache_id in self.cache:

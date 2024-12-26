@@ -6,6 +6,7 @@ from wandb import finish
 from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
+from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
 from Remote.remote_call import call_remote_method
 import torch
 from config import *
@@ -38,6 +39,7 @@ class Worker:
             dtype=torch.float16
         )
         self.start_pos = 0
+        self.cache_miss_list = []
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
     def forward(self, task_info_list:List):
@@ -48,8 +50,9 @@ class Worker:
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                task_info_list))
-        res = False
-        while not res:
+        finished_signal = False
+        cache_miss_list = [-1]
+        while not finished_signal and -1 in cache_miss_list:
             if DEBUG:
                 print(f"[Worker][RANK {self.rank}] Poll requests...")
             future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
@@ -57,15 +60,17 @@ class Worker:
             res = future_call_poll.wait()
             finished_signal = res[0]
             cache_miss_list = res[1]
-            if finished_signal:
+            if finished_signal and -1 not in cache_miss_list:
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests finished")
             else:
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
                 time.sleep(5)
-            if 2 in cache_miss_list:
-                print(f"[Worker][RANK {self.rank}] Cache miss detected")
+            if 0 in cache_miss_list:
+                pass
+                # print(f"[Worker][RANK {self.rank}] Cache miss detected")
+            self.cache_miss_list = cache_miss_list
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 
@@ -85,6 +90,7 @@ class Worker:
             self.buffer_control_dict[req_id].append((self.start_pos,next_pos))
             self.start_pos = next_pos
         self.forward(task_info_list)
+        self.preprare_send_data(task_info_list)
 
     def receive_kvcache_data(self, task_info):
         if DEBUG:
@@ -92,18 +98,18 @@ class Worker:
         self.write_compute_buffer(task_info)
 
     def send_kvcache_data(self, task_info):
-        dst_rank = task_info['recv_worker'] + KVCACHE_offset
+        dst_rank = task_info['send_worker'] + KVCACHE_offset
         request_id = task_info['request_id']
         data_length = task_info['data_length']
         ind = task_info['index']
         # start_pos,offest = self.buffer_control_dict[request_id][ind]
         start_pos,offest = 24,24+42
-        if DEBUG:
-            print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        # if DEBUG:
+        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
         # TODO 实际发的数据从哪里来
         dist.send(tensor=self.compute_buffer[start_pos:offest], dst=dst_rank)
-        if DEBUG:
-            print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        # if DEBUG:
+        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
 
     def write_compute_buffer(self, task_info):
         send_worker = task_info['send_worker']
@@ -125,3 +131,16 @@ class Worker:
             print(f"[Worker][RANK {self.rank}] Recv tensor from Rank {src_rank}: {recv_tensor}")
         # 在这里使用to(device)会导致卡死
         self.compute_buffer[start_pos:offest] = recv_tensor
+
+    def preprare_send_data(self,task_info_list):
+        coordinator_owner = self.coordinator_rref.owner()
+        send_task_list = []
+        for ind,task_info in enumerate(task_info_list):
+            if self.cache_miss_list[ind] == 0:
+                task_info['task_type'] = SIGNAL_RECV
+                send_task_list.append(task_info)
+        # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
+        rpc.rpc_sync(to=coordinator_owner, 
+                         func=call_remote_method, 
+                         args=(CacheCoordinator.add_requests,self.coordinator_rref, 
+                               send_task_list))

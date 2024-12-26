@@ -5,6 +5,7 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
+from DistributedStorage.Signals import SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
 import time
 
@@ -89,6 +90,7 @@ class LLMScheduler:
                          "recv_worker":recv_worker, 
                          "token_num":token_num,
                          'data_length':data_length,
+                         'task_type': SIGNAL_CHECK,
                          'index': 0
                          }
             recv_worker_ref = self.worker_ref[recv_worker]

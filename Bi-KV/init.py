@@ -56,7 +56,7 @@ def init_process(rank, world_size):
     if process_type == 'scheduler':
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
-        scheduler.test_write_cache()
+        # scheduler.test_write_cache()
         input_generator = LLMInput(5,5,args)
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
