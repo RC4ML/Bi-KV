@@ -29,7 +29,7 @@ logging.basicConfig(
     ]
 )
 
-def init_backend(rank, world_size, process_type, type_index):
+def init_backend(rank, world_size, process_type, type_index, timeout = 120):
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "29502"
     os.environ["RANK"] = str(rank)
@@ -44,19 +44,23 @@ def init_backend(rank, world_size, process_type, type_index):
         rank=rank,
         world_size=world_size,
         rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
-            rpc_timeout = 120
+            rpc_timeout = timeout
         )
     )
 
 def init_process(rank, world_size):
     process_type, type_index = get_process_info(rank, PROCESS_TYPES)
-    init_backend(rank, world_size, process_type, type_index)
+    if process_type == 'scheduler':
+        timeout = 180
+    else:
+        timeout = 60
+    init_backend(rank, world_size, process_type, type_index, timeout=timeout)
     dist.barrier()
 
     if process_type == 'scheduler':
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
-        scheduler.test_write_cache()
+        # scheduler.test_write_cache()
         input_generator = LLMInput(5,5,args)
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)

@@ -1,6 +1,7 @@
 from ast import Dict
 import random
 
+from numpy import rec
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
@@ -51,19 +52,19 @@ class KVCache:
 
     def receive_data(self, task_info:Dict):
         request_id = task_info['request_id']
-        send_worker = task_info['send_worker']
+        send_worker = task_info['recv_worker']
         token_num = task_info['token_num']
         item_id = task_info['id']
         src_rank = send_worker + WORKER_offset
-        if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
+        # if DEBUG:
+        print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
-        if DEBUG:
-            print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}")
+        # if DEBUG:
+        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}")
         next_pos = self.start_pos + token_num
         if next_pos > self.cache_size:
             self.start_pos = 0
@@ -98,5 +99,11 @@ class KVCache:
             return request_id
         elif task_type == SIGNAL_RECV:
             send_worker = task_info['send_worker']
-            self.receive_data(send_worker, request_id)
+            recv_worker = task_info['recv_worker']
+            print(f"[KVCache] 执行请求 {request_id} - Rank {recv_worker+WORKER_offset} -> Rank {send_worker+KVCACHE_offset}")
+            remote_send = rpc.rpc_async(
+                to=worker_ref.owner(), func=call_remote_method, 
+                args=(Worker.send_kvcache_data,worker_ref, task_info))
+            self.receive_data(task_info)
+            remote_send.wait()
             return request_id
