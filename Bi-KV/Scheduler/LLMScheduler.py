@@ -73,12 +73,28 @@ class LLMScheduler:
         if len(future_list) > 0:    
             for future in future_list:
                 future.wait()
-        
+                
+    def process_prompt_batch(self):
+        cnt = 0
+        working_prompt_list = []
+        batch_size = self.num_workers * self.batchsize  # 每批次的大小
+        total_prompts = len(self.prompt_list)
+        for prompt in self.prompt_list:
+            working_prompt_list.append(prompt)
+            cnt += 1
+            if cnt % batch_size == 0:
+                self._send_prompt_batch(working_prompt_list)
+                working_prompt_list = []
+        # 处理尾巴部分（未整除的 prompts）
+        remaining = total_prompts % batch_size  # 剩余未整除的数量
+        if remaining > 0:  # 检查是否有剩余
+            self._send_prompt_batch(self.prompt_list[-remaining:])
+                        
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
-        # prompt_order = "User History First"
         # 历史优先，调度用户历史kvcache
         if prompt_order == "User History First":
+            task_info_list_dict = {}
             recv_worker = self.strategy(prompt.user_id)
             token_num = prompt.user_history_tokens
             data_length = self.calculate_data_len(token_num) 
@@ -89,12 +105,26 @@ class LLMScheduler:
                          "recv_worker":recv_worker, 
                          "token_num":token_num,
                          'data_length':data_length,
-                         'index': 0
+                         'index': 0,
+                         'type': 'user cache'
                          }
+            task_info_list_dict[recv_worker]=[task_info]
+            ## append recomputing tokens
+            recomputing_tokens = 0
+            for ind,i in enumerate(prompt.items):
+                recomputing_tokens = i.token_count
+            task_info = {"request_id":self._id_counter,
+                            "id":-1, 
+                            "recv_worker":recv_worker, 
+                            "token_num":recomputing_tokens,
+                            "data_length":-1,
+                            'index':-1,
+                            'type':'compute'}                                            
+            task_info_list_dict[recv_worker].append(task_info)
             recv_worker_ref = self.worker_ref[recv_worker]
             owner_worker_ref = recv_worker_ref.owner()
             return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                         args=(Worker.receive_task_info, recv_worker_ref, [task_info]))
+                         args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
             task_info_list_dict = {}
@@ -109,17 +139,105 @@ class LLMScheduler:
                              "recv_worker":recv_worker, 
                              "token_num":token_num,
                              "data_length":data_length,
-                             'index':ind}
+                             'index':ind,
+                             'type':'item cache'}
                 if task_info_list_dict.get(recv_worker):
                     task_info_list_dict[recv_worker].append(task_info)
                 else:
                     task_info_list_dict[recv_worker]=[task_info]
+            ## append recomputing tokens
+            task_info = {"request_id":self._id_counter,
+                "id":-1, 
+                "recv_worker":recv_worker, 
+                "token_num":prompt.user_history_tokens,
+                "data_length":-1,
+                'index':-1,
+                'type':'compute'}
+            task_info_list_dict[recv_worker].append(task_info)
             # TODO 还需要解决cache是否miss的问题
-            for recv_worker in task_info_list_dict:
+            if recv_worker in task_info_list_dict:
                 recv_worker_ref = self.worker_ref[recv_worker]
                 owner_worker_ref = recv_worker_ref.owner() 
                 return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
                             args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
+
+
+    def _send_prompt_batch(self, prompt_list:List[InputPrompt]):
+        future_list = []
+        task_info_list_dict = {}
+
+        for ind,prompt in enumerate(prompt_list): 
+            prompt_order = PromptOrder(prompt)
+            # 历史优先，调度用户历史kvcache
+            if prompt_order == "User History First":
+                recv_worker = self.strategy(prompt.user_id)
+                token_num = prompt.user_history_tokens
+                data_length = self.calculate_data_len(token_num) 
+                self._id_counter += 1
+                print(f"[LLMScheduler] Schedule a user history request to worker {recv_worker}, request id {self._id_counter}")
+                task_info = {"request_id":self._id_counter,
+                            "id":prompt.user_id, 
+                            "recv_worker":recv_worker, 
+                            "token_num":token_num,
+                            'data_length':data_length,
+                            'index': 0,
+                            'type': 'user cache'
+                            }
+                if task_info_list_dict.get(recv_worker):
+                    task_info_list_dict[recv_worker].append(task_info)
+                else:
+                    task_info_list_dict[recv_worker]=[task_info]
+                ## append recomputing tokens
+                recomputing_tokens = 0
+                for ind,i in enumerate(prompt.items):
+                    recomputing_tokens = i.token_count
+                task_info = {"request_id":self._id_counter,
+                                "id":-1, 
+                                "recv_worker":recv_worker, 
+                                "token_num":recomputing_tokens,
+                                "data_length":-1,
+                                'index':-1,
+                                'type':'compute'}                                            
+                task_info_list_dict[recv_worker].append(task_info)
+
+            # 商品优先，调度*一组*商品kvcache
+            elif prompt_order == "Item First":
+                self._id_counter += 1
+                recv_worker = self.strategy(prompt.user_id)
+                print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {recv_worker}, request id {self._id_counter})")
+                for ind,i in enumerate(prompt.items):
+                    token_num = i.token_count
+                    data_length = self.calculate_data_len(token_num) 
+                    task_info = {"request_id":self._id_counter,
+                                "id":i.item_id, 
+                                "recv_worker":recv_worker, 
+                                "token_num":token_num,
+                                "data_length":data_length,
+                                'index':ind,
+                                'type':'item cache'}
+                    if task_info_list_dict.get(recv_worker):
+                        task_info_list_dict[recv_worker].append(task_info)
+                    else:
+                        task_info_list_dict[recv_worker]=[task_info]
+                ## append recomputing tokens
+                task_info = {"request_id":self._id_counter,
+                    "id":-1, 
+                    "recv_worker":recv_worker, 
+                    "token_num":prompt.user_history_tokens,
+                    "data_length":-1,
+                    'index':-1,
+                    'type':'compute'}
+                task_info_list_dict[recv_worker].append(task_info)
+
+        for recv_worker in task_info_list_dict:
+            recv_worker_ref = self.worker_ref[recv_worker]
+            owner_worker_ref = recv_worker_ref.owner() 
+            future = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
+                    args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
+            future_list.append(future)  
+            
+        for future in future_list:
+            future.wait()
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
@@ -135,7 +253,8 @@ class LLMScheduler:
         for _ in range(iter_round):
             input_prompt_list = self.prompt_generator.Generate(batchsize)
             self.add_prompt_list(input_prompt_list)
-        self.process_prompt()
+        # self.process_prompt()
+        self.process_prompt_batch()
         self.set_worker_call.wait()
         # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
