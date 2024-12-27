@@ -39,7 +39,7 @@ class Worker:
             dtype=torch.float16
         )
         self.start_pos = 0
-        self.cache_miss_list = []
+        self.cache_miss_dict = {}
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
     def forward(self, task_info_list:List):
@@ -51,26 +51,30 @@ class Worker:
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                task_info_list))
         finished_signal = False
-        cache_miss_list = [-1]
-        while not finished_signal and -1 in cache_miss_list:
+        cache_miss_dict = {'0':-1}
+        while not finished_signal and -1 in cache_miss_dict.values():
             if DEBUG:
                 print(f"[Worker][RANK {self.rank}] Poll requests...")
             future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                                          args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
             res = future_call_poll.wait()
+            if DEBUG:
+                print(f"[Worker][RANK {self.rank}] Poll result: {res} Task info list: {[task['id'] for task in task_info_list]}")
             finished_signal = res[0]
-            cache_miss_list = res[1]
-            if finished_signal and -1 not in cache_miss_list:
+            cache_miss_dict = res[1]
+            # if DEBUG:
+            print(f"[Worker][RANK {self.rank}] Cache miss dict: {cache_miss_dict}")
+            if finished_signal and -1 not in cache_miss_dict.values():
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests finished")
             else:
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
                 time.sleep(5)
-            if 0 in cache_miss_list:
+            if 0 in cache_miss_dict.values():
                 pass
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
-            self.cache_miss_list = cache_miss_list
+            self.cache_miss_dict = cache_miss_dict
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 
@@ -135,8 +139,9 @@ class Worker:
     def preprare_send_data(self,task_info_list):
         coordinator_owner = self.coordinator_rref.owner()
         send_task_list = []
-        for ind,task_info in enumerate(task_info_list):
-            if self.cache_miss_list[ind] == 0:
+        for task_info in task_info_list:
+            item_id = task_info['id']
+            if self.cache_miss_dict.get(item_id) == 0:
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")

@@ -171,7 +171,7 @@ class CacheCoordinator:
         return req_id % self.kvcache_num
     
     def poll(self,task_info_list:List[Dict]):
-        cache_miss_list = []
+        cache_miss_dict = {}
         # 一组task_info_list应该用的是同一个request_id
         request_id = task_info_list[0]['request_id']
         task_list_length = len(task_info_list)
@@ -179,10 +179,12 @@ class CacheCoordinator:
         res_flag = self.finished_flag_table.get(request_id, False)
         # print(f"[CacheCoordinator] counter: {res_counter} length:{task_list_length}")
         for i in task_info_list:
-            cache_miss_list.append(self.lru_miss_dict.get(i['id'],-1))
+            if i['id'] == -1:
+                continue
+            cache_miss_dict[i['id']] = self.lru_miss_dict.get(i['id'],-1)
         if res_counter == task_list_length and res_flag:
-            return True, cache_miss_list
-        return False, cache_miss_list
+            return True, cache_miss_dict
+        return False, cache_miss_dict
 
     def stop_process(self):
         self.process_flag = False
