@@ -1,5 +1,8 @@
 from ast import List
+from functools import cache
 import time
+from wsgiref.util import request_uri
+from httpx import request
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from wandb import finish
@@ -44,6 +47,7 @@ class Worker:
 
     def forward(self, task_info_list:List):
         coordinator_owner = self.coordinator_rref.owner()
+        req_id = task_info_list[0]['request_id']
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
@@ -74,7 +78,7 @@ class Worker:
             if 0 in cache_miss_dict.values():
                 pass
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
-            self.cache_miss_dict = cache_miss_dict
+            self.cache_miss_dict[req_id] = cache_miss_dict
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 
@@ -138,10 +142,12 @@ class Worker:
 
     def preprare_send_data(self,task_info_list):
         coordinator_owner = self.coordinator_rref.owner()
+        request_id = task_info_list[0]['request_id']
+        cache_miss_dict = self.cache_miss_dict.get(request_id,{})
         send_task_list = []
         for task_info in task_info_list:
             item_id = task_info['id']
-            if self.cache_miss_dict.get(item_id) == 0:
+            if cache_miss_dict.get(item_id) == 0:
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
