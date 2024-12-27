@@ -97,75 +97,75 @@ class LLMScheduler:
         # 历史优先，调度用户历史kvcache
         if prompt_order == "User History First":
             task_info_list_dict = {}
-            recv_worker = self.strategy(prompt.user_id)
+            infer_worker = self.strategy(prompt.user_id)
             token_num = prompt.user_history_tokens
             data_length = self.calculate_data_len(token_num) 
             self._id_counter += 1
-            print(f"[LLMScheduler] Schedule a user history request to worker {recv_worker}, request id {self._id_counter}")
+            print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
             task_info = {"request_id":self._id_counter,
                          "id":prompt.user_id, 
-                         "recv_worker":recv_worker, 
+                         "infer_worker":infer_worker, 
                          "token_num":token_num,
                          'data_length':data_length,
                          'task_type': SIGNAL_CHECK,
                          'index': 0,
                          'type': 'user cache'
                          }
-            task_info_list_dict[recv_worker]=[task_info]
+            task_info_list_dict[infer_worker]=[task_info]
             ## append recomputing tokens
             recomputing_tokens = 0
             for ind,i in enumerate(prompt.items):
                 recomputing_tokens = i.token_count
             task_info = {"request_id":self._id_counter,
                             "id":-1, 
-                            "recv_worker":recv_worker, 
+                            "infer_worker":infer_worker, 
                             "token_num":recomputing_tokens,
                             "data_length":-1,
                             'index':-1,
                             'task_type': SIGNAL_ACK,
                             'type':'compute'}                                            
-            task_info_list_dict[recv_worker].append(task_info)
-            recv_worker_ref = self.worker_ref[recv_worker]
-            owner_worker_ref = recv_worker_ref.owner()
+            task_info_list_dict[infer_worker].append(task_info)
+            infer_worker_ref = self.worker_ref[infer_worker]
+            owner_worker_ref = infer_worker_ref.owner()
             return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                         args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
+                         args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
         # 商品优先，调度*一组*商品kvcache
         elif prompt_order == "Item First":
             task_info_list_dict = {}
             self._id_counter += 1
-            recv_worker = self.strategy(prompt.user_id)
-            print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {recv_worker}, request id {self._id_counter})")
+            infer_worker = self.strategy(prompt.user_id)
+            print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
             for ind,i in enumerate(prompt.items):
                 token_num = i.token_count
                 data_length = self.calculate_data_len(token_num) 
                 task_info = {"request_id":self._id_counter,
                              "id":i.item_id, 
-                             "recv_worker":recv_worker, 
+                             "infer_worker":infer_worker, 
                              "token_num":token_num,
                              "data_length":data_length,
                              'index':ind,
                              'task_type': SIGNAL_CHECK,
                              'type':'item cache'}
-                if task_info_list_dict.get(recv_worker):
-                    task_info_list_dict[recv_worker].append(task_info)
+                if task_info_list_dict.get(infer_worker):
+                    task_info_list_dict[infer_worker].append(task_info)
                 else:
-                    task_info_list_dict[recv_worker]=[task_info]
+                    task_info_list_dict[infer_worker]=[task_info]
             ## append recomputing tokens
             task_info = {"request_id":self._id_counter,
                 "id":-1, 
-                "recv_worker":recv_worker, 
+                "infer_worker":infer_worker, 
                 "token_num":prompt.user_history_tokens,
                 "data_length":-1,
                 'index':-1,
                 'task_type': SIGNAL_ACK,
                 'type':'compute'}
-            task_info_list_dict[recv_worker].append(task_info)
+            task_info_list_dict[infer_worker].append(task_info)
             # TODO 还需要解决cache是否miss的问题
-            if recv_worker in task_info_list_dict:
-                recv_worker_ref = self.worker_ref[recv_worker]
-                owner_worker_ref = recv_worker_ref.owner() 
+            if infer_worker in task_info_list_dict:
+                infer_worker_ref = self.worker_ref[infer_worker]
+                owner_worker_ref = infer_worker_ref.owner() 
                 return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                            args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
+                            args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
 
 
     def _send_prompt_batch(self, prompt_list:List[InputPrompt]):
@@ -176,74 +176,74 @@ class LLMScheduler:
             prompt_order = PromptOrder(prompt)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First":
-                recv_worker = self.strategy(prompt.user_id)
+                infer_worker = self.strategy(prompt.user_id)
                 token_num = prompt.user_history_tokens
                 data_length = self.calculate_data_len(token_num) 
                 self._id_counter += 1
-                print(f"[LLMScheduler] Schedule a user history request to worker {recv_worker}, request id {self._id_counter}")
+                print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
                 task_info = {"request_id":self._id_counter,
                             "id":prompt.user_id, 
-                            "recv_worker":recv_worker, 
+                            "infer_worker":infer_worker, 
                             "token_num":token_num,
                             'data_length':data_length,
                             'index': 0,
                             'task_type': SIGNAL_CHECK,
                             'type': 'user cache'
                             }
-                if task_info_list_dict.get(recv_worker):
-                    task_info_list_dict[recv_worker].append(task_info)
+                if task_info_list_dict.get(infer_worker):
+                    task_info_list_dict[infer_worker].append(task_info)
                 else:
-                    task_info_list_dict[recv_worker]=[task_info]
+                    task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
                     recomputing_tokens = i.token_count
                 task_info = {"request_id":self._id_counter,
                                 "id":-1, 
-                                "recv_worker":recv_worker, 
+                                "infer_worker":infer_worker, 
                                 "token_num":recomputing_tokens,
                                 "data_length":-1,
                                 'index':-1,
                                 'task_type': SIGNAL_ACK,
                                 'type':'compute'}                                            
-                task_info_list_dict[recv_worker].append(task_info)
+                task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
                 self._id_counter += 1
-                recv_worker = self.strategy(prompt.user_id)
-                print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {recv_worker}, request id {self._id_counter})")
+                infer_worker = self.strategy(prompt.user_id)
+                print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
                     token_num = i.token_count
                     data_length = self.calculate_data_len(token_num) 
                     task_info = {"request_id":self._id_counter,
                                 "id":i.item_id, 
-                                "recv_worker":recv_worker, 
+                                "infer_worker":infer_worker, 
                                 "token_num":token_num,
                                 "data_length":data_length,
                                 'index':ind,
                                 'task_type': SIGNAL_CHECK,
                                 'type':'item cache'}
-                    if task_info_list_dict.get(recv_worker):
-                        task_info_list_dict[recv_worker].append(task_info)
+                    if task_info_list_dict.get(infer_worker):
+                        task_info_list_dict[infer_worker].append(task_info)
                     else:
-                        task_info_list_dict[recv_worker]=[task_info]
+                        task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
                 task_info = {"request_id":self._id_counter,
                     "id":-1, 
-                    "recv_worker":recv_worker, 
+                    "infer_worker":infer_worker, 
                     "token_num":prompt.user_history_tokens,
                     "data_length":-1,
                     'index':-1,
                     'task_type': SIGNAL_ACK,
                     'type':'compute'}
-                task_info_list_dict[recv_worker].append(task_info)
+                task_info_list_dict[infer_worker].append(task_info)
 
-        for recv_worker in task_info_list_dict:
-            recv_worker_ref = self.worker_ref[recv_worker]
-            owner_worker_ref = recv_worker_ref.owner() 
+        for infer_worker in task_info_list_dict:
+            infer_worker_ref = self.worker_ref[infer_worker]
+            owner_worker_ref = infer_worker_ref.owner() 
             future = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                    args=(Worker.receive_task_info, recv_worker_ref, task_info_list_dict[recv_worker]))
+                    args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
             future_list.append(future)  
             
         for future in future_list:
@@ -273,13 +273,13 @@ class LLMScheduler:
     
     def test_write_cache(self):
         print(f"[LLMScheduler] Write test start")
-        send_worker = 1
-        recv_worker = 2
+        cache_worker = 1
+        infer_worker = 2
         simulate_task_info = {
             "request_id":42,
             "id":42, 
-            "recv_worker":recv_worker,
-            'send_worker':send_worker, 
+            "infer_worker":infer_worker,
+            'cache_worker':cache_worker, 
             "token_num":42,
             "data_length": 1234,
             'index':0
@@ -289,10 +289,10 @@ class LLMScheduler:
         recv_data_call = rpc.rpc_async(to=self.coordinator_ref[0].owner(), func=call_remote_method, 
                          args=(CacheCoordinator.test_write,self.coordinator_ref[0],simulate_task_info))
         print(f"[LLMScheduler] Start send")
-        send_worker_ref = self.worker_ref[send_worker]
-        owner_worker_ref = send_worker_ref.owner() 
+        cache_worker_ref = self.worker_ref[cache_worker]
+        owner_worker_ref = cache_worker_ref.owner() 
         send_data_call = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                            args=(Worker.send_kvcache_data, send_worker_ref, simulate_task_info))
+                            args=(Worker.send_kvcache_data, cache_worker_ref, simulate_task_info))
         send_data_call.wait()
         recv_data_call.wait()
         print(f"[LLMScheduler] Write test success!")

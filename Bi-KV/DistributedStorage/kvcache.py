@@ -38,7 +38,7 @@ class KVCache:
         print(f"[KVCache][CPU index:{rank} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
     def send_data(self,task_info:Dict):
-        dst_rank = task_info['recv_worker'] + WORKER_offset
+        dst_rank = task_info['infer_worker'] + WORKER_offset
         request_id = task_info['request_id']
         token_num = task_info['token_num']
         if DEBUG:
@@ -52,10 +52,10 @@ class KVCache:
 
     def receive_data(self, task_info:Dict):
         request_id = task_info['request_id']
-        send_worker = task_info['recv_worker']
+        infer_worker = task_info['infer_worker']
         token_num = task_info['token_num']
         item_id = task_info['id']
-        src_rank = send_worker + WORKER_offset
+        src_rank = infer_worker + WORKER_offset
         # if DEBUG:
         print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}, 请求ID={request_id}")
         recv_tensor = torch.empty(
@@ -64,7 +64,7 @@ class KVCache:
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
         # if DEBUG:
-        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {send_worker} [rank{src_rank}], 请求ID={request_id}")
+        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}], 请求ID={request_id}")
         next_pos = self.start_pos + token_num
         if next_pos > self.cache_size:
             self.start_pos = 0
@@ -87,7 +87,7 @@ class KVCache:
         from Worker.Worker import Worker
         if DEBUG:
             print(f"[KVCache][RANK {self.rank}] taskinfo is {task_info}")
-        # task_type, request_id, send_worker, recv_worker = task_info
+        # task_type, request_id, cache_worker, infer_worker = task_info
         task_type = task_info['task_type']
         request_id = task_info['request_id']
         if task_type == SIGNAL_SEND:
@@ -98,9 +98,9 @@ class KVCache:
             remote_recv.wait()
             return request_id
         elif task_type == SIGNAL_RECV:
-            send_worker = task_info['send_worker']
-            recv_worker = task_info['recv_worker']
-            print(f"[KVCache] 执行请求 {request_id} - Rank {recv_worker+WORKER_offset} -> Rank {send_worker+KVCACHE_offset}")
+            cache_worker = task_info['cache_worker']
+            infer_worker = task_info['infer_worker']
+            print(f"[KVCache] 执行请求 {request_id} - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
             remote_send = rpc.rpc_async(
                 to=worker_ref.owner(), func=call_remote_method, 
                 args=(Worker.send_kvcache_data,worker_ref, task_info))

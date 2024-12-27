@@ -40,11 +40,11 @@ class CacheCoordinator:
 
     def add_request(self, task_info:Dict):
         request_id = task_info["request_id"]
-        recv_worker = task_info["recv_worker"]
+        infer_worker = task_info["infer_worker"]
         if DEBUG:
-            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Rank={recv_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Rank={infer_worker+WORKER_offset}")
         # TODO 需要补全cache miss逻辑，且用strategy庖代
-        task_info["send_worker"] = self.strategy(request_id+task_info['id'])
+        task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
         self.request_table.put(task_info)
 
@@ -59,11 +59,11 @@ class CacheCoordinator:
                 idle_time_counter = 0
                 req = self.request_table.get_nowait()
                 # print(f"[CacheCoordinator] Processing request type: {req['task_type']}")
-                send_worker, recv_worker, executing = req['send_worker'], req['recv_worker'], req['executing']
-                if not executing and self.cpu_state_table[send_worker]['status'] == 'idle' and self.cpu_state_table[recv_worker]['status'] == 'idle':
+                cache_worker, infer_worker, executing = req['cache_worker'], req['infer_worker'], req['executing']
+                if not executing and self.cpu_state_table[cache_worker]['status'] == 'idle' and self.cpu_state_table[infer_worker]['status'] == 'idle':
                     with self.lock:
-                        self.cpu_state_table[send_worker]['status'] = 'sending'
-                        self.cpu_state_table[recv_worker]['status'] = 'receiving'
+                        self.cpu_state_table[cache_worker]['status'] = 'sending'
+                        self.cpu_state_table[infer_worker]['status'] = 'receiving'
                         req['executing'] = True
                     if self.finished_counter_table.get(req['request_id'])==None:
                         self.finished_counter_table[req['request_id']] = 0
@@ -118,19 +118,19 @@ class CacheCoordinator:
         print("[CacheCoordinator] 所有请求处理完成")
 
     def _execute_request(self, req:Dict):
-        request_id, send_worker, recv_worker = req['request_id'], req['send_worker'], req['recv_worker']
+        request_id, cache_worker, infer_worker = req['request_id'], req['cache_worker'], req['infer_worker']
         if DEBUG:
-            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
         # 若这里仍然是Check，则不执行
         if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_ACK:
             confirmation_msg = request_id
         else:
             future_send = rpc.rpc_async(
-                self.kvcache_ref[send_worker].owner(),
+                self.kvcache_ref[cache_worker].owner(),
                 call_remote_method, 
                 args=(KVCache.receive_task_info,
-                    self.kvcache_ref[send_worker], 
-                    req,self.worker_ref[recv_worker]))
+                    self.kvcache_ref[cache_worker], 
+                    req,self.worker_ref[infer_worker]))
 
             # task_info_recv = [SIGNAL_RECV, request_id, send_cpu, recv_cpu]
             # future_recv = rpc.rpc_async(self.kvcache_ref[recv_cpu].owner(), _call_remote_method, args=(KVCache.receive_task_info,self.kvcache_ref[recv_cpu], task_info_recv,self.worker_ref[recv_cpu]))
@@ -139,14 +139,14 @@ class CacheCoordinator:
             # confirmation_msg = future_recv.wait()
         if confirmation_msg == request_id:
             if DEBUG:
-                print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {send_worker+KVCACHE_offset} -> Rank {recv_worker+WORKER_offset}")
+                print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
             self.finished_counter_table[request_id] += 1
             self.finished_flag_table[request_id] = True
 
         with self.lock:
             # del self.request_table[request_id]
-            self.cpu_state_table[send_worker]['status'] = 'idle'
-            self.cpu_state_table[recv_worker]['status'] = 'idle'
+            self.cpu_state_table[cache_worker]['status'] = 'idle'
+            self.cpu_state_table[infer_worker]['status'] = 'idle'
 
     def send_terminate_signal(self):
         print("[CacheCoordinator] 发送终止信号给所有 KVCache")
@@ -193,9 +193,9 @@ class CacheCoordinator:
         self.stop_limit = stop_limit
 
     def test_write(self, task_info:Dict):
-        recv_worker = task_info['recv_worker']
-        recv_cache_ref = self.kvcache_ref[recv_worker]
-        # print(f"[CacheCoordinator] Trying send message to kvcache{recv_worker}")
+        infer_worker = task_info['infer_worker']
+        recv_cache_ref = self.kvcache_ref[infer_worker]
+        # print(f"[CacheCoordinator] Trying send message to kvcache{infer_worker}")
         owner_cache_ref = recv_cache_ref.owner()
         rpc.rpc_sync(to=owner_cache_ref, func=call_remote_method, 
                             args=(KVCache.receive_data, recv_cache_ref, task_info))

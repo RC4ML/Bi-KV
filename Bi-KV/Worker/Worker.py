@@ -62,8 +62,8 @@ class Worker:
                 print(f"[Worker][RANK {self.rank}] Poll result: {res} Task info list: {[task['id'] for task in task_info_list]}")
             finished_signal = res[0]
             cache_miss_dict = res[1]
-            # if DEBUG:
-            print(f"[Worker][RANK {self.rank}] Cache miss dict: {cache_miss_dict}")
+            if DEBUG:
+                print(f"[Worker][RANK {self.rank}] Cache miss dict: {cache_miss_dict}")
             if finished_signal and -1 not in cache_miss_dict.values():
                 if DEBUG:
                     print(f"[Worker][RANK {self.rank}] Requests finished")
@@ -102,7 +102,7 @@ class Worker:
         self.write_compute_buffer(task_info)
 
     def send_kvcache_data(self, task_info):
-        dst_rank = task_info['send_worker'] + KVCACHE_offset
+        dst_rank = task_info['cache_worker'] + KVCACHE_offset
         request_id = task_info['request_id']
         data_length = task_info['data_length']
         ind = task_info['index']
@@ -116,13 +116,13 @@ class Worker:
         print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
 
     def write_compute_buffer(self, task_info):
-        send_worker = task_info['send_worker']
+        cache_worker = task_info['cache_worker']
         data_length = task_info['data_length']
         token_num = task_info['token_num']
         req_id = task_info['request_id']
         ind = task_info['index']
         start_pos,offest = self.buffer_control_dict[req_id][ind]
-        src_rank = send_worker + KVCACHE_offset
+        src_rank = cache_worker + KVCACHE_offset
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}, length: {data_length}")
         # received_tensor = torch.empty_like(self.compute_buffer)
