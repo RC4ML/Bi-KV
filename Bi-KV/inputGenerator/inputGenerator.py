@@ -38,8 +38,8 @@ class LLMInput():
         for ind,i in enumerate(self._get_random_index(batch_size)):
             data_point = self.dataset[i]
             user_id = data_point['user_id']
-            user_history_tokens = data_point["history_length"] # 用户历史的token数量
-            items = [PromptItem(data_point["candidates_id"][jnd],len(j)) for jnd,j in enumerate(data_point["goods_index"])]
+            user_history_tokens = data_point["history_length"]# 用户历史的token数量
+            items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
             prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp))
         return prompts
@@ -50,7 +50,7 @@ class LLMInput():
         self.dataset = self._init_dataset()
     
     def set_random(self,random_name:str) -> None:
-        random_name_list = ['sample','weighted']
+        random_name_list = ['random','weighted']
         if random_name not in random_name_list:
             print("Warning: Invalid Random Name")
         self.random_name = random_name
@@ -63,7 +63,7 @@ class LLMInput():
     
     def _get_random_index(self,batch_size: int) -> List[int]:
         indices = list(range(len(self.dataset)))
-        if self.random_name == "sample":
+        if self.random_name == "random":
             return random.sample(indices, batch_size)
         elif self.random_name == "weighted":
             weights = [data_point["history_length"] for data_point in self.dataset]

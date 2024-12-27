@@ -61,10 +61,11 @@ def init_process(rank, world_size):
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
         # scheduler.test_write_cache()
-        input_generator = LLMInput(5,5,args)
+        input_generator = LLMInput(10,5,args)
+        # input_generator.set_random('random')
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
-        scheduler.start(20,10)
+        scheduler.start(10,128)
 
     dist.barrier()
     rpc.shutdown()

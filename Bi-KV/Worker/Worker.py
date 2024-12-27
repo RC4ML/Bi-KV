@@ -13,6 +13,11 @@ from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIG
 from Remote.remote_call import call_remote_method
 import torch
 from config import *
+from Model.qwen2 import process_task_info, prepare_attention_meta, Qwen2ForCausalLM, AttentionMetadata
+from transformers import Qwen2Config
+from vllm.config import CacheConfig
+
+import time
 
 # TODO 提取model_params作为公共参数
 model_params = {
@@ -43,6 +48,26 @@ class Worker:
         )
         self.start_pos = 0
         self.cache_miss_dict = {}
+        
+        intermediate_size = 8960
+        head_dim = 128
+        kv_cache_block_size = 16
+        max_kv_cache_blocks = 1024        
+        self.local_kv_cache_block_size = kv_cache_block_size
+        self.local_max_kv_cache_blocks = max_kv_cache_blocks
+        self.local_kvcache = [
+            torch.randn(
+            self.local_max_kv_cache_blocks, 2, self.local_kv_cache_block_size, model_params['num_kv_heads'], head_dim, dtype=torch.float16, device=self.device
+            ) for _ in range(model_params['num_layers'])
+        ]
+        self.cache_config = CacheConfig(kv_cache_block_size, 1.0, 1, "auto")
+        self.model_config = Qwen2Config(hidden_size = model_params['num_q_heads']*head_dim,
+                                        intermediate_size = intermediate_size,
+                                        num_hidden_layers = model_params['num_layers'],
+                                        num_attention_heads = model_params['num_q_heads'],
+                                        num_key_value_heads = model_params['num_kv_heads'])
+        torch.set_default_dtype(torch.float16)
+        self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
     def forward(self, task_info_list:List):
@@ -82,7 +107,52 @@ class Worker:
         # print(f"[Worker][RANK {self.rank}] Moving compute buffer to device {self.gpu_index}...")
         # self.compute_buffer.to(self.device)
 
-
+    def forward_with_computation(self, task_info_list:List):
+        time1 = time.time()
+        coordinator_owner = self.coordinator_rref.owner()
+        req_id = task_info_list[0]['request_id']
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
+        rpc.rpc_sync(to=coordinator_owner, 
+                         func=call_remote_method, 
+                         args=(CacheCoordinator.add_requests,self.coordinator_rref, 
+                               task_info_list))
+        finished_signal = False
+        cache_miss_dict = {'0':-1}
+        time2 = time.time()
+        while not finished_signal and -1 in cache_miss_dict.values():
+            if DEBUG:
+                print(f"[Worker][RANK {self.rank}] Poll requests...")
+            future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
+                                         args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
+            res = future_call_poll.wait()
+            if DEBUG:
+                print(f"[Worker][RANK {self.rank}] Poll result: {res} Task info list: {[task['id'] for task in task_info_list]}")
+            finished_signal = res[0]
+            cache_miss_dict = res[1]
+            if DEBUG:
+                print(f"[Worker][RANK {self.rank}] Cache miss dict: {cache_miss_dict}")
+            if finished_signal and -1 not in cache_miss_dict.values():
+                if DEBUG:
+                    print(f"[Worker][RANK {self.rank}] Requests finished")
+            else:
+                if DEBUG:
+                    print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
+                # time.sleep(5)
+            if 0 in cache_miss_dict.values():
+                pass
+                # print(f"[Worker][RANK {self.rank}] Cache miss detected")
+            self.cache_miss_dict[req_id] = cache_miss_dict
+        time3 = time.time()
+        queried_task_info_list = process_task_info(task_info_list)
+        attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
+        input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
+        positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
+        time4 = time.time()
+        output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
+        time5 = time.time()
+        
+        print(f"worker {self.worker_index}, {time2-time1}s, {time3-time2}s, {time4-time3}s, {time5-time4}s, {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(20*1000*1000*1000)}")
     def receive_task_info(self, task_info_list):
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
@@ -97,8 +167,8 @@ class Worker:
                 next_pos = i['token_num']
             self.buffer_control_dict[req_id].append((self.start_pos,next_pos))
             self.start_pos = next_pos
-        self.forward(task_info_list)
-        self.preprare_send_data(task_info_list)
+        self.forward_with_computation(task_info_list)
+        # self.preprare_send_data(task_info_list)
 
     def receive_kvcache_data(self, task_info):
         if DEBUG:
