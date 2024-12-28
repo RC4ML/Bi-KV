@@ -46,7 +46,7 @@ class KVCache:
         # TODO 实际的读写逻辑大概不是这样
         start_pos = random.randint(0,self.cache_size/2)
         send_tensor = self.cache_data[start_pos:start_pos+token_num]
-        dist.send(tensor=send_tensor, dst=dst_rank)
+        # dist.send(tensor=send_tensor, dst=dst_rank)
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
 

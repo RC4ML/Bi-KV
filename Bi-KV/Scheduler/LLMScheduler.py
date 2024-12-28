@@ -188,7 +188,8 @@ class LLMScheduler:
                             'data_length':data_length,
                             'index': 0,
                             'task_type': SIGNAL_CHECK,
-                            'type': 'user cache'
+                            'type': 'user cache',
+                            'task_num': 2
                             }
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -205,7 +206,8 @@ class LLMScheduler:
                                 "data_length":-1,
                                 'index':-1,
                                 'task_type': SIGNAL_ACK,
-                                'type':'compute'}                                            
+                                'type':'compute',
+                                'task_num': 2}                                            
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
@@ -223,7 +225,8 @@ class LLMScheduler:
                                 "data_length":data_length,
                                 'index':ind,
                                 'task_type': SIGNAL_CHECK,
-                                'type':'item cache'}
+                                'type':'item cache',
+                                'task_num': (len(prompt.items)+1)}
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
                     else:
@@ -236,7 +239,8 @@ class LLMScheduler:
                     "data_length":-1,
                     'index':-1,
                     'task_type': SIGNAL_ACK,
-                    'type':'compute'}
+                    'type':'compute',
+                    'task_num': (len(prompt.items)+1)}
                 task_info_list_dict[infer_worker].append(task_info)
 
         for infer_worker in task_info_list_dict:

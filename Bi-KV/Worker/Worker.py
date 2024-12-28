@@ -36,7 +36,7 @@ class Worker:
         self.rank = rank
         self.worker_index=rank-WORKER_offset
         self.coordinator_rref = coordinator_rref
-        self.gpu_index = rank
+        self.gpu_index = 0 # rank
         self.device = torch.device(f"cuda:{self.gpu_index}")
         self.buffer_control_dict = {}
         self.buffer_size = 1000
@@ -110,39 +110,20 @@ class Worker:
     def forward_with_computation(self, task_info_list:List):
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
-        req_id = task_info_list[0]['request_id']
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                task_info_list))
-        finished_signal = False
-        cache_miss_dict = {'0':-1}
         time2 = time.time()
-        while not finished_signal and -1 in cache_miss_dict.values():
-            if DEBUG:
-                print(f"[Worker][RANK {self.rank}] Poll requests...")
-            future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-                                         args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
-            res = future_call_poll.wait()
-            if DEBUG:
-                print(f"[Worker][RANK {self.rank}] Poll result: {res} Task info list: {[task['id'] for task in task_info_list]}")
-            finished_signal = res[0]
-            cache_miss_dict = res[1]
-            if DEBUG:
-                print(f"[Worker][RANK {self.rank}] Cache miss dict: {cache_miss_dict}")
-            if finished_signal and -1 not in cache_miss_dict.values():
-                if DEBUG:
-                    print(f"[Worker][RANK {self.rank}] Requests finished")
-            else:
-                if DEBUG:
-                    print(f"[Worker][RANK {self.rank}] Requests are still being processed...")
-                # time.sleep(5)
-            if 0 in cache_miss_dict.values():
-                pass
-                # print(f"[Worker][RANK {self.rank}] Cache miss detected")
+        
+        future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
+                            args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
+        cache_miss_dict = future_call_poll.wait()
+        for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict
+
         time3 = time.time()
         queried_task_info_list = process_task_info(task_info_list)
         attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
@@ -151,22 +132,24 @@ class Worker:
         time4 = time.time()
         output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
-        
-        print(f"worker {self.worker_index}, {time2-time1}s, {time3-time2}s, {time4-time3}s, {time5-time4}s, {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(20*1000*1000*1000)}")
+        print(f"worker {self.worker_index}, read kv cache time{time3-time2}s, compute time {time5-time4}s")
+
+        # print(f"worker {self.worker_index}, {time2-time1}s, {time3-time2}s, {time4-time3}s, {time5-time4}s, {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(20*1000*1000*1000)}")
     def receive_task_info(self, task_info_list):
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
-        req_id = task_info_list[0]['request_id']
-        self.buffer_control_dict[req_id] = []
-        for i in task_info_list:
-            next_pos = self.start_pos+i['token_num']
-            if next_pos > self.buffer_size:
-                # buffer满了就从头开始
-                # 做出cache管理之前的权宜之计
-                self.start_pos = 0
-                next_pos = i['token_num']
-            self.buffer_control_dict[req_id].append((self.start_pos,next_pos))
-            self.start_pos = next_pos
+        for task_info in task_info_list:
+            req_id = task_info['request_id']
+            self.buffer_control_dict[req_id] = []
+            for i in task_info_list:
+                next_pos = self.start_pos+i['token_num']
+                if next_pos > self.buffer_size:
+                    # buffer满了就从头开始
+                    # 做出cache管理之前的权宜之计
+                    self.start_pos = 0
+                    next_pos = i['token_num']
+                self.buffer_control_dict[req_id].append((self.start_pos,next_pos))
+                self.start_pos = next_pos
         self.forward_with_computation(task_info_list)
         # self.preprare_send_data(task_info_list)
 
@@ -204,11 +187,11 @@ class Worker:
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
-        dist.recv(tensor=recv_tensor, src=src_rank)
+        # dist.recv(tensor=recv_tensor, src=src_rank)
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv tensor from Rank {src_rank}: {recv_tensor}")
         # 在这里使用to(device)会导致卡死
-        self.compute_buffer[start_pos:offest] = recv_tensor
+        # self.compute_buffer[start_pos:offest] = recv_tensor
 
     def preprare_send_data(self,task_info_list):
         coordinator_owner = self.coordinator_rref.owner()
