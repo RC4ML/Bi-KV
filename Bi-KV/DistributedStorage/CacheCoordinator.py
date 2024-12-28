@@ -181,13 +181,15 @@ class CacheCoordinator:
         task_list_length = len(task_info_list)
         res_counter = self.finished_counter_table.get(request_id,-1)
         res_flag = self.finished_flag_table.get(request_id, False)
-        # print(f"[CacheCoordinator] counter: {res_counter} length:{task_list_length}")
+        # print(f"[CacheCoordinator] lru_miss_dict: {self.lru_miss_dict}")
         for i in task_info_list:
             # 如果得到None是不是得多做一些操作？
             if self.lru_miss_dict.get(request_id)==None:
+                # print(f"[CacheCoordinator] Error: request_id {request_id} not found in lru_miss_dict")
                 continue
             if i['id'] == -1:
                 continue
+            # print(f"[CacheCoordinator] Polling id {i['id']}")
             cache_miss_dict[i['id']] = self.lru_miss_dict[request_id].get(i['id'],-1)
         if res_counter == task_list_length and res_flag:
             return True, cache_miss_dict

@@ -1,11 +1,7 @@
 from ast import List
-from functools import cache
 import time
-from wsgiref.util import request_uri
-from httpx import request
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
-from wandb import finish
 from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
@@ -56,7 +52,7 @@ class Worker:
                                task_info_list))
         finished_signal = False
         cache_miss_dict = {'0':-1}
-        while not finished_signal and -1 in cache_miss_dict.values():
+        while not finished_signal and (-1 in cache_miss_dict.values() or cache_miss_dict == {}):
             if DEBUG:
                 print(f"[Worker][RANK {self.rank}] Poll requests...")
             future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
@@ -144,6 +140,7 @@ class Worker:
         coordinator_owner = self.coordinator_rref.owner()
         request_id = task_info_list[0]['request_id']
         cache_miss_dict = self.cache_miss_dict.get(request_id,{})
+        # print(f"[Worker][RANK {self.rank}] Preparing... {self.cache_miss_dict} {cache_miss_dict} {request_id}")
         send_task_list = []
         for task_info in task_info_list:
             item_id = task_info['id']
