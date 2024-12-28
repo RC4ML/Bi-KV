@@ -72,7 +72,6 @@ class LLMSchedulerBackup:
             return "Item First"
 
     def _schedule(self,input:InputPrompt,worker_id:int) -> None:
-        # TODO: 实现具体的worker
         self.workers[worker_id].append(input)
 
     def schedule_prompts(self,prompt_list: List[InputPrompt]) -> None:

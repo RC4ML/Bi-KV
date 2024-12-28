@@ -56,7 +56,7 @@ def run_worker(rank, world_size):
 def main():
     """主函数"""
     print("[Main] 启动分布式系统")
-    world_size = 5  # 动态获取可用 GPU 数量  4 GPU<kvcache> 1 CPU<cachescheduler>
+    world_size = 5  # 动态获取可用 GPU 数量  4 GPU<kvcache> 1 CPU<CacheCoordinator>
     if world_size < 2:
         raise ValueError("需要至少 2 个 GPU 来运行此程序。")
     mp.spawn(run_worker, args=(world_size,), nprocs=world_size, join=True)

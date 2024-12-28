@@ -54,7 +54,7 @@ class GamesDataset(AbstractDataset):
     def preprocess(self):
         dataset_path = self._get_preprocessed_dataset_path()
         if dataset_path.is_file():
-            print('Already preprocessed. Skip preprocessing')
+            print('[Dataset] Already preprocessed. Skip preprocessing')
             return
         if not dataset_path.parent.is_dir():
             dataset_path.parent.mkdir(parents=True)
