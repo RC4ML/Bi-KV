@@ -243,7 +243,7 @@ class LLMScheduler:
             infer_worker_ref = self.worker_ref[infer_worker]
             owner_worker_ref = infer_worker_ref.owner() 
             future = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                    args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
+                    args=(Worker.receive_task_info_batch, infer_worker_ref, task_info_list_dict[infer_worker]))
             future_list.append(future)  
             
         for future in future_list:
@@ -263,8 +263,8 @@ class LLMScheduler:
         for _ in range(iter_round):
             input_prompt_list = self.prompt_generator.Generate(batchsize)
             self.add_prompt_list(input_prompt_list)
-        self.process_prompt()
-        # self.process_prompt_batch()
+        # self.process_prompt()
+        self.process_prompt_batch()
         self.set_worker_call.wait()
         # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         

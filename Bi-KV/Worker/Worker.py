@@ -96,6 +96,17 @@ class Worker:
         self.forward(task_info_list)
         self.preprare_send_data(task_info_list)
 
+    def receive_task_info_batch(self, task_info_list):
+        # 按照req_id分组
+        task_info_dict = {}
+        for i in task_info_list:
+            req_id = i['request_id']
+            if req_id not in task_info_dict:
+                task_info_dict[req_id] = []
+            task_info_dict[req_id].append(i)
+        for i in task_info_dict.values():
+            self.receive_task_info(i)
+
     def receive_kvcache_data(self, task_info):
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv kvcache data {task_info} from kvcache")
