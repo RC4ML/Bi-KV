@@ -1,4 +1,4 @@
 # hostfile
-10.0.0.2 slots=2
+10.0.0.2 slots=3
 10.0.0.1 slots=1
 10.0.0.3 slots=1

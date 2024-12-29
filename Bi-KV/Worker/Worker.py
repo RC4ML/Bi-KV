@@ -29,14 +29,15 @@ model_params = {
 
 token_shape = (model_params['head_size'],
                model_params['num_kv_heads'],
-               model_params['num_layers'])
+               model_params['num_layers'],
+               2)
 
 class Worker:
     def __init__(self, rank, coordinator_rref):
         self.rank = rank
         self.worker_index=rank-WORKER_offset
         self.coordinator_rref = coordinator_rref
-        self.gpu_index = 0 # rank
+        self.gpu_index = 0 # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
         self.buffer_control_dict = {}
         self.buffer_size = 1000
@@ -49,17 +50,19 @@ class Worker:
         self.start_pos = 0
         self.cache_miss_dict = {}
         
+        ## initialize model and parameters for inference
         intermediate_size = 8960
         head_dim = 128
         kv_cache_block_size = 16
-        max_kv_cache_blocks = 1024        
+        max_kv_cache_blocks = 10240        
         self.local_kv_cache_block_size = kv_cache_block_size
         self.local_max_kv_cache_blocks = max_kv_cache_blocks
         self.local_kvcache = [
             torch.randn(
-            self.local_max_kv_cache_blocks, 2, self.local_kv_cache_block_size, model_params['num_kv_heads'], head_dim, dtype=torch.float16, device=self.device
+            self.local_max_kv_cache_blocks * self.local_kv_cache_block_size, 2, model_params['num_kv_heads'], head_dim, dtype=torch.float16, device=self.device
             ) for _ in range(model_params['num_layers'])
         ]
+        print(self.local_kvcache[0].shape)
         self.cache_config = CacheConfig(kv_cache_block_size, 1.0, 1, "auto")
         self.model_config = Qwen2Config(hidden_size = model_params['num_q_heads']*head_dim,
                                         intermediate_size = intermediate_size,
@@ -122,19 +125,20 @@ class Worker:
                             args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
         cache_miss_dict = future_call_poll.wait()
         for req_id in cache_miss_dict:
-            self.cache_miss_dict[req_id] = cache_miss_dict
+            self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
 
+        ## start model inference
         time3 = time.time()
         queried_task_info_list = process_task_info(task_info_list)
         attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
         input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
         positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
         time4 = time.time()
+        # print(f"shape {input_ids.shape} {cached_tokens}")
         output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
-        print(f"worker {self.worker_index}, read kv cache time{time3-time2}s, compute time {time5-time4}s")
+        print(f"worker {self.worker_index}, read kv cache time {time3-time2}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
 
-        # print(f"worker {self.worker_index}, {time2-time1}s, {time3-time2}s, {time4-time3}s, {time5-time4}s, {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(20*1000*1000*1000)}")
     def receive_task_info(self, task_info_list):
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
@@ -174,20 +178,19 @@ class Worker:
 
     def write_compute_buffer(self, task_info):
         cache_worker = task_info['cache_worker']
-        data_length = task_info['data_length']
         token_num = task_info['token_num']
-        req_id = task_info['request_id']
-        ind = task_info['index']
-        start_pos,offest = self.buffer_control_dict[req_id][ind]
+        # req_id = task_info['request_id']
+        # ind = task_info['index']
+        # start_pos,offest = self.buffer_control_dict[req_id][ind] 
+        # NOTE: disable buffer management temporarily
         src_rank = cache_worker + KVCACHE_offset
         if DEBUG:
-            print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}, length: {data_length}")
-        # received_tensor = torch.empty_like(self.compute_buffer)
+            print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}")
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
-        # dist.recv(tensor=recv_tensor, src=src_rank)
+        dist.recv(tensor=recv_tensor, src=src_rank)
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv tensor from Rank {src_rank}: {recv_tensor}")
         # 在这里使用to(device)会导致卡死

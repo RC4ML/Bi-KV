@@ -116,6 +116,7 @@ class Qwen2MLP(nn.Module):
 class Qwen2Attention(nn.Module):
 
     def __init__(self,
+                 prefill_wrapper,
                  device,
                  hidden_size: int,
                  num_heads: int,
@@ -147,10 +148,7 @@ class Qwen2Attention(nn.Module):
             rope_scaling=rope_scaling,
         )
         self.device = device
-        workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
-        self.prefill_wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(
-            workspace_buffer, "NHD"
-        )
+        self.prefill_wrapper=prefill_wrapper
         
     def forward(
         self,
@@ -159,15 +157,12 @@ class Qwen2Attention(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
-        # qkv, _ = self.qkv_proj(hidden_states)
-        # q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q = self.q_proj(hidden_states)
         k = self.k_proj(hidden_states)
         v = self.v_proj(hidden_states)
-        # print(f"hidden state shape {hidden_states.shape}")
         
         q, k = self.rotary_emb(positions, q, k)
-        # q = q.view(self.nnz_qo, self.total_num_heads, self.head_dim).half()
+
         assert (q.shape[0] == attn_metadata.nnz_qo)
         self.prefill_wrapper.begin_forward(
             attn_metadata.qo_indptr,
@@ -193,6 +188,7 @@ class Qwen2DecoderLayer(nn.Module):
 
     def __init__(
         self,
+        prefill_wrapper,
         device,
         config: Qwen2Config,
         cache_config: Optional[CacheConfig] = None,
@@ -204,6 +200,7 @@ class Qwen2DecoderLayer(nn.Module):
         rope_theta = getattr(config, "rope_theta", 1000000)
         rope_scaling = getattr(config, "rope_scaling", None)
         self.self_attn = Qwen2Attention(
+            prefill_wrapper=prefill_wrapper,
             device=device,
             hidden_size=self.hidden_size,
             num_heads=config.num_attention_heads,
@@ -270,9 +267,15 @@ class Qwen2Model(nn.Module):
             config.vocab_size,
             config.hidden_size
         )
+        
+        workspace_buffer = torch.empty(1024 * 1024 * 1024, dtype=torch.uint8, device=device)
+        self.prefill_wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(
+            workspace_buffer, "NHD"
+        )
         self.start_layer, self.end_layer, self.layers = make_layers(
             config.num_hidden_layers,
-            lambda prefix: Qwen2DecoderLayer(device=device,
+            lambda prefix: Qwen2DecoderLayer(prefill_wrapper = self.prefill_wrapper,
+                                            device=device,
                                              config=config,
                                              cache_config=cache_config,
                                              quant_config=quant_config),
@@ -432,28 +435,26 @@ def prepare_attention_meta(
     total_communication_cost = 0
     for taskinfo in queried_task_info_list:
         kv_seq_lens.append(taskinfo['cached_tokens'] + taskinfo['recomputing_tokens'])
+        # q_seq_lens.append(taskinfo['cached_tokens'] + taskinfo['recomputing_tokens'])
         q_seq_lens.append(taskinfo['recomputing_tokens'])
+
         total_communication_cost += taskinfo['cached_tokens']
     # Compute qo_indptr 
     qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     qo_indptr[1:] = torch.cumsum(torch.tensor(q_seq_lens, dtype=torch.int32, device=device), dim=0)
     nnz_qo = qo_indptr[-1]
-    # print(f"nnz {nnz_qo}")
     # Calculate paged_kv_indptr and paged_kv_last_page_len
     paged_kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    assert (paged_kv_indptr[-1] <= max_kv_cache_blocks)
     paged_kv_last_page_len = torch.zeros(batch_size, dtype=torch.int32, device=device)
     for i, size in enumerate(kv_seq_lens):
         full_pages = size // kv_cache_block_size  # Number of full pages
         last_page = size % kv_cache_block_size   # Tokens in the last (partial) page
         paged_kv_indptr[i + 1] = paged_kv_indptr[i] + full_pages + (1 if last_page > 0 else 0)
         paged_kv_last_page_len[i] = last_page if last_page > 0 else kv_cache_block_size       
+    assert paged_kv_indptr[-1] <= max_kv_cache_blocks
+
     paged_kv_indices = torch.arange(paged_kv_indptr[-1], dtype=torch.int32, device=device)
 
-    # print(qo_indptr)
-    # print(paged_kv_indptr)
-    # print(paged_kv_last_page_len)
-    # print(paged_kv_indices)
     return AttentionMetadata(nnz_qo, qo_indptr, paged_kv_indptr, paged_kv_indices, paged_kv_last_page_len), total_communication_cost
 
 hidden_size = 1536
@@ -463,30 +464,30 @@ num_attention_heads = 12
 num_kv_heads = 2
 head_dim = hidden_size // num_attention_heads
 kv_cache_block_size = 16
-max_kv_cache_blocks = 1024
+max_kv_cache_blocks = 10240
 
 task_info_list = [
-    {"request_id": 1, "id": 1, "recv_worker": 0, "token_num": 100, "data_length": 50, "index": 0, "type": "user cache"},
-    {"request_id": 1, "id": -1, "recv_worker": 0, "token_num": 200, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 2, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 2, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 2, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 2, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 3, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 3, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 3, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 3, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 4, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 5, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 5, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 5, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 5, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    {"request_id": 1, "id": 1, "recv_worker": 0, "token_num": 682, "data_length": 50, "index": 0, "type": "user cache"},
+    {"request_id": 1, "id": -1, "recv_worker": 0, "token_num": 25840, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 2, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 2, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 2, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 2, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 3, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 3, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 3, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 3, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 4, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 5, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 5, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 5, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 5, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
 ]
 
 # task_info_list = [
@@ -496,7 +497,7 @@ task_info_list = [
 
 
 if __name__ == '__main__':
-    device = f"cuda:1"
+    device = f"cuda:0"
     torch.set_default_dtype(torch.float16)
     model_config = Qwen2Config(hidden_size = hidden_size,
                                 intermediate_size = intermediate_size,
