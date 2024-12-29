@@ -40,7 +40,7 @@ from vllm.model_executor.layers.sampler import Sampler
 from torch.nn import Embedding
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors #, SamplerOutput
-from utils import make_layers
+from Model.utils import make_layers
 
 import flashinfer
 import time
@@ -116,6 +116,8 @@ class Qwen2MLP(nn.Module):
 class Qwen2Attention(nn.Module):
 
     def __init__(self,
+                 prefill_wrapper,
+                 device,
                  hidden_size: int,
                  num_heads: int,
                  num_kv_heads: int,
@@ -123,7 +125,8 @@ class Qwen2Attention(nn.Module):
                  rope_theta: float = 10000,
                  cache_config: Optional[CacheConfig] = None,
                  quant_config: Optional[QuantizationConfig] = None,
-                 rope_scaling: Optional[Tuple] = None) -> None:
+                 rope_scaling: Optional[Tuple] = None,
+                 ) -> None:
         super().__init__()
         self.hidden_size = hidden_size
         self.total_num_heads = num_heads
@@ -144,11 +147,8 @@ class Qwen2Attention(nn.Module):
             base=self.rope_theta,
             rope_scaling=rope_scaling,
         )
-        
-        workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device="cuda:0")
-        self.prefill_wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(
-            workspace_buffer, "NHD"
-        )
+        self.device = device
+        self.prefill_wrapper=prefill_wrapper
         
     def forward(
         self,
@@ -157,15 +157,12 @@ class Qwen2Attention(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
-        # qkv, _ = self.qkv_proj(hidden_states)
-        # q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q = self.q_proj(hidden_states)
         k = self.k_proj(hidden_states)
         v = self.v_proj(hidden_states)
-        # print(f"hidden state shape {hidden_states.shape}")
         
         q, k = self.rotary_emb(positions, q, k)
-        # q = q.view(self.nnz_qo, self.total_num_heads, self.head_dim).half()
+
         assert (q.shape[0] == attn_metadata.nnz_qo)
         self.prefill_wrapper.begin_forward(
             attn_metadata.qo_indptr,
@@ -191,6 +188,8 @@ class Qwen2DecoderLayer(nn.Module):
 
     def __init__(
         self,
+        prefill_wrapper,
+        device,
         config: Qwen2Config,
         cache_config: Optional[CacheConfig] = None,
         quant_config: Optional[QuantizationConfig] = None,
@@ -201,6 +200,8 @@ class Qwen2DecoderLayer(nn.Module):
         rope_theta = getattr(config, "rope_theta", 1000000)
         rope_scaling = getattr(config, "rope_scaling", None)
         self.self_attn = Qwen2Attention(
+            prefill_wrapper=prefill_wrapper,
+            device=device,
             hidden_size=self.hidden_size,
             num_heads=config.num_attention_heads,
             max_position=config.max_position_embeddings,
@@ -251,6 +252,7 @@ class Qwen2Model(nn.Module):
 
     def __init__(
         self,
+        device,
         config: Qwen2Config,
         cache_config: Optional[CacheConfig] = None,
         quant_config: Optional[QuantizationConfig] = None,
@@ -265,9 +267,16 @@ class Qwen2Model(nn.Module):
             config.vocab_size,
             config.hidden_size
         )
+        
+        workspace_buffer = torch.empty(1024 * 1024 * 1024, dtype=torch.uint8, device=device)
+        self.prefill_wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(
+            workspace_buffer, "NHD"
+        )
         self.start_layer, self.end_layer, self.layers = make_layers(
             config.num_hidden_layers,
-            lambda prefix: Qwen2DecoderLayer(config=config,
+            lambda prefix: Qwen2DecoderLayer(prefill_wrapper = self.prefill_wrapper,
+                                            device=device,
+                                             config=config,
                                              cache_config=cache_config,
                                              quant_config=quant_config),
             prefix=f"{prefix}.layers",
@@ -327,13 +336,14 @@ class Qwen2ForCausalLM(nn.Module):
 
     def __init__(
         self,
+        device,
         config: Qwen2Config,
         cache_config: Optional[CacheConfig] = None,
     ) -> None:
         super().__init__()
 
         self.config = config
-        self.model = Qwen2Model(config)
+        self.model = Qwen2Model(device=device, config=config)
         if config.tie_word_embeddings:
             self.lm_head = self.model.embed_tokens
         else:
@@ -416,34 +426,36 @@ def process_task_info(task_info_list):
 def prepare_attention_meta(
     queried_task_info_list,
     kv_cache_block_size,
-    max_kv_cache_blocks
+    max_kv_cache_blocks,
+    device
 ):    
     batch_size = len(queried_task_info_list)
     kv_seq_lens = []
     q_seq_lens = []
+    total_communication_cost = 0
     for taskinfo in queried_task_info_list:
         kv_seq_lens.append(taskinfo['cached_tokens'] + taskinfo['recomputing_tokens'])
+        # q_seq_lens.append(taskinfo['cached_tokens'] + taskinfo['recomputing_tokens'])
         q_seq_lens.append(taskinfo['recomputing_tokens'])
+
+        total_communication_cost += taskinfo['cached_tokens']
     # Compute qo_indptr 
-    qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device="cuda:0")
-    qo_indptr[1:] = torch.cumsum(torch.tensor(q_seq_lens, dtype=torch.int32, device="cuda:0"), dim=0)
+    qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
+    qo_indptr[1:] = torch.cumsum(torch.tensor(q_seq_lens, dtype=torch.int32, device=device), dim=0)
     nnz_qo = qo_indptr[-1]
     # Calculate paged_kv_indptr and paged_kv_last_page_len
-    paged_kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device="cuda:0")
-    assert (paged_kv_indptr[-1] <= max_kv_cache_blocks)
-    paged_kv_last_page_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda:0")
+    paged_kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
+    paged_kv_last_page_len = torch.zeros(batch_size, dtype=torch.int32, device=device)
     for i, size in enumerate(kv_seq_lens):
         full_pages = size // kv_cache_block_size  # Number of full pages
         last_page = size % kv_cache_block_size   # Tokens in the last (partial) page
         paged_kv_indptr[i + 1] = paged_kv_indptr[i] + full_pages + (1 if last_page > 0 else 0)
         paged_kv_last_page_len[i] = last_page if last_page > 0 else kv_cache_block_size       
-    paged_kv_indices = torch.arange(paged_kv_indptr[-1], dtype=torch.int32, device="cuda:0")
+    assert paged_kv_indptr[-1] <= max_kv_cache_blocks
 
-    # print(qo_indptr)
-    # print(paged_kv_indptr)
-    # print(paged_kv_last_page_len)
-    # print(paged_kv_indices)
-    return AttentionMetadata(nnz_qo, qo_indptr, paged_kv_indptr, paged_kv_indices, paged_kv_last_page_len)
+    paged_kv_indices = torch.arange(paged_kv_indptr[-1], dtype=torch.int32, device=device)
+
+    return AttentionMetadata(nnz_qo, qo_indptr, paged_kv_indptr, paged_kv_indices, paged_kv_last_page_len), total_communication_cost
 
 hidden_size = 1536
 intermediate_size = 8960
@@ -452,30 +464,30 @@ num_attention_heads = 12
 num_kv_heads = 2
 head_dim = hidden_size // num_attention_heads
 kv_cache_block_size = 16
-max_kv_cache_blocks = 1024
+max_kv_cache_blocks = 10240
 
 task_info_list = [
-    {"request_id": 1, "id": 1, "recv_worker": 0, "token_num": 100, "data_length": 50, "index": 0, "type": "user cache"},
-    {"request_id": 1, "id": -1, "recv_worker": 0, "token_num": 200, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 2, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 2, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 2, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 2, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 3, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 3, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 3, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 3, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 4, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
-    {"request_id": 5, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
-    {"request_id": 5, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
-    {"request_id": 5, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
-    {"request_id": 5, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    {"request_id": 1, "id": 1, "recv_worker": 0, "token_num": 682, "data_length": 50, "index": 0, "type": "user cache"},
+    {"request_id": 1, "id": -1, "recv_worker": 0, "token_num": 25840, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 2, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 2, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 2, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 2, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 3, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 3, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 3, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 3, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 4, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 4, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 4, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 4, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
+    # {"request_id": 5, "id": 2, "recv_worker":  0, "token_num": 150, "data_length": 75, "index": 0, "type": "item cache"},
+    # {"request_id": 5, "id": 3, "recv_worker":  0, "token_num": 105, "data_length": 105, "index": 1, "type": "item cache"},
+    # {"request_id": 5, "id": 4, "recv_worker":  0, "token_num": 115, "data_length": 100, "index": 2, "type": "item cache"},
+    # {"request_id": 5, "id": -1, "recv_worker": 0, "token_num": 250, "data_length": -1, "index": -1, "type": "compute"},
 ]
 
 # task_info_list = [
@@ -485,6 +497,7 @@ task_info_list = [
 
 
 if __name__ == '__main__':
+    device = f"cuda:0"
     torch.set_default_dtype(torch.float16)
     model_config = Qwen2Config(hidden_size = hidden_size,
                                 intermediate_size = intermediate_size,
@@ -493,20 +506,22 @@ if __name__ == '__main__':
                                 num_key_value_heads = num_kv_heads)
     kv_caches = [
         torch.randn(
-        max_kv_cache_blocks, 2, kv_cache_block_size, num_kv_heads, head_dim, dtype=torch.float16, device="cuda:0"
+        max_kv_cache_blocks, 2, kv_cache_block_size, num_kv_heads, head_dim, dtype=torch.float16, device=device
         ) for _ in range(num_hidden_layers)
     ]
     cache_config = CacheConfig(kv_cache_block_size, 1.0, 1, "auto")
-    QwenModel = Qwen2ForCausalLM(model_config, cache_config).to("cuda:0")
+    QwenModel = Qwen2ForCausalLM(device, model_config, cache_config).to(device)
     
     print("start forward")
 
     prepare_time = time.time()
     queried_task_info_list = process_task_info(task_info_list)
-    attn_metadata = prepare_attention_meta(queried_task_info_list, kv_cache_block_size, max_kv_cache_blocks)
-    input_ids = torch.zeros(attn_metadata.nnz_qo).int().to("cuda:0")
-    positions = torch.arange(attn_metadata.nnz_qo).long().to("cuda:0")
+    attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, kv_cache_block_size, max_kv_cache_blocks, device)
+
+    input_ids = torch.zeros(attn_metadata.nnz_qo).int().to(device)
+    positions = torch.arange(attn_metadata.nnz_qo).long().to(device)
     print(f"prepare time: {(time.time()-prepare_time)}")
+
     ## warmup
     for i in range(10):
         output = QwenModel(input_ids, positions, kv_caches, attn_metadata)    
@@ -514,5 +529,6 @@ if __name__ == '__main__':
     start_time = time.time()
     for i in range(10):
         output = QwenModel(input_ids, positions, kv_caches, attn_metadata)
-    print("latency: {}s".format((time.time()-start_time)/10))
+    print("compute latency: {}s".format((time.time()-start_time)/10))
+    print(f"communication latency: {(cached_tokens*num_kv_heads*head_dim*num_hidden_layers*2*2)/(20*1000*1000*1000)}s")
     

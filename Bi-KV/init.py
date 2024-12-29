@@ -16,7 +16,7 @@ from Remote.remote_call import call_remote_method
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 args.model_code = 'llm'
-args.llm_retrieved_path = "/data/testmodel/LlamaRec/experiments/lru/games"
+args.llm_retrieved_path =  "/share/nfs/sunjie/games"
 args.dataset_code = "games"
 
 # 设置日志记录
@@ -44,7 +44,7 @@ def init_backend(rank, world_size, process_type, type_index, timeout = 120):
         rank=rank,
         world_size=world_size,
         rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
-            rpc_timeout = timeout
+            rpc_timeout = timeout#, _transports=["uv"]
         )
     )
 
@@ -61,10 +61,11 @@ def init_process(rank, world_size):
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
         # scheduler.test_write_cache()
-        input_generator = LLMInput(5,5,args)
+        input_generator = LLMInput(20,5,args)
+        # input_generator.set_random('random')
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
-        scheduler.start(20,10)
+        scheduler.start(4,128)
 
     dist.barrier()
     rpc.shutdown()
