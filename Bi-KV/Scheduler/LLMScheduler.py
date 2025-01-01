@@ -27,7 +27,7 @@ class LLMScheduler:
         self.prompt_list = []
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
-        self.batchsize = 8
+        self.batchsize = 32
         
         # 获取coordinator的rpc info
         # 根据PROCESS_TYPES: scheduler=0, coordinator=1, workers=2...(2+WORKER_NUM-1), kvcache后面
@@ -101,7 +101,7 @@ class LLMScheduler:
             token_num = prompt.user_history_tokens
             data_length = self.calculate_data_len(token_num) 
             self._id_counter += 1
-            print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
+            # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
             task_info = {"request_id":self._id_counter,
                          "id":prompt.user_id, 
                          "infer_worker":infer_worker, 
@@ -134,7 +134,7 @@ class LLMScheduler:
             task_info_list_dict = {}
             self._id_counter += 1
             infer_worker = self.strategy(prompt.user_id)
-            print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
+            # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
             for ind,i in enumerate(prompt.items):
                 token_num = i.token_count
                 data_length = self.calculate_data_len(token_num) 
@@ -176,11 +176,11 @@ class LLMScheduler:
             prompt_order = PromptOrder(prompt)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First":
-                infer_worker = self.strategy(prompt.user_id)
+                infer_worker = self.strategy(self._id_counter)
                 token_num = prompt.user_history_tokens
                 data_length = self.calculate_data_len(token_num) 
                 self._id_counter += 1
-                print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
+                # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
                 task_info = {"request_id":self._id_counter,
                             "id":prompt.user_id, 
                             "infer_worker":infer_worker, 
@@ -188,7 +188,8 @@ class LLMScheduler:
                             'data_length':data_length,
                             'index': 0,
                             'task_type': SIGNAL_CHECK,
-                            'type': 'user cache'
+                            'type': 'user cache',
+                            'task_num': 2
                             }
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -205,14 +206,15 @@ class LLMScheduler:
                                 "data_length":-1,
                                 'index':-1,
                                 'task_type': SIGNAL_ACK,
-                                'type':'compute'}                                            
+                                'type':'compute',
+                                'task_num': 2}                                            
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
                 self._id_counter += 1
-                infer_worker = self.strategy(prompt.user_id)
-                print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
+                infer_worker = self.strategy(self._id_counter)
+                # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
                     token_num = i.token_count
                     data_length = self.calculate_data_len(token_num) 
@@ -223,7 +225,8 @@ class LLMScheduler:
                                 "data_length":data_length,
                                 'index':ind,
                                 'task_type': SIGNAL_CHECK,
-                                'type':'item cache'}
+                                'type':'item cache',
+                                'task_num': (len(prompt.items)+1)}
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
                     else:
@@ -236,7 +239,8 @@ class LLMScheduler:
                     "data_length":-1,
                     'index':-1,
                     'task_type': SIGNAL_ACK,
-                    'type':'compute'}
+                    'type':'compute',
+                    'task_num': (len(prompt.items)+1)}
                 task_info_list_dict[infer_worker].append(task_info)
 
         for infer_worker in task_info_list_dict:
@@ -302,7 +306,7 @@ class LLMScheduler:
 def PromptOrder(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
-    print(f"user {user_tokens}, item {item_tokens}")
+    # print(f"user {user_tokens}, item {item_tokens}")
     if user_tokens > item_tokens:
         return "User History First"
     else:
