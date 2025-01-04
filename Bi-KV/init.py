@@ -16,7 +16,8 @@ from Remote.remote_call import call_remote_method
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 args.model_code = 'llm'
-args.llm_retrieved_path =  "/share/nfs/sunjie/games"
+# args.llm_retrieved_path =  "/share/nfs/sunjie/games"
+args.llm_retrieved_path = "/data/testmodel/LlamaRec/experiments/lru/games"
 args.dataset_code = "games"
 
 # 设置日志记录
