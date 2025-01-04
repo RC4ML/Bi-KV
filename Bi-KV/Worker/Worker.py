@@ -33,7 +33,7 @@ class Worker:
         self.rank = rank
         self.worker_index=rank-WORKER_offset
         self.coordinator_rref = coordinator_rref
-        self.gpu_index = 0 # NOTE: set to rank in a single machine
+        self.gpu_index = rank # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
         self.buffer_control_dict = {}
         self.buffer_size = 1000
@@ -123,24 +123,27 @@ class Worker:
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
 
-        ## start model inference
-        time3 = time.time()
-        queried_task_info_list = process_task_info(task_info_list)
-        attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
-        input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
-        positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
-        time4 = time.time()
-        # print(f"shape {input_ids.shape} {cached_tokens}")
-        output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
-        time5 = time.time()
-        print(f"worker {self.worker_index}, read kv cache time {time3-time2}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
+        # ## start model inference
+        # time3 = time.time()
+        # queried_task_info_list = process_task_info(task_info_list)
+        # attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
+        # input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
+        # positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
+        # time4 = time.time()
+        # # print(f"shape {input_ids.shape} {cached_tokens}")
+        # output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
+        # time5 = time.time()
+        # print(f"worker {self.worker_index}, read kv cache time {time3-time2}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
 
     def receive_task_info(self, task_info_list):
+        # 此时的task_info_list是一个request的所有task，req_id相同
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
         for task_info in task_info_list:
             req_id = task_info['request_id']
-            self.buffer_control_dict[req_id] = []
+            # TODO 这里的逻辑不太对，等于是每个req_id初始化一次了
+            if req_id not in self.buffer_control_dict:
+                self.buffer_control_dict[req_id] = []
             for i in task_info_list:
                 next_pos = self.start_pos+i['token_num']
                 if next_pos > self.buffer_size:
@@ -151,7 +154,8 @@ class Worker:
                 self.buffer_control_dict[req_id].append((self.start_pos,next_pos))
                 self.start_pos = next_pos
         self.forward_with_computation(task_info_list)
-        # self.preprare_send_data(task_info_list)
+        # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
+        self.preprare_send_data(task_info_list)
 
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
@@ -212,6 +216,7 @@ class Worker:
         for task_info in task_info_list:
             item_id = task_info['id']
             if cache_miss_dict.get(item_id) == 0:
+                # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")

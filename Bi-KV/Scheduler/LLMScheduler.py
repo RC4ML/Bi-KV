@@ -6,7 +6,7 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
-from DistributedStorage.Signals import SIGNAL_ACK, SIGNAL_CHECK, SIGNAL_CHECK
+from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
 import time
 
@@ -122,7 +122,7 @@ class LLMScheduler:
                             "token_num":recomputing_tokens,
                             "data_length":-1,
                             'index':-1,
-                            'task_type': SIGNAL_ACK,
+                            'task_type': SIGNAL_SKIP,
                             'type':'compute'}                                            
             task_info_list_dict[infer_worker].append(task_info)
             infer_worker_ref = self.worker_ref[infer_worker]
@@ -157,7 +157,7 @@ class LLMScheduler:
                 "token_num":prompt.user_history_tokens,
                 "data_length":-1,
                 'index':-1,
-                'task_type': SIGNAL_ACK,
+                'task_type': SIGNAL_SKIP,
                 'type':'compute'}
             task_info_list_dict[infer_worker].append(task_info)
             # TODO 还需要解决cache是否miss的问题
@@ -205,7 +205,7 @@ class LLMScheduler:
                                 "token_num":recomputing_tokens,
                                 "data_length":-1,
                                 'index':-1,
-                                'task_type': SIGNAL_ACK,
+                                'task_type': SIGNAL_SKIP,
                                 'type':'compute',
                                 'task_num': 2}                                            
                 task_info_list_dict[infer_worker].append(task_info)
@@ -238,7 +238,7 @@ class LLMScheduler:
                     "token_num":prompt.user_history_tokens,
                     "data_length":-1,
                     'index':-1,
-                    'task_type': SIGNAL_ACK,
+                    'task_type': SIGNAL_SKIP,
                     'type':'compute',
                     'task_num': (len(prompt.items)+1)}
                 task_info_list_dict[infer_worker].append(task_info)
