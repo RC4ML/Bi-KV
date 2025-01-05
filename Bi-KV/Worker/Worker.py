@@ -1,5 +1,6 @@
 from ast import List
 import time
+import token
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from inputGenerator.inputGenerator import InputPrompt
@@ -176,16 +177,15 @@ class Worker:
     def send_kvcache_data(self, task_info):
         dst_rank = task_info['cache_worker'] + KVCACHE_offset
         request_id = task_info['request_id']
-        data_length = task_info['data_length']
-        ind = task_info['index']
+        token_num = task_info['token_num']
         # start_pos,offest = self.buffer_control_dict[request_id][ind]
-        start_pos,offest = 24,24+42
+        start_pos,offest = 24,24+token_num
         # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
         # TODO 实际发的数据从哪里来
         dist.send(tensor=self.compute_buffer[start_pos:offest], dst=dst_rank)
         # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={data_length}")
+        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
 
     def write_compute_buffer(self, task_info):
         cache_worker = task_info['cache_worker']

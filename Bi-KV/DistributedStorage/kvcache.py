@@ -1,4 +1,5 @@
 from ast import Dict
+from curses.ascii import SI
 import random
 
 import torch
@@ -135,39 +136,54 @@ class KVCache:
                 print(f"[KVCache][RANK {self.rank}] infer worker is {infer_worker}") 
             cache_worker = task_info['cache_worker']
             req_id = task_info['request_id']
+            if combined_task_info.get(infer_worker) == None:
+                combined_task_info[infer_worker] = {}
             if task_info['task_type'] == SIGNAL_SEND:
-                if combined_task_info.get(infer_worker) == None:
-                    combined_task_info[infer_worker] = {"infer_worker":infer_worker, 
-                                                        "cache_worker":cache_worker,
-                                                        "token_num":task_info['token_num'],
-                                                        'task_type': SIGNAL_SEND}    
+                if combined_task_info[infer_worker].get(SIGNAL_SEND) == None:
+                    combined_task_info[infer_worker][SIGNAL_SEND] = {"infer_worker":infer_worker, 
+                                                                "cache_worker":cache_worker,
+                                                                "token_num":task_info['token_num'],
+                                                                'task_type': SIGNAL_SEND,
+                                                                "request_id":req_id+100000} # 100000 to avoid conflict    
                 else:
-                    combined_task_info[infer_worker]['token_num'] += task_info['token_num']
+                    combined_task_info[infer_worker][SIGNAL_SEND]['token_num'] += task_info['token_num']
+            if task_info['task_type'] == SIGNAL_RECV:
+                if combined_task_info[infer_worker].get(SIGNAL_RECV) == None:
+                    combined_task_info[infer_worker][SIGNAL_RECV] = {"infer_worker":infer_worker, 
+                                                                "cache_worker":cache_worker,
+                                                                "token_num":task_info['token_num'],
+                                                                'task_type': SIGNAL_RECV,
+                                                                "request_id":req_id+200000,
+                                                                'id':task_info['id']+200000} # 200000 to avoid conflict    
+                else:
+                    combined_task_info[infer_worker][SIGNAL_RECV]['token_num'] += task_info['token_num']
             if confirmation_msg.get(req_id) == None:
                 confirmation_msg[req_id] = 1
             else:
                 confirmation_msg[req_id] += 1
-        for task_index in combined_task_info:
-            task_info = combined_task_info[task_index]
-            task_type = task_info['task_type']
-            infer_worker = task_info['infer_worker']
-            print(f"[KVCache][RANK {self.rank}] task type is {task_type}")
-            if task_type == SIGNAL_SEND:
-                remote_recv = rpc.rpc_async(
-                    to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
-                    args=(Worker.receive_kvcache_data, worker_ref_list[infer_worker], task_info))
-                self.send_data_batch(task_info)
-                remote_recv.wait()
-        
-            elif task_type == SIGNAL_RECV:
-                cache_worker = task_info['cache_worker']
+        for task_infer_worker in combined_task_info:
+            # task_info = combined_task_info[task_infer_worker]
+            combined_task_list = combined_task_info[task_infer_worker]
+            for task_info in combined_task_list.values():
+                task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
-                request_id = task_info['request_id']
-                worker_ref = worker_ref_list[infer_worker]
-                print(f"[KVCache] 执行请求 {request_id} - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
-                remote_send = rpc.rpc_async(
-                    to=worker_ref.owner(), func=call_remote_method, 
-                    args=(Worker.send_kvcache_data,worker_ref, task_info))
-                self.receive_data(task_info)
-                remote_send.wait()
+                # print(f"[KVCache][RANK {self.rank}] task type is {task_type}")
+                if task_type == SIGNAL_SEND:
+                    remote_recv = rpc.rpc_async(
+                        to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
+                        args=(Worker.receive_kvcache_data, worker_ref_list[infer_worker], task_info))
+                    self.send_data_batch(task_info)
+                    remote_recv.wait()
+            
+                elif task_type == SIGNAL_RECV:
+                    cache_worker = task_info['cache_worker']
+                    infer_worker = task_info['infer_worker']
+                    request_id = task_info['request_id']
+                    worker_ref = worker_ref_list[infer_worker]
+                    print(f"[KVCache] 执行请求 {request_id} - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
+                    remote_send = rpc.rpc_async(
+                        to=worker_ref.owner(), func=call_remote_method, 
+                        args=(Worker.send_kvcache_data,worker_ref, task_info))
+                    self.receive_data(task_info)
+                    remote_send.wait()
         return confirmation_msg
