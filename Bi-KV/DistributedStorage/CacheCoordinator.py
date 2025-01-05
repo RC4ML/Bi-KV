@@ -7,7 +7,7 @@ import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Storage import LRUCache
-from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE,SIGNAL_SKIP
 from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
 from config import *
@@ -66,26 +66,28 @@ class CacheCoordinator:
                 req_id = task_info['request_id']
                 cache_worker, infer_worker, executing = task_info['cache_worker'], task_info['infer_worker'], task_info['executing']
                 if True: 
+                    if task_info['task_type'] == SIGNAL_CHECK:
+                        if self.lru_miss_dict.get(req_id)==None:
+                            self.lru_miss_dict[req_id] = {}
+                        # TODO: support cache management and cache write
+                        if self.lru.get(task_info)==None:
+                            if DEBUG:
+                                print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
+                            self.lru_miss_dict[req_id][task_info['id']] = 0
+                        else:
+                            # cache hit
+                            self.lru_miss_dict[req_id][task_info['id']] = 1
+                        # 不查空就是SEND
+                        task_info['task_type'] = SIGNAL_SEND
+                    if task_info['task_type'] == SIGNAL_RECV:
+                        self.lru.put(task_info)
+                        
                     if self.finished_counter_table.get(task_info['request_id']) == None:
                         self.finished_counter_table[task_info['request_id']] = 0
                     if executable_requests.get(cache_worker) == None:
                         executable_requests[cache_worker] = [task_info]
                     else:
                         executable_requests[cache_worker].append(task_info)
-                    if task_info['task_type'] == SIGNAL_CHECK:
-                        if self.lru_miss_dict.get(req_id)==None:
-                            self.lru_miss_dict[req_id] = {}
-                        # TODO: support cache management and cache write
-                        # if self.lru.get(task_info)==None:
-                        #     if DEBUG:
-                        #         print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
-                        #     self.lru_miss_dict[req_id][task_info['id']] = 0
-                        # else:
-                            # cache hit
-                        self.lru_miss_dict[req_id][task_info['id']] = 1
-                        task_info['task_type'] = SIGNAL_SEND
-                    if task_info['task_type'] == SIGNAL_RECV:
-                        self.lru.put(task_info)
                     has_excuted = True
                 
             if not executable_requests and not has_excuted:
@@ -137,7 +139,7 @@ class CacheCoordinator:
         if DEBUG:
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
         # 若这里仍然是Check，则不执行
-        if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_ACK:
+        if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_SKIP:
             confirmation_msg = request_id
         else:
             future_send = rpc.rpc_async(
@@ -156,6 +158,8 @@ class CacheCoordinator:
 
     def _execute_request_batch(self, req_list:List[Dict], cache_worker):
         if DEBUG:
+            request_id = req_list[0]['request_id']
+            infer_worker = req_list[0]['infer_worker']
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
 
         future = rpc.rpc_async(
