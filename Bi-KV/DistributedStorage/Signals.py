@@ -7,3 +7,6 @@ SIGNAL_ACK = 3       # 确认信号（未使用，可根据需要扩展）
 SIGNAL_CHECK = 4     # 查询Cache信号
 SIGNAL_SKIP = 5      # 跳过信号
 SIGNAL_TERMINATE = -1 # 终止信号
+
+CACHE_MISS = 0
+CACHE_HIT = 1

@@ -1,12 +1,13 @@
-from ast import List
+from ast import Dict, List
 import time
 import token
+from regex import T
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
-from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE,CACHE_MISS
 from Remote.remote_call import call_remote_method
 import torch
 from config import *
@@ -36,8 +37,10 @@ class Worker:
         self.coordinator_rref = coordinator_rref
         self.gpu_index = rank # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
+        # key item id value(start_pos,offset) req_id?
+        # 多个req_id并发的情况？
         self.buffer_control_dict = {}
-        self.buffer_size = 1000
+        self.buffer_size = 10000
         self.compute_buffer = torch.full(
             (self.buffer_size,) + token_shape, 
             self.rank,
@@ -108,6 +111,7 @@ class Worker:
         # self.compute_buffer.to(self.device)
 
     def forward_with_computation(self, task_info_list:List):
+        # 这里的task_info同样有着一样的req_id
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
         if DEBUG:
@@ -120,6 +124,7 @@ class Worker:
         
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                             args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
+        # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
         cache_miss_dict = future_call_poll.wait()
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
@@ -141,19 +146,8 @@ class Worker:
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
         for task_info in task_info_list:
-            req_id = task_info['request_id']
-            # TODO 这里的逻辑不太对，等于是每个req_id初始化一次了
-            if req_id not in self.buffer_control_dict:
-                self.buffer_control_dict[req_id] = []
-            for i in task_info_list:
-                next_pos = self.start_pos+i['token_num']
-                if next_pos > self.buffer_size:
-                    # buffer满了就从头开始
-                    # 做出cache管理之前的权宜之计
-                    self.start_pos = 0
-                    next_pos = i['token_num']
-                self.buffer_control_dict[req_id].append((self.start_pos,next_pos))
-                self.start_pos = next_pos
+            id = task_info['id']
+            self._manage_buffer(id, task_info['token_num'])
         self.forward_with_computation(task_info_list)
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
@@ -174,23 +168,63 @@ class Worker:
             print(f"[Worker][RANK {self.rank}] Recv kvcache data {task_info} from kvcache")
         self.write_compute_buffer(task_info)
 
+    def receive_kvcache_data_batch(self, combined_task_info):
+        cache_worker = combined_task_info['cache_worker']
+        src_rank = cache_worker + KVCACHE_offset
+        token_num = combined_task_info['token_num']
+        recieve_pos_list = []
+        for id in combined_task_info['ids']:
+            if id > 20000:
+                print(f"[Worker][RANK {self.rank}] Error: id {id} is too large. Why???")
+            if id not in self.buffer_control_dict:
+                print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
+            recieve_pos_list.append(self.buffer_control_dict[id])
+        recv_tensor = torch.empty(
+            (token_num,) + token_shape, 
+            dtype=torch.float16
+        )
+        dist.recv(tensor=recv_tensor, src=src_rank)
+        # TODO 写入到buffer中
+
     def send_kvcache_data(self, task_info):
         dst_rank = task_info['cache_worker'] + KVCACHE_offset
-        request_id = task_info['request_id']
         token_num = task_info['token_num']
-        # start_pos,offest = self.buffer_control_dict[request_id][ind]
-        start_pos,offest = 24,24+token_num
+        id = task_info['id']
+        if id not in self.buffer_control_dict:
+            print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
+        start_pos,offest = self._manage_buffer(id, token_num)
         # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
+        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         # TODO 实际发的数据从哪里来
         dist.send(tensor=self.compute_buffer[start_pos:offest], dst=dst_rank)
         # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
+        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
-    def write_compute_buffer(self, task_info):
+    def send_kvcache_data_batch(self, combined_task_info):
+        dst_rank = combined_task_info['cache_worker'] + KVCACHE_offset
+        token_num = combined_task_info['token_num']
+        id_list = combined_task_info['ids']
+        send_tensor_list = []
+        for i in id_list:
+            if i > 20000:
+                print(f"[Worker][RANK {self.rank}] Error: id {i} is too large. Why???")
+            if i not in self.buffer_control_dict:
+                print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
+            start_pos,offest = self.buffer_control_dict[i]
+            send_tensor_list.append(self.compute_buffer[start_pos:offest])
+        send_tensor = torch.cat(send_tensor_list, dim=0)
+        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
+        dist.send(tensor=send_tensor, dst=dst_rank)
+        # if DEBUG:
+        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+
+    def write_compute_buffer(self, task_info:Dict):
         cache_worker = task_info['cache_worker']
         token_num = task_info['token_num']
         # req_id = task_info['request_id']
+        if task_info.get('ids') is not None:
+            for i in task_info['ids']:
+                self.buffer_control_dict[i] = []
         # ind = task_info['index']
         # start_pos,offest = self.buffer_control_dict[req_id][ind] 
         # NOTE: disable buffer management temporarily
@@ -208,14 +242,16 @@ class Worker:
         # self.compute_buffer[start_pos:offest] = recv_tensor
 
     def preprare_send_data(self,task_info_list):
+        # 这里的task_info同样有着一样的req_id
         coordinator_owner = self.coordinator_rref.owner()
         request_id = task_info_list[0]['request_id']
         cache_miss_dict = self.cache_miss_dict.get(request_id,{})
-        # print(f"[Worker][RANK {self.rank}] Preparing... {self.cache_miss_dict} {cache_miss_dict} {request_id}")
+        print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {sum(cache_miss_dict.values())/len(cache_miss_dict)}")
         send_task_list = []
         for task_info in task_info_list:
             item_id = task_info['id']
-            if cache_miss_dict.get(item_id) == 0:
+            # 这里能保证item_id在cache_miss_dict中吗？
+            if cache_miss_dict.get(item_id) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
@@ -224,3 +260,15 @@ class Worker:
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
+        # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
+
+    def _manage_buffer(self, id, token_num):
+        if id in self.buffer_control_dict:
+            return self.buffer_control_dict[id]
+        next_pos = self.start_pos + token_num
+        if next_pos > self.buffer_size:
+            self.start_pos = 0
+            next_pos = token_num
+        self.buffer_control_dict[id] = (self.start_pos,next_pos)
+        self.start_pos = next_pos
+        return self.buffer_control_dict[id]

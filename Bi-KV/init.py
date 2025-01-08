@@ -66,7 +66,7 @@ def init_process(rank, world_size):
         # input_generator.set_random('random')
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
-        scheduler.start(4,128)
+        scheduler.start(5,128)
 
     dist.barrier()
     rpc.shutdown()
