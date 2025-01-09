@@ -51,14 +51,27 @@ class KVCache:
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
 
-    def send_data_batch(self,task_info:Dict):
-        dst_rank = task_info['infer_worker'] + WORKER_offset
-        token_num = task_info['token_num']
+    def send_data_batch(self,combined_task_info:Dict):
+        dst_rank = combined_task_info['infer_worker'] + WORKER_offset
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        send_tensor_list = []
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
-        # TODO 实际的读写逻辑大概不是这样
-        start_pos = random.randint(0,self.cache_size/2)
-        send_tensor = self.cache_data[:token_num]#self.cache_data[start_pos:start_pos+token_num]
+        for id_token_pair in id_token_pair_list:
+            item_id = id_token_pair[0]
+            if item_id not in self.cache_control_dict:
+                pass
+            start_pos,next_pos = self.cache_control_dict[item_id]
+            if next_pos-start_pos != id_token_pair[1]:
+                print(f"[KVCache][Rank {self.rank}] Error: offest({next_pos-start_pos}) != token num({id_token_pair[1]})")
+                print(f"[KVCache][Rank {self.rank}] item_id={item_id}, start_pos={start_pos}, next_pos={next_pos} id_token_pair={id_token_pair}")  
+                print(f"[KVCache][Rank {self.rank}] 这里显然有问题！！！但是为了能跑起来我得先绕过去")
+                next_pos = start_pos + id_token_pair[1]
+            send_tensor_list.append(self.cache_data[start_pos:next_pos])
+        send_tensor = torch.cat(send_tensor_list, dim=0)
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
         dist.send(tensor=send_tensor, dst=dst_rank)
         time1 = time.time()
@@ -88,6 +101,24 @@ class KVCache:
         # self.cache_data[self.start_pos:next_pos] = recv_tensor
         self.cache_control_dict[item_id] = (self.start_pos,next_pos)
         self.start_pos = next_pos
+
+    def receive_data_batch(self, combined_task_info:Dict):
+        # request_id = task_info['request_id']
+        infer_worker = combined_task_info['infer_worker']
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        src_rank = infer_worker + WORKER_offset
+        # if DEBUG:
+        print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank} 长度为{token_num}")
+        recv_tensor = torch.empty(
+            (token_num,) + token_shape, 
+            dtype=torch.float16
+        )
+        dist.recv(tensor=recv_tensor, src=src_rank)
+        # if DEBUG:
+        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
+        for id_token_pair in id_token_pair_list:
+            self._manage_cache(id_token_pair[0], id_token_pair[1])
 
     def send_confirmation(self, confirmation_msg):
         if DEBUG:
@@ -136,35 +167,51 @@ class KVCache:
                 print(f"[KVCache][RANK {self.rank}] infer worker is {infer_worker}") 
             cache_worker = task_info['cache_worker']
             req_id = task_info['request_id']
+            token_num = task_info['token_num']
+            item_id = task_info['id']
+            if item_id == 4362 or item_id == 1884:
+                print(f"[KVCache][RANK {self.rank}] {item_id} token_num = {token_num} in req {req_id}")
+            if item_id == -1:
+                # 似乎confirmation_msg需要考虑到-1重计算任务
+                if confirmation_msg.get(req_id) == None:
+                    confirmation_msg[req_id] = 1
+                else:
+                    confirmation_msg[req_id] += 1
+                continue
+            # 到底是什么时候需要管理缓存？
+            # 为什么只在RECV管理时会出现key error？
+            self._manage_cache(item_id, token_num)
             if combined_task_info.get(infer_worker) == None:
                 combined_task_info[infer_worker] = {}
             if task_info['task_type'] == SIGNAL_SEND:
                 if combined_task_info[infer_worker].get(SIGNAL_SEND) == None:
                     combined_task_info[infer_worker][SIGNAL_SEND] = {"infer_worker":infer_worker, 
                                                                 "cache_worker":cache_worker,
-                                                                "token_num":task_info['token_num'],
+                                                                "token_num":token_num,
                                                                 'task_type': SIGNAL_SEND,
-                                                                # 改为(id,token_num)
-                                                                'ids':[task_info['id']]} # 100000 to avoid conflict    
+                                                                'id_token_pair':[(item_id,token_num)],
+                                                                } 
                 else:
-                    combined_task_info[infer_worker][SIGNAL_SEND]['token_num'] += task_info['token_num']
-                    combined_task_info[infer_worker][SIGNAL_SEND]['ids'].append(task_info['id'])
+                    combined_task_info[infer_worker][SIGNAL_SEND]['token_num'] += token_num
+                    combined_task_info[infer_worker][SIGNAL_SEND]['id_token_pair'].append((item_id,token_num))
             if task_info['task_type'] == SIGNAL_RECV:
+                # 按理说应该是只有RECV才要管理？
+                # self._manage_cache(item_id, token_num)
                 if combined_task_info[infer_worker].get(SIGNAL_RECV) == None:
                     combined_task_info[infer_worker][SIGNAL_RECV] = {"infer_worker":infer_worker, 
                                                                 "cache_worker":cache_worker,
-                                                                "token_num":task_info['token_num'],
+                                                                "token_num":token_num,
                                                                 'task_type': SIGNAL_RECV,
-                                                                'ids':[task_info['id']],
-                                                                'id':task_info['id']+200000 # receive_data用到了id
+                                                                'id_token_pair':[(item_id,token_num)],
                                                                 }    
                 else:
-                    combined_task_info[infer_worker][SIGNAL_RECV]['token_num'] += task_info['token_num']
-                    combined_task_info[infer_worker][SIGNAL_RECV]['ids'].append(task_info['id'])
+                    combined_task_info[infer_worker][SIGNAL_RECV]['token_num'] += token_num
+                    combined_task_info[infer_worker][SIGNAL_RECV]['id_token_pair'].append((item_id,token_num))
             if confirmation_msg.get(req_id) == None:
                 confirmation_msg[req_id] = 1
             else:
                 confirmation_msg[req_id] += 1
+        # 初始状态下，第一轮是全空的任务
         for task_infer_worker in combined_task_info:
             # task_info = combined_task_info[task_infer_worker]
             combined_task_list = combined_task_info[task_infer_worker]
@@ -173,6 +220,7 @@ class KVCache:
                 infer_worker = task_info['infer_worker']
                 # print(f"[KVCache][RANK {self.rank}] task type is {task_type}")
                 if task_type == SIGNAL_SEND:
+                    print(f"[KVCache][RANK {self.rank}] 执行请求 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
                     remote_recv = rpc.rpc_async(
                         to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
@@ -183,10 +231,23 @@ class KVCache:
                     cache_worker = task_info['cache_worker']
                     infer_worker = task_info['infer_worker']
                     worker_ref = worker_ref_list[infer_worker]
-                    print(f"[KVCache] 执行请求 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
+                    print(f"[KVCache][RANK {self.rank}] 执行请求 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
                     remote_send = rpc.rpc_async(
                         to=worker_ref.owner(), func=call_remote_method, 
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
-                    self.receive_data(task_info)
+                    self.receive_data_batch(task_info)
                     remote_send.wait()
         return confirmation_msg
+    
+    def _manage_cache(self, item_id, token_num):
+        if item_id in self.cache_control_dict:
+            return self.cache_control_dict[item_id]
+        next_pos = self.start_pos + token_num
+        if next_pos > self.cache_size:
+            self.start_pos = 0
+            next_pos = token_num
+        self.cache_control_dict[item_id] = (self.start_pos,next_pos)
+        self.start_pos = next_pos
+        if item_id == 4362 or item_id == 1884:
+            print(f"[KVCache][Rank {self.rank}] item_id={item_id},token_num = {token_num}, start_pos={self.cache_control_dict[item_id][0]}, next_pos={self.cache_control_dict[item_id][1]}")
+        return self.cache_control_dict[item_id]

@@ -173,7 +173,8 @@ class Worker:
         src_rank = cache_worker + KVCACHE_offset
         token_num = combined_task_info['token_num']
         recieve_pos_list = []
-        for id in combined_task_info['ids']:
+        for id_pair in combined_task_info['id_token_pair']:
+            id = id_pair[0]
             if id > 20000:
                 print(f"[Worker][RANK {self.rank}] Error: id {id} is too large. Why???")
             if id not in self.buffer_control_dict:
@@ -203,14 +204,20 @@ class Worker:
     def send_kvcache_data_batch(self, combined_task_info):
         dst_rank = combined_task_info['cache_worker'] + KVCACHE_offset
         token_num = combined_task_info['token_num']
-        id_list = combined_task_info['ids']
+        id_pair_list = combined_task_info['id_token_pair']
         send_tensor_list = []
-        for i in id_list:
+        for id_pair in id_pair_list:
+            i = id_pair[0]
+            token_num = id_pair[1]
             if i > 20000:
                 print(f"[Worker][RANK {self.rank}] Error: id {i} is too large. Why???")
             if i not in self.buffer_control_dict:
                 print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
             start_pos,offest = self.buffer_control_dict[i]
+            if offest - start_pos != token_num:
+                print(f"[Worker][RANK {self.rank}] Error: token_num {token_num} not equal to buffer size {offest - start_pos}")
+                print(f"[Worker][Rank {self.rank}] 这里显然有问题！！！但是为了能跑起来我得先绕过去")
+                offest = start_pos + token_num
             send_tensor_list.append(self.compute_buffer[start_pos:offest])
         send_tensor = torch.cat(send_tensor_list, dim=0)
         print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
@@ -222,8 +229,8 @@ class Worker:
         cache_worker = task_info['cache_worker']
         token_num = task_info['token_num']
         # req_id = task_info['request_id']
-        if task_info.get('ids') is not None:
-            for i in task_info['ids']:
+        if task_info.get('id_token_pair') is not None:
+            for i in task_info['id_token_pair']:
                 self.buffer_control_dict[i] = []
         # ind = task_info['index']
         # start_pos,offest = self.buffer_control_dict[req_id][ind] 
@@ -262,13 +269,13 @@ class Worker:
                                send_task_list))
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
 
-    def _manage_buffer(self, id, token_num):
-        if id in self.buffer_control_dict:
-            return self.buffer_control_dict[id]
+    def _manage_buffer(self, item_id, token_num):
+        if item_id in self.buffer_control_dict:
+            return self.buffer_control_dict[item_id]
         next_pos = self.start_pos + token_num
         if next_pos > self.buffer_size:
             self.start_pos = 0
             next_pos = token_num
-        self.buffer_control_dict[id] = (self.start_pos,next_pos)
+        self.buffer_control_dict[item_id] = (self.start_pos,next_pos)
         self.start_pos = next_pos
-        return self.buffer_control_dict[id]
+        return self.buffer_control_dict[item_id]

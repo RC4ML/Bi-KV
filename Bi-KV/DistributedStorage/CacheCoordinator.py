@@ -63,21 +63,20 @@ class CacheCoordinator:
                 idle_time_counter = 0
                 task_info = self.request_table.get_nowait()
                 req_id = task_info['request_id']
-                cache_worker, infer_worker, executing = task_info['cache_worker'], task_info['infer_worker'], task_info['executing']
+                cache_worker = task_info['cache_worker']
                 if True: 
                     if task_info['task_type'] == SIGNAL_CHECK:
                         if self.lru_miss_dict.get(req_id)==None:
                             self.lru_miss_dict[req_id] = {}
                         # TODO: support cache management and cache write
                         if self.lru.get(task_info)==None:
-                            if DEBUG:
-                                print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
+                            # if DEBUG:
+                            # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
                             self.lru_miss_dict[req_id][task_info['id']] = CACHE_MISS
                         else:
                             # cache hit
                             self.lru_miss_dict[req_id][task_info['id']] = CACHE_HIT
-                        # 不查空就是SEND
-                        task_info['task_type'] = SIGNAL_SEND
+                            task_info['task_type'] = SIGNAL_SEND
                     if task_info['task_type'] == SIGNAL_RECV:
                         self.lru.put(task_info)
                     # 初始化finished_counter_table
