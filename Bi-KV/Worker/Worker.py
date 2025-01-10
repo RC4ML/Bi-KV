@@ -174,12 +174,10 @@ class Worker:
         token_num = combined_task_info['token_num']
         recieve_pos_list = []
         for id_pair in combined_task_info['id_token_pair']:
-            id = id_pair[0]
-            if id > 20000:
-                print(f"[Worker][RANK {self.rank}] Error: id {id} is too large. Why???")
-            if id not in self.buffer_control_dict:
-                print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
-            recieve_pos_list.append(self.buffer_control_dict[id])
+            item_id = id_pair[0]
+            if item_id not in self.buffer_control_dict:
+                print(f"[Worker][RANK {self.rank}] Error: id {item_id} not in buffer control dict")
+            recieve_pos_list.append(self.buffer_control_dict[item_id])
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
@@ -209,21 +207,20 @@ class Worker:
         for id_pair in id_pair_list:
             i = id_pair[0]
             token_num = id_pair[1]
-            if i > 20000:
-                print(f"[Worker][RANK {self.rank}] Error: id {i} is too large. Why???")
             if i not in self.buffer_control_dict:
                 print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
             start_pos,offest = self.buffer_control_dict[i]
             if offest - start_pos != token_num:
-                print(f"[Worker][RANK {self.rank}] Error: token_num {token_num} not equal to buffer size {offest - start_pos}")
-                print(f"[Worker][Rank {self.rank}] 这里显然有问题！！！但是为了能跑起来我得先绕过去")
+                print(f"[Worker][RANK {self.rank}] Fatal Error: token_num {token_num} != buffer size {offest - start_pos} id index{id_pair_list.index(id_pair)}")
+                print(f"[Worker][Rank {self.rank}] To continue the process, we have to ignore this error")
                 offest = start_pos + token_num
             send_tensor_list.append(self.compute_buffer[start_pos:offest])
         send_tensor = torch.cat(send_tensor_list, dim=0)
-        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=send_tensor, dst=dst_rank)
-        # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def write_compute_buffer(self, task_info:Dict):
         cache_worker = task_info['cache_worker']

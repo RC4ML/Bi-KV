@@ -182,7 +182,7 @@ class LLMScheduler:
                 self._id_counter += 1
                 # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
                 task_info = {"request_id":self._id_counter,
-                            "id":prompt.user_id, 
+                            "id":prompt.user_id+2000000, # 避免user和item碰撞，user_id+2000000 
                             "infer_worker":infer_worker, 
                             "token_num":token_num,
                             'data_length':data_length,

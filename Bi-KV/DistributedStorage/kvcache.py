@@ -64,9 +64,9 @@ class KVCache:
                 pass
             start_pos,next_pos = self.cache_control_dict[item_id]
             if next_pos-start_pos != id_token_pair[1]:
-                print(f"[KVCache][Rank {self.rank}] Error: offest({next_pos-start_pos}) != token num({id_token_pair[1]})")
+                print(f"[KVCache][Rank {self.rank}] Fatal Error: offest({next_pos-start_pos}) != token num({id_token_pair[1]}) id index{id_token_pair_list.index(id_token_pair)}")
                 print(f"[KVCache][Rank {self.rank}] item_id={item_id}, start_pos={start_pos}, next_pos={next_pos} id_token_pair={id_token_pair}")  
-                print(f"[KVCache][Rank {self.rank}] 这里显然有问题！！！但是为了能跑起来我得先绕过去")
+                print(f"[KVCache][Rank {self.rank}] To continue the process, we have to ignore this error")
                 next_pos = start_pos + id_token_pair[1]
             send_tensor_list.append(self.cache_data[start_pos:next_pos])
         send_tensor = torch.cat(send_tensor_list, dim=0)
@@ -85,15 +85,15 @@ class KVCache:
         token_num = task_info['token_num']
         item_id = task_info['id']
         src_rank = infer_worker + WORKER_offset
-        # if DEBUG:
-        print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank}")
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
-        # if DEBUG:
-        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
+        if DEBUG:
+            print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
         next_pos = self.start_pos + token_num
         if next_pos > self.cache_size:
             self.start_pos = 0
@@ -108,15 +108,15 @@ class KVCache:
         token_num = combined_task_info['token_num']
         id_token_pair_list = combined_task_info['id_token_pair']
         src_rank = infer_worker + WORKER_offset
-        # if DEBUG:
-        print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank} 长度为{token_num}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank} 长度为{token_num}")
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
-        # if DEBUG:
-        print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
+        if DEBUG:
+            print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
         for id_token_pair in id_token_pair_list:
             self._manage_cache(id_token_pair[0], id_token_pair[1])
 
@@ -220,7 +220,7 @@ class KVCache:
                 infer_worker = task_info['infer_worker']
                 # print(f"[KVCache][RANK {self.rank}] task type is {task_type}")
                 if task_type == SIGNAL_SEND:
-                    print(f"[KVCache][RANK {self.rank}] 执行请求 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+                    # print(f"[KVCache][RANK {self.rank}] 执行Send请求 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
                     remote_recv = rpc.rpc_async(
                         to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
@@ -231,7 +231,7 @@ class KVCache:
                     cache_worker = task_info['cache_worker']
                     infer_worker = task_info['infer_worker']
                     worker_ref = worker_ref_list[infer_worker]
-                    print(f"[KVCache][RANK {self.rank}] 执行请求 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
+                    # print(f"[KVCache][RANK {self.rank}] 执行Recv请求 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
                     remote_send = rpc.rpc_async(
                         to=worker_ref.owner(), func=call_remote_method, 
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
