@@ -7,20 +7,10 @@ import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV
 from rpc_def import KVCACHE_offset,WORKER_offset
 from Remote.remote_call import call_remote_method
+from Model.qwen2 import token_shape
 from config import *
 import time
-# TODO 提取model_params作为公共参数
-model_params = {
-    "head_size": 128,
-    "num_q_heads": 12, 
-    "num_kv_heads": 2,      
-    "num_layers": 28 
-}
 
-token_shape = (model_params['head_size'],
-               model_params['num_kv_heads'],
-               model_params['num_layers'],
-               2)
 
 class KVCache:
     def __init__(self, rank):
@@ -118,6 +108,7 @@ class KVCache:
             print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
         for id_token_pair in id_token_pair_list:
             self._manage_cache(id_token_pair[0], id_token_pair[1])
+        # TODO 写入Cache
 
     def send_confirmation(self, confirmation_msg):
         if DEBUG:

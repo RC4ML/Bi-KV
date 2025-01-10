@@ -9,24 +9,11 @@ from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 import torch
 from config import *
-from Model.qwen2 import process_task_info, prepare_attention_meta, Qwen2ForCausalLM, AttentionMetadata
+from Model.qwen2 import process_task_info, prepare_attention_meta, Qwen2ForCausalLM, AttentionMetadata, token_shape, model_params
 from transformers import Qwen2Config
 from vllm.config import CacheConfig
 
 import time
-
-# TODO 提取model_params作为公共参数
-model_params = {
-    "head_size": 128,
-    "num_q_heads": 12, 
-    "num_kv_heads": 2,      
-    "num_layers": 28 
-}
-
-token_shape = (model_params['head_size'],
-               model_params['num_kv_heads'],
-               model_params['num_layers'],
-               2)
 
 class Worker:
     def __init__(self, rank, coordinator_rref):
