@@ -30,6 +30,7 @@ class LRUCache:
         self.current_size += size
         
         while self.current_size > self.capacity:
+            # print(f"[LRU] eviction: current_size {self.current_size} > capacity {self.capacity}")
             oldest_key, oldest_value = self.cache.popitem(last=False)
             self.current_size -= oldest_value[1]
             # print(f"[LRU] eviction: removed key {oldest_key}")

@@ -1,13 +1,11 @@
 from ast import Dict, List
 import time
-import token
-from regex import T
+
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
-from inputGenerator.inputGenerator import InputPrompt
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
-from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE,CACHE_MISS
+from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 import torch
 from config import *
@@ -250,7 +248,6 @@ class Worker:
         coordinator_owner = self.coordinator_rref.owner()
         request_id = task_info_list[0]['request_id']
         cache_miss_dict = self.cache_miss_dict.get(request_id,{})
-        print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {sum(cache_miss_dict.values())/len(cache_miss_dict)}")
         send_task_list = []
         for task_info in task_info_list:
             item_id = task_info['id']
@@ -259,6 +256,9 @@ class Worker:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
+        hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
+        if hit_rate > 0.7:
+            print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 

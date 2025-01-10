@@ -1,11 +1,10 @@
 from ast import Dict
-from curses.ascii import SI
 import random
 
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
-from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV
 from rpc_def import KVCACHE_offset,WORKER_offset
 from Remote.remote_call import call_remote_method
 from config import *
@@ -226,6 +225,7 @@ class KVCache:
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
                     self.send_data_batch(task_info)
                     remote_recv.wait()
+                    print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
             
                 elif task_type == SIGNAL_RECV:
                     cache_worker = task_info['cache_worker']
@@ -237,6 +237,8 @@ class KVCache:
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
                     self.receive_data_batch(task_info)
                     remote_send.wait()
+                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
+                    
         return confirmation_msg
     
     def _manage_cache(self, item_id, token_num):
@@ -248,6 +250,4 @@ class KVCache:
             next_pos = token_num
         self.cache_control_dict[item_id] = (self.start_pos,next_pos)
         self.start_pos = next_pos
-        if item_id == 4362 or item_id == 1884:
-            print(f"[KVCache][Rank {self.rank}] item_id={item_id},token_num = {token_num}, start_pos={self.cache_control_dict[item_id][0]}, next_pos={self.cache_control_dict[item_id][1]}")
         return self.cache_control_dict[item_id]
