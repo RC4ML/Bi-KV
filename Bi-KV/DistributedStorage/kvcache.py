@@ -161,14 +161,7 @@ class KVCache:
             req_id = task_info['request_id']
             token_num = task_info['token_num']
             item_id = task_info['id']
-            if item_id == 4362 or item_id == 1884:
-                print(f"[KVCache][RANK {self.rank}] {item_id} token_num = {token_num} in req {req_id}")
             if item_id == -1:
-                # 似乎confirmation_msg需要考虑到-1重计算任务
-                if confirmation_msg.get(req_id) == None:
-                    confirmation_msg[req_id] = 1
-                else:
-                    confirmation_msg[req_id] += 1
                 continue
             # 到底是什么时候需要管理缓存？
             # 为什么只在RECV管理时会出现key error？
@@ -205,12 +198,10 @@ class KVCache:
                 confirmation_msg[req_id] += 1
         # 初始状态下，第一轮是全空的任务
         for task_infer_worker in combined_task_info:
-            # task_info = combined_task_info[task_infer_worker]
             combined_task_list = combined_task_info[task_infer_worker]
             for task_info in combined_task_list.values():
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
-                # print(f"[KVCache][RANK {self.rank}] task type is {task_type}")
                 if task_type == SIGNAL_SEND:
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
                     remote_recv = rpc.rpc_async(
