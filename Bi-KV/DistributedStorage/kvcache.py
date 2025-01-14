@@ -233,6 +233,8 @@ class KVCache:
         return confirmation_msg
     
     def _manage_cache(self, item_id, token_num):
+        # TODO 换出策略 和coordinator的LRU联动
+        # 由coordinator决定存储位置
         if item_id in self.cache_control_dict:
             return self.cache_control_dict[item_id]
         next_pos = self.start_pos + token_num
