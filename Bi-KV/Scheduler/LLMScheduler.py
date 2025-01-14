@@ -261,7 +261,6 @@ class LLMScheduler:
         self.prompt_generator = prompt_generator
 
     def start(self, iter_round:int, batchsize:int):
-        # TODO 搞清楚到底是要做什么
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return

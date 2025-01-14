@@ -1,4 +1,4 @@
-from ast import Dict
+from typing import Dict, Tuple
 import random
 
 import torch
@@ -33,7 +33,6 @@ class KVCache:
         token_num = task_info['token_num']
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
-        # TODO 实际的读写逻辑大概不是这样
         start_pos = random.randint(0,self.cache_size/2)
         send_tensor = self.cache_data[start_pos:start_pos+token_num]
         dist.send(tensor=send_tensor, dst=dst_rank)
@@ -106,9 +105,12 @@ class KVCache:
         dist.recv(tensor=recv_tensor, src=src_rank)
         if DEBUG:
             print(f"[KVCache][CPU {self.cpu_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
+        start_pos = 0
+        # 写入cache
         for id_token_pair in id_token_pair_list:
-            self._manage_cache(id_token_pair[0], id_token_pair[1])
-        # TODO 写入Cache
+            pos = self._manage_cache(id_token_pair[0], id_token_pair[1])
+            self.cache_data[pos[0]:pos[1]] = recv_tensor[start_pos:start_pos+id_token_pair[1]]
+            start_pos += id_token_pair[1]
 
     def send_confirmation(self, confirmation_msg):
         if DEBUG:
@@ -232,7 +234,7 @@ class KVCache:
                     
         return confirmation_msg
     
-    def _manage_cache(self, item_id, token_num):
+    def _manage_cache(self, item_id:int, token_num:int)->Tuple[int,int]:
         # TODO 换出策略 和coordinator的LRU联动
         # 由coordinator决定存储位置
         if item_id in self.cache_control_dict:

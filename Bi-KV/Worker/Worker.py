@@ -157,18 +157,19 @@ class Worker:
         cache_worker = combined_task_info['cache_worker']
         src_rank = cache_worker + KVCACHE_offset
         token_num = combined_task_info['token_num']
-        recieve_pos_list = []
-        for id_pair in combined_task_info['id_token_pair']:
-            item_id = id_pair[0]
-            if item_id not in self.buffer_control_dict:
-                print(f"[Worker][RANK {self.rank}] Error: id {item_id} not in buffer control dict")
-            recieve_pos_list.append(self.buffer_control_dict[item_id])
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
         # TODO 写入到buffer中
+        start_pos = 0
+        for id_pair in combined_task_info['id_token_pair']:
+            item_id = id_pair[0]
+            offset = id_pair[1]
+            pos = self.buffer_control_dict[item_id]
+            self.compute_buffer[pos[0]:pos[1]] = recv_tensor[start_pos:start_pos+offset]
+            start_pos += offset
 
     def send_kvcache_data(self, task_info):
         dst_rank = task_info['cache_worker'] + KVCACHE_offset
@@ -179,7 +180,6 @@ class Worker:
         start_pos,offest = self._manage_buffer(id, token_num)
         # if DEBUG:
         print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
-        # TODO 实际发的数据从哪里来
         dist.send(tensor=self.compute_buffer[start_pos:offest], dst=dst_rank)
         # if DEBUG:
         print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
