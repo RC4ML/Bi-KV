@@ -163,7 +163,7 @@ class CacheCoordinator:
             request_id = req_list[0]['request_id']
             infer_worker = req_list[0]['infer_worker']
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
-
+        # TODO 若这里仍然是Check，则应该不执行
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
             call_remote_method, 
