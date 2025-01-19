@@ -6,7 +6,7 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
 from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
-from DistributedStorage.Signals import SIGNAL_ACK, SIGNAL_CHECK, SIGNAL_CHECK
+from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
 import time
 
@@ -122,7 +122,7 @@ class LLMScheduler:
                             "token_num":recomputing_tokens,
                             "data_length":-1,
                             'index':-1,
-                            'task_type': SIGNAL_ACK,
+                            'task_type': SIGNAL_SKIP,
                             'type':'compute'}                                            
             task_info_list_dict[infer_worker].append(task_info)
             infer_worker_ref = self.worker_ref[infer_worker]
@@ -157,7 +157,7 @@ class LLMScheduler:
                 "token_num":prompt.user_history_tokens,
                 "data_length":-1,
                 'index':-1,
-                'task_type': SIGNAL_ACK,
+                'task_type': SIGNAL_SKIP,
                 'type':'compute'}
             task_info_list_dict[infer_worker].append(task_info)
             # TODO 还需要解决cache是否miss的问题
@@ -182,14 +182,15 @@ class LLMScheduler:
                 self._id_counter += 1
                 # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
                 task_info = {"request_id":self._id_counter,
-                            "id":prompt.user_id, 
+                             # 可以用type来判断，不用+2000000
+                            "id":prompt.user_id+2000000, # 避免user和item碰撞，user_id+2000000 
                             "infer_worker":infer_worker, 
                             "token_num":token_num,
                             'data_length':data_length,
                             'index': 0,
                             'task_type': SIGNAL_CHECK,
                             'type': 'user cache',
-                            'task_num': 2
+                            'task_num': 1, # 不考虑recompute
                             }
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -205,9 +206,9 @@ class LLMScheduler:
                                 "token_num":recomputing_tokens,
                                 "data_length":-1,
                                 'index':-1,
-                                'task_type': SIGNAL_ACK,
+                                'task_type': SIGNAL_SKIP,
                                 'type':'compute',
-                                'task_num': 2}                                            
+                                'task_num': 1}                                            
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
@@ -226,7 +227,7 @@ class LLMScheduler:
                                 'index':ind,
                                 'task_type': SIGNAL_CHECK,
                                 'type':'item cache',
-                                'task_num': (len(prompt.items)+1)}
+                                'task_num': len(prompt.items)} # 不考虑recompute
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
                     else:
@@ -238,9 +239,9 @@ class LLMScheduler:
                     "token_num":prompt.user_history_tokens,
                     "data_length":-1,
                     'index':-1,
-                    'task_type': SIGNAL_ACK,
+                    'task_type': SIGNAL_SKIP,
                     'type':'compute',
-                    'task_num': (len(prompt.items)+1)}
+                    'task_num': len(prompt.items)}
                 task_info_list_dict[infer_worker].append(task_info)
 
         for infer_worker in task_info_list_dict:
@@ -260,7 +261,6 @@ class LLMScheduler:
         self.prompt_generator = prompt_generator
 
     def start(self, iter_round:int, batchsize:int):
-        # TODO 搞清楚到底是要做什么
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return

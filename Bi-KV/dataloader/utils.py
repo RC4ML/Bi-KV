@@ -84,6 +84,11 @@ def find_goods_index(input_ids):
             if i-2>=0 and input_ids[i-2] == 2277 and input_ids[i-1] == 29937:
                 # print(f"Found ###▁Response in {i} Stop Record")
                 in_candidate = False
+        # 过滤掉每个list末尾的29871
+        for sublist in goods_list:
+            if sublist:
+                if input_ids[sublist[-1]] == 29871:
+                    sublist.pop()
     return goods_list
 
 

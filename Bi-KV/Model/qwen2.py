@@ -495,6 +495,17 @@ task_info_list = [
 #     {"request_id": 1, "id": -1, "recv_worker": 0, "token_num": 1024, "data_length": -1, "index": -1, "type": "compute"},
 # ]
 
+model_params = {
+    "head_size": 128,
+    "num_q_heads": 12, 
+    "num_kv_heads": 2,      
+    "num_layers": 28 
+}
+
+token_shape = (model_params['head_size'],
+               model_params['num_kv_heads'],
+               model_params['num_layers'],
+               2)
 
 if __name__ == '__main__':
     device = f"cuda:0"

@@ -2,12 +2,11 @@ from typing import Tuple,Dict, List
 import time
 from queue import Queue
 
-from httpx import request
 import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Storage import LRUCache
-from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, SIGNAL_ACK, SIGNAL_TERMINATE
+from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, CACHE_MISS, CACHE_HIT,SIGNAL_SKIP
 from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
 from config import *
@@ -31,7 +30,7 @@ class CacheCoordinator:
         for i in range(self.kvcache_num):
             print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
             self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
-        self.lru_capacity = 1000
+        self.lru_capacity = 10000 # 10000时命中率尚可
         self.lru = LRUCache(self.lru_capacity, self.kvcache_num)
         self.lru_miss_dict = {}
     
@@ -64,30 +63,34 @@ class CacheCoordinator:
                 idle_time_counter = 0
                 task_info = self.request_table.get_nowait()
                 req_id = task_info['request_id']
-                cache_worker, infer_worker, executing = task_info['cache_worker'], task_info['infer_worker'], task_info['executing']
+                cache_worker = task_info['cache_worker']
                 if True: 
-                    if self.finished_counter_table.get(task_info['request_id']) == None:
-                        self.finished_counter_table[task_info['request_id']] = 0
-                    if executable_requests.get(cache_worker) == None:
-                        executable_requests[cache_worker] = [task_info]
-                    else:
-                        executable_requests[cache_worker].append(task_info)
                     if task_info['task_type'] == SIGNAL_CHECK:
                         if self.lru_miss_dict.get(req_id)==None:
                             self.lru_miss_dict[req_id] = {}
                         # TODO: support cache management and cache write
-                        # if self.lru.get(task_info)==None:
-                        #     if DEBUG:
-                        #         print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
-                        #     self.lru_miss_dict[req_id][task_info['id']] = 0
-                        # else:
+                        if self.lru.get(task_info)==None:
+                            # if DEBUG:
+                            # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
+                            self.lru_miss_dict[req_id][task_info['id']] = CACHE_MISS
+                        else:
                             # cache hit
-                        self.lru_miss_dict[req_id][task_info['id']] = 1
-                        task_info['task_type'] = SIGNAL_SEND
+                            self.lru_miss_dict[req_id][task_info['id']] = CACHE_HIT
+                            task_info['task_type'] = SIGNAL_SEND
                     if task_info['task_type'] == SIGNAL_RECV:
                         self.lru.put(task_info)
+                    # 初始化finished_counter_table
+                    if self.finished_counter_table.get(task_info['request_id']) == None:
+                        self.finished_counter_table[task_info['request_id']] = 0
+                    # 初始化finished_flag_table
+                    if executable_requests.get(cache_worker) == None:
+                        executable_requests[cache_worker] = [task_info]
+                    else:
+                        executable_requests[cache_worker].append(task_info)
+                    # 改变状态为has_excuted
                     has_excuted = True
-                
+            
+            # 若executable_requests为空且从未执行过，则继续等待直到有请求
             if not executable_requests and not has_excuted:
                 continue
 
@@ -110,6 +113,7 @@ class CacheCoordinator:
                 #     self._execute_request_batch(batched_request, cache_worker) 
 
             for future in cache_future:
+                # confirmation_msg是一个字典，key是request_id，value是完成的task数量
                 confirmation_msg = future.wait()
                 if len(confirmation_msg) > 0:
                     if DEBUG:
@@ -137,7 +141,7 @@ class CacheCoordinator:
         if DEBUG:
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
         # 若这里仍然是Check，则不执行
-        if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_ACK:
+        if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_SKIP:
             confirmation_msg = request_id
         else:
             future_send = rpc.rpc_async(
@@ -156,8 +160,10 @@ class CacheCoordinator:
 
     def _execute_request_batch(self, req_list:List[Dict], cache_worker):
         if DEBUG:
+            request_id = req_list[0]['request_id']
+            infer_worker = req_list[0]['infer_worker']
             print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
-
+        # TODO 若这里仍然是Check，则应该不执行
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
             call_remote_method, 
@@ -215,7 +221,7 @@ class CacheCoordinator:
         request_to_task_num = {}
         for task_info in task_info_list:
             request_id = task_info['request_id']
-            task_num = task_info['task_num']
+            task_num = task_info['task_num'] # task_num代表一个req_id中的task数量
             if request_id not in request_to_task_num:
                 request_to_task_num[request_id] = task_num
             else:
@@ -232,6 +238,7 @@ class CacheCoordinator:
                 
                 # 判断任务是否完成
                 if res_counter == task_num:
+                    # self.lru_miss_dict[req_id][task_info['id']] = Cache状态 
                     cache_miss_dict[request_id] = self.lru_miss_dict.get(request_id)
                     finish_count += 1
                     unfinished_requests.remove(request_id)  # 移除已完成的 request_id
