@@ -31,30 +31,28 @@ class LLMScheduler:
         
         # 获取coordinator的rpc info
         # 根据PROCESS_TYPES: scheduler=0, coordinator=1, workers=2...(2+WORKER_NUM-1), kvcache后面
-        for r in range(1, 1+1):  # coordinator只有1个，所以r=1
-            proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
-            rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
-            # 创建CacheCoordinator实例，传入KVCACHE_NUM
-            self.coordinator_ref.append(
-                rpc.remote(to=rpc_info, func=CacheCoordinator, args=(r, KVCACHE_NUM))
-            )
-            print("[LLMScheduler]finish init coordinator")
+        coordinator_rank = 1  # coordinator只有1个，所以r=1
+        proc_type, proc_index = get_process_info(coordinator_rank)# coordinator只有1个，所以r=1
+        rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
+        # 创建CacheCoordinator实例，传入KVCACHE_NUM
+        self.coordinator_ref.append(
+            rpc.remote(to=rpc_info, func=CacheCoordinator, args=(coordinator_rank, KVCACHE_NUM))
+        )
+        print("[LLMScheduler]finish init coordinator")
 
         # 初始化worker
-        start_worker_rank = 2
-        end_worker_rank = 2 + WORKER_NUM
-        for r in range(start_worker_rank, end_worker_rank):
-            proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
+        for r in range(self.num_workers):
+            worker_rank=2 * r +2
+            proc_type, proc_index = get_process_info(worker_rank)
             rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
             self.worker_ref.append(
-                rpc.remote(to=rpc_info, func=Worker, args=(r, self.coordinator_ref[0]))
+                rpc.remote(to=rpc_info, func=Worker, args=(worker_rank, self.coordinator_ref[0]))
             )
         # 将workers_rref同步到coordinator
-        for r in range(1, 1+1):  # coordinator只有1个，所以r=1
-            proc_type, proc_index = get_process_info(r, PROCESS_TYPES)
-            rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
-            self.set_worker_call = rpc.rpc_async(to=rpc_info, func=call_remote_method, 
-                         args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
+        proc_type, proc_index = get_process_info(coordinator_rank)
+        rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
+        self.set_worker_call = rpc.rpc_async(to=rpc_info, func=call_remote_method, 
+                        args=(CacheCoordinator.set_workers_rref,self.coordinator_ref[0], self.worker_ref))
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
 

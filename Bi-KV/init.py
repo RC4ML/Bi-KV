@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, message=".*TORCH_CUDA_ARCH_LIST.*")
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = ""  # 禁用所有GPU
 import time
@@ -50,7 +52,7 @@ def init_backend(rank, world_size, process_type, type_index, timeout = 120):
     )
 
 def init_process(rank, world_size):
-    process_type, type_index = get_process_info(rank, PROCESS_TYPES)
+    process_type, type_index = get_process_info(rank)
     if process_type == 'scheduler':
         timeout = 180
     else:
@@ -58,7 +60,7 @@ def init_process(rank, world_size):
     init_backend(rank, world_size, process_type, type_index, timeout=timeout)
     dist.barrier()
 
-    if process_type == 'scheduler':
+    if process_type == 'LLMScheduler':
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
         scheduler = LLMScheduler(world_size=world_size)
         # scheduler.test_write_cache()

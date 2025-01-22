@@ -27,7 +27,7 @@ typefunc_map = {
     'kvcache': 'KVCache'
 }
 
-def get_process_info(rank, process_types=PROCESS_TYPES):
+def get_process_info(rank):
     """
     根据全局 rank 返回进程类型和该类型下的索引。
 
@@ -38,11 +38,20 @@ def get_process_info(rank, process_types=PROCESS_TYPES):
     Returns:
         tuple: (process_type, type_index)
     """
-    current_rank = 0
-    for process_type, count in process_types:
-        if current_rank + count > rank:
-            type_index = rank - current_rank
-            return process_type, type_index
-        current_rank += count
-    raise ValueError(f"Rank {rank} 超出定义的进程类型范围。")
+    # current_rank = 0
+    # for process_type, count in process_types:
+    #     if current_rank + count > rank:
+    #         type_index = rank - current_rank
+    #         return process_type, type_index
+    #     current_rank += count
+    # raise ValueError(f"Rank {rank} 超出定义的进程类型范围。")
+    if rank == 0 :   # rank 0 is LLMScheduler
+        return 'LLMScheduler',0
+    if rank ==1 :    # rank 1 is CacheCoordinator
+        return 'CacheCoordinator',0
+    if rank % 2 ==0:  # rank 2,4,6,8.... is Worker
+        return 'Worker',int(rank/2)-1
+    else:             # rank 3,5,7,9.... is kvcache
+        return 'KVCache' , int(rank/2)-1
+
 
