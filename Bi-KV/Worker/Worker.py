@@ -137,6 +137,7 @@ class Worker:
         self.forward_with_computation(task_info_list)
         print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
+        # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
 
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
@@ -148,6 +149,7 @@ class Worker:
             task_info_dict[req_id].append(i)
         for i in task_info_dict.values():
             self.receive_task_info(i)
+        print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
 
     def receive_kvcache_data(self, task_info):
         if DEBUG:
@@ -252,6 +254,7 @@ class Worker:
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
+        print(f"[Worker][RANK {self.rank}] finfished Sending data to kvcache")
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
 
     def _manage_buffer(self, item_id, token_num):
