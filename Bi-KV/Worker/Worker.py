@@ -99,8 +99,8 @@ class Worker:
         # 这里的task_info同样有着一样的req_id
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
-        # if DEBUG:
-        print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 

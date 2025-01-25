@@ -174,6 +174,8 @@ class CacheCoordinator:
             args=(KVCache.receive_task_info_batch,
                 self.kvcache_ref[cache_worker],self.worker_ref, 
                 req_list))
+        if DEBUG:
+            print(f"[CacheCoordinator]finish _execute_request_batch")
         return future
 
             
