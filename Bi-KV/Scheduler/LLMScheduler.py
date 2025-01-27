@@ -245,12 +245,14 @@ class LLMScheduler:
         for infer_worker in task_info_list_dict:
             infer_worker_ref = self.worker_ref[infer_worker]
             owner_worker_ref = infer_worker_ref.owner() 
-            future = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
+            future = rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
                     args=(Worker.receive_task_info_batch, infer_worker_ref, task_info_list_dict[infer_worker]))
-            future_list.append(future)  
+        #     future = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
+        #             args=(Worker.receive_task_info_batch, infer_worker_ref, task_info_list_dict[infer_worker]))
+        #     future_list.append(future)  
             
-        for future in future_list:
-            future.wait()
+        # for future in future_list:
+        #     future.wait()
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers

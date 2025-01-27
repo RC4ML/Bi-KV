@@ -54,9 +54,9 @@ def init_backend(rank, world_size, process_type, type_index, timeout = 120):
 def init_process(rank, world_size):
     process_type, type_index = get_process_info(rank)
     if process_type == 'scheduler':
-        timeout = 180
+        timeout = 1000
     else:
-        timeout = 60
+        timeout = 360
     init_backend(rank, world_size, process_type, type_index, timeout=timeout)
     dist.barrier()
 

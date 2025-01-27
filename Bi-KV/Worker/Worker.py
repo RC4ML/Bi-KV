@@ -109,7 +109,8 @@ class Worker:
         
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                             args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
-        print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
         # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
         cache_miss_dict = future_call_poll.wait()
         for req_id in cache_miss_dict:
@@ -135,7 +136,8 @@ class Worker:
             id = task_info['id']
             self._manage_buffer(id, task_info['token_num'])
         self.forward_with_computation(task_info_list)
-        print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
+        if DEBUG:
+            print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
         # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
 
@@ -149,7 +151,8 @@ class Worker:
             task_info_dict[req_id].append(i)
         for i in task_info_dict.values():
             self.receive_task_info(i)
-        print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
 
     def receive_kvcache_data(self, task_info):
         if DEBUG:
@@ -181,11 +184,11 @@ class Worker:
         if id not in self.buffer_control_dict:
             print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
         start_pos,offest = self._manage_buffer(id, token_num)
-        # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=self.compute_buffer[start_pos:offest], dst=dst_rank)
-        # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def send_kvcache_data_batch(self, combined_task_info):
         dst_rank = 2*combined_task_info['cache_worker']+3
@@ -247,14 +250,15 @@ class Worker:
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
         hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
-        if hit_rate > 0.7:
+        if hit_rate > 0.7 and DEBUG:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
-        print(f"[Worker][RANK {self.rank}] finfished Sending data to kvcache")
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}] finfished Sending data to kvcache")
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
 
     def _manage_buffer(self, item_id, token_num):

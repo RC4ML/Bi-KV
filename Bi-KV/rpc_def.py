@@ -26,7 +26,8 @@ typefunc_map = {
     'inferworker': 'Worker',
     'kvcache': 'KVCache'
 }
-
+def glo_CacheRank(cacherank):
+    a=1
 def get_process_info(rank):
     """
     根据全局 rank 返回进程类型和该类型下的索引。

@@ -10,7 +10,7 @@ EXPERIMENT_ROOT = 'experiments'
 STATE_DICT_KEY = 'model_state_dict'
 OPTIMIZER_STATE_DICT_KEY = 'optimizer_state_dict'
 PROJECT_NAME = 'llmrec'
-DEBUG = True
+DEBUG = False
 
 def set_template(args):
     if args.dataset_code == None:
