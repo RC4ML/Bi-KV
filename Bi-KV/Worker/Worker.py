@@ -5,6 +5,7 @@ import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
+from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 import torch
@@ -26,6 +27,9 @@ class Worker:
         # 多个req_id并发的情况？
         self.buffer_control_dict = {}
         self.buffer_size = 10000
+        self.page_size = 50
+        # PageManager会不会遇到并发？？？
+        self.page_manager = PageManager(buffer_size=self.buffer_size, page_size=self.page_size)
         self.compute_buffer = torch.full(
             (self.buffer_size,) + token_shape, 
             self.rank,
@@ -132,7 +136,7 @@ class Worker:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
         for task_info in task_info_list:
             id = task_info['id']
-            self._manage_buffer(id, task_info['token_num'])
+            self.page_manager.load_list(id, task_info['token_num'])
         self.forward_with_computation(task_info_list)
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
@@ -167,9 +171,19 @@ class Worker:
         for id_pair in combined_task_info['id_token_pair']:
             item_id = id_pair[0]
             offset = id_pair[1]
-            pos = self.buffer_control_dict[item_id]
-            self.compute_buffer[pos[0]:pos[1]] = recv_tensor[start_pos:start_pos+offset]
+            item_tensor = recv_tensor[start_pos:start_pos+offset]
             start_pos += offset
+            # 让page manager管理buffer
+            page_set = self.page_manager.load_list(item_id, offset)
+            # 按照得到的page写入buffer
+            for idx,page in enumerate(page_set):
+                if idx == len(page_set) - 1:
+                    self.compute_buffer[page*self.page_size:page*self.page_size + offset % self.page_size] \
+                        = item_tensor[idx*self.page_size:]
+                else:
+                    self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
+            # pos = self.buffer_control_dict[item_id]
+            # self.compute_buffer[pos[0]:pos[1]] = recv_tensor[start_pos:start_pos+offset]
 
     def send_kvcache_data(self, task_info):
         dst_rank = task_info['cache_worker'] + KVCACHE_offset
@@ -192,14 +206,26 @@ class Worker:
         for id_pair in id_pair_list:
             i = id_pair[0]
             token_num = id_pair[1]
-            if i not in self.buffer_control_dict:
+            if i not in self.page_manager.get_loaded_lists():
+                # TODO 实现换出后会遇到访问换出后的id
                 print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
-            start_pos,offest = self.buffer_control_dict[i]
-            if offest - start_pos != token_num:
-                print(f"[Worker][RANK {self.rank}] Fatal Error: token_num {token_num} != buffer size {offest - start_pos} id index{id_pair_list.index(id_pair)}")
-                print(f"[Worker][Rank {self.rank}] To continue the process, we have to ignore this error")
-                offest = start_pos + token_num
-            send_tensor_list.append(self.compute_buffer[start_pos:offest])
+            # start_pos,offest = self.buffer_control_dict[i]
+            page_set = self.page_manager.access_list(i)
+            # if offest - start_pos != token_num:
+            #     print(f"[Worker][RANK {self.rank}] Fatal Error: token_num {token_num} != buffer size {offest - start_pos} id index{id_pair_list.index(id_pair)}")
+            #     print(f"[Worker][Rank {self.rank}] To continue the process, we have to ignore this error")
+            #     offest = start_pos + token_num
+            send_tensor = torch.empty(
+                (token_num,) + token_shape, 
+                dtype=torch.float16
+            )
+            for idx,page in enumerate(page_set):
+                if idx == len(page_set) - 1:
+                    send_tensor[idx*self.page_size:] \
+                        = self.compute_buffer[page*self.page_size:page*self.page_size+token_num%self.page_size]
+                else:
+                    send_tensor[idx*self.page_size:(idx+1)*self.page_size] = self.compute_buffer[page*self.page_size:(page+1)*self.page_size]
+            send_tensor_list.append(send_tensor)
         send_tensor = torch.cat(send_tensor_list, dim=0)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")

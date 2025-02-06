@@ -203,7 +203,7 @@ class KVCache:
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
                 if task_type == SIGNAL_SEND:
-                    # print(f"[KVCache][RANK {self.rank}] 执行Send请求 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+                    print(f"[KVCache][RANK {self.rank}] 执行Send请求 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
                     remote_recv = rpc.rpc_async(
                         to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
@@ -215,7 +215,7 @@ class KVCache:
                     cache_worker = task_info['cache_worker']
                     infer_worker = task_info['infer_worker']
                     worker_ref = worker_ref_list[infer_worker]
-                    # print(f"[KVCache][RANK {self.rank}] 执行Recv请求 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
+                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
                     remote_send = rpc.rpc_async(
                         to=worker_ref.owner(), func=call_remote_method, 
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
