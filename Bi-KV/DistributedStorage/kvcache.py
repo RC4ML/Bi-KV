@@ -14,10 +14,10 @@ import time
 
 
 class KVCache:
-    def __init__(self, rank):
+    def __init__(self, rank, cache_size, page_size):
         self.rank = rank + KVCACHE_offset
         self.cpu_index = rank
-        self.cache_size = 100000
+        self.cache_size = cache_size
         self.cache_data = torch.full(
             (self.cache_size,) + token_shape, 
             self.rank,
@@ -25,7 +25,7 @@ class KVCache:
             dtype=torch.float16
         )
         self.start_pos = 0
-        self.page_size = 50
+        self.page_size = page_size
         print(f"[KVCache][CPU index:{rank} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
     def send_data(self,task_info:Dict):

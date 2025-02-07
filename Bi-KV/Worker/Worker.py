@@ -28,7 +28,7 @@ class Worker:
         self.buffer_size = 10000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
-        self.page_manager = PageManager(buffer_size=self.buffer_size, page_size=self.page_size, del_flag=False)
+        self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size, del_flag=False)
         self.compute_buffer = torch.full(
             (self.buffer_size,) + token_shape, 
             self.rank,
