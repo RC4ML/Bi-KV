@@ -25,11 +25,10 @@ class Worker:
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_control_dict = {}
         self.buffer_size = 10000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
-        self.page_manager = PageManager(buffer_size=self.buffer_size, page_size=self.page_size)
+        self.page_manager = PageManager(buffer_size=self.buffer_size, page_size=self.page_size, del_flag=False)
         self.compute_buffer = torch.full(
             (self.buffer_size,) + token_shape, 
             self.rank,
@@ -182,15 +181,13 @@ class Worker:
                         = item_tensor[idx*self.page_size:]
                 else:
                     self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
-            # pos = self.buffer_control_dict[item_id]
-            # self.compute_buffer[pos[0]:pos[1]] = recv_tensor[start_pos:start_pos+offset]
 
     def send_kvcache_data(self, task_info):
         dst_rank = task_info['cache_worker'] + KVCACHE_offset
         token_num = task_info['token_num']
         id = task_info['id']
-        if id not in self.buffer_control_dict:
-            print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
+        # if id not in self.buffer_control_dict:
+        #     print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
         start_pos,offest = self._manage_buffer(id, token_num)
         # if DEBUG:
         print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
@@ -209,12 +206,7 @@ class Worker:
             if i not in self.page_manager.get_loaded_lists():
                 # TODO 实现换出后会遇到访问换出后的id
                 print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
-            # start_pos,offest = self.buffer_control_dict[i]
             page_set = self.page_manager.access_list(i)
-            # if offest - start_pos != token_num:
-            #     print(f"[Worker][RANK {self.rank}] Fatal Error: token_num {token_num} != buffer size {offest - start_pos} id index{id_pair_list.index(id_pair)}")
-            #     print(f"[Worker][Rank {self.rank}] To continue the process, we have to ignore this error")
-            #     offest = start_pos + token_num
             send_tensor = torch.empty(
                 (token_num,) + token_shape, 
                 dtype=torch.float16
@@ -278,16 +270,3 @@ class Worker:
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
-
-    def _manage_buffer(self, item_id, token_num):
-        # TODO 按批次丢弃 换出
-        if item_id in self.buffer_control_dict:
-            return self.buffer_control_dict[item_id]
-        next_pos = self.start_pos + token_num
-        if next_pos > self.buffer_size:
-            self.start_pos = 0
-            next_pos = token_num
-        # TODO 换出的时候需要删除ID
-        self.buffer_control_dict[item_id] = (self.start_pos,next_pos)
-        self.start_pos = next_pos
-        return self.buffer_control_dict[item_id]

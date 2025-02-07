@@ -18,7 +18,6 @@ class KVCache:
         self.rank = rank + KVCACHE_offset
         self.cpu_index = rank
         self.cache_size = 100000
-        self.cache_control_dict = {}
         self.cache_data = torch.full(
             (self.cache_size,) + token_shape, 
             self.rank,
@@ -108,7 +107,6 @@ class KVCache:
             self.start_pos = 0
             next_pos = self.start_pos + token_num
         # self.cache_data[self.start_pos:next_pos] = recv_tensor
-        self.cache_control_dict[item_id] = (self.start_pos,next_pos)
         self.start_pos = next_pos
 
     def receive_data_batch(self, combined_task_info:Dict):
@@ -132,7 +130,6 @@ class KVCache:
         for idx,pages_list in enumerate(cache_pages_list):
             id_token_pair = id_token_pair_list[idx]
             item_token_num = id_token_pair[1]
-            # pos = self._manage_cache(id_token_pair[0], item_token_num)
             item_recv_tensor = recv_tensor[start_pos:start_pos+item_token_num]
             start_pos += item_token_num
             for page_idx,page in enumerate(pages_list):
@@ -196,7 +193,6 @@ class KVCache:
                 continue
             # 到底是什么时候需要管理缓存？
             # 为什么只在RECV管理时会出现key error？
-            self._manage_cache(item_id, token_num)
             if combined_task_info.get(infer_worker) == None:
                 combined_task_info[infer_worker] = {}
             if task_info['task_type'] == SIGNAL_SEND:
@@ -213,8 +209,6 @@ class KVCache:
                     combined_task_info[infer_worker][SIGNAL_SEND]['id_token_pair'].append((item_id,token_num))
                     combined_task_info[infer_worker][SIGNAL_SEND]['cache_pages_list'].append(cache_pages_list)
             if task_info['task_type'] == SIGNAL_RECV:
-                # 按理说应该是只有RECV才要管理？
-                # self._manage_cache(item_id, token_num)
                 if combined_task_info[infer_worker].get(SIGNAL_RECV) == None:
                     combined_task_info[infer_worker][SIGNAL_RECV] = {"infer_worker":infer_worker, 
                                                                 "cache_worker":cache_worker,
@@ -259,16 +253,3 @@ class KVCache:
                     print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - Rank {infer_worker+WORKER_offset} -> Rank {cache_worker+KVCACHE_offset}")
                     
         return confirmation_msg
-    
-    def _manage_cache(self, item_id:int, token_num:int)->Tuple[int,int]:
-        # TODO 换出策略 和coordinator的LRU联动
-        # 由coordinator决定存储位置
-        if item_id in self.cache_control_dict:
-            return self.cache_control_dict[item_id]
-        next_pos = self.start_pos + token_num
-        if next_pos > self.cache_size:
-            self.start_pos = 0
-            next_pos = token_num
-        self.cache_control_dict[item_id] = (self.start_pos,next_pos)
-        self.start_pos = next_pos
-        return self.cache_control_dict[item_id]

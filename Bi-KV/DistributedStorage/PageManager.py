@@ -1,7 +1,7 @@
 from config import *
 
 class PageManager:
-    def __init__(self, buffer_size, page_size, pm_id = 0):
+    def __init__(self, buffer_size, page_size, pm_id = 0, del_flag = True):
         self.pm_id = pm_id
         self.buffer = buffer_size*['']
         self.page_size = page_size
@@ -9,6 +9,7 @@ class PageManager:
         self.free_pages = set(range(self.num_pages))
         self.page_table = {}  # 键为列表ID，值为{'pages': set, 'last_accessed': int}
         self.current_time = 0  # 模拟时间戳，用于LRU
+        self.del_flag = del_flag
 
     def load_list(self, list_id, list_length):
         """加载列表，必要时换出旧列表"""
@@ -56,7 +57,8 @@ class PageManager:
             if DEBUG:
                 print(f"换出列表 {list_id}，页号 {info['pages']}")
             # TODO 处理删除逻辑
-            # del self.page_table[list_id]
+            if self.del_flag:
+                del self.page_table[list_id]
             freed_ids.append(list_id)
             if len(self.free_pages) >= required_pages:
                 break
@@ -90,7 +92,7 @@ class MultiPageManager:
     '''多个PageManager组成的KV缓存'''
     def __init__(self, buffer_size, page_size, kvcahe_num):
         self.kvcahe_num = kvcahe_num
-        self.page_managers = [PageManager(buffer_size, page_size, i) for i in range(kvcahe_num)]
+        self.page_managers = [PageManager(buffer_size, page_size, pm_id=i) for i in range(kvcahe_num)]
         self.buffer_size = buffer_size
         self.page_size = page_size
         # 记录每个pm的缓存列表

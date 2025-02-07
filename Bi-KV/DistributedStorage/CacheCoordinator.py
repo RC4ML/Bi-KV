@@ -31,9 +31,7 @@ class CacheCoordinator:
         for i in range(self.kvcache_num):
             print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
             self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
-        self.lru_capacity = 10000 # 10000时命中率尚可
-        self.lru = LRUCache(self.lru_capacity, self.kvcache_num)
-        self.lru_miss_dict = {}
+        self.page_miss_dict = {}
 
         # 测试MultiPageManager
         self.page_manager = MultiPageManager(100000, 50, self.kvcache_num)
@@ -70,27 +68,23 @@ class CacheCoordinator:
                 req_id = task_info['request_id']
                 if True: 
                     if task_info['task_type'] == SIGNAL_CHECK:
-                        if self.lru_miss_dict.get(req_id)==None:
-                            self.lru_miss_dict[req_id] = {}
-                        # TODO: support cache management and cache write
-                        if self.lru.get(task_info)==None:
-                            pass
+                        if self.page_miss_dict.get(req_id)==None:
+                            self.page_miss_dict[req_id] = {}
                         access_res = self.page_manager.access_list(task_info['id'])
                         if access_res[0] == None:
                             # if DEBUG:
                             # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
-                            self.lru_miss_dict[req_id][task_info['id']] = CACHE_MISS
+                            self.page_miss_dict[req_id][task_info['id']] = CACHE_MISS
                         else:
                             # cache hit
                             cache_worker = access_res[0]
                             pages_list = access_res[1]
-                            self.lru_miss_dict[req_id][task_info['id']] = CACHE_HIT
+                            self.page_miss_dict[req_id][task_info['id']] = CACHE_HIT
                             task_info['task_type'] = SIGNAL_SEND
                             task_info['cache_worker'] = cache_worker
                             task_info['cache_pages_list'] = pages_list
 
                     if task_info['task_type'] == SIGNAL_RECV:
-                        self.lru.put(task_info)
                         load_res = self.page_manager.load_list(task_info['id'], task_info['token_num'])
                         cache_worker = load_res[0]
                         pages_list = load_res[1]
@@ -225,13 +219,13 @@ class CacheCoordinator:
         # print(f"[CacheCoordinator] lru_miss_dict: {self.lru_miss_dict}")
         for i in task_info_list:
             # 如果得到None是不是得多做一些操作？
-            if self.lru_miss_dict.get(request_id)==None:
+            if self.page_miss_dict.get(request_id)==None:
                 # print(f"[CacheCoordinator] Error: request_id {request_id} not found in lru_miss_dict")
                 continue
             if i['id'] == -1:
                 continue
             # print(f"[CacheCoordinator] Polling id {i['id']}")
-            cache_miss_dict[i['id']] = self.lru_miss_dict[request_id].get(i['id'],-1)
+            cache_miss_dict[i['id']] = self.page_miss_dict[request_id].get(i['id'],-1)
         if res_counter == task_list_length and res_flag:
             return True, cache_miss_dict
         return False, cache_miss_dict
@@ -259,7 +253,7 @@ class CacheCoordinator:
                 # 判断任务是否完成
                 if res_counter == task_num:
                     # self.lru_miss_dict[req_id][task_info['id']] = Cache状态 
-                    cache_miss_dict[request_id] = self.lru_miss_dict.get(request_id)
+                    cache_miss_dict[request_id] = self.page_miss_dict.get(request_id)
                     finish_count += 1
                     unfinished_requests.remove(request_id)  # 移除已完成的 request_id
 
