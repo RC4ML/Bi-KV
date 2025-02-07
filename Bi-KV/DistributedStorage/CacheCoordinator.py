@@ -6,6 +6,7 @@ import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Storage import LRUCache
+from DistributedStorage.PageManager import MultiPageManager
 from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, CACHE_MISS, CACHE_HIT,SIGNAL_SKIP
 from Remote.remote_call import call_remote_method
 from rpc_def import KVCACHE_offset,WORKER_offset
@@ -33,6 +34,10 @@ class CacheCoordinator:
         self.lru_capacity = 10000 # 10000时命中率尚可
         self.lru = LRUCache(self.lru_capacity, self.kvcache_num)
         self.lru_miss_dict = {}
+
+        # 测试MultiPageManager
+        self.page_manager = MultiPageManager(100000, 50, self.kvcache_num)
+
     
     def add_requests(self, requests:List[Dict]):
         for request in requests:
@@ -63,22 +68,37 @@ class CacheCoordinator:
                 idle_time_counter = 0
                 task_info = self.request_table.get_nowait()
                 req_id = task_info['request_id']
-                cache_worker = task_info['cache_worker']
                 if True: 
                     if task_info['task_type'] == SIGNAL_CHECK:
                         if self.lru_miss_dict.get(req_id)==None:
                             self.lru_miss_dict[req_id] = {}
                         # TODO: support cache management and cache write
                         if self.lru.get(task_info)==None:
+                            pass
+                        access_res = self.page_manager.access_list(task_info['id'])
+                        if access_res[0] == None:
                             # if DEBUG:
                             # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
                             self.lru_miss_dict[req_id][task_info['id']] = CACHE_MISS
                         else:
                             # cache hit
+                            cache_worker = access_res[0]
+                            pages_list = access_res[1]
                             self.lru_miss_dict[req_id][task_info['id']] = CACHE_HIT
                             task_info['task_type'] = SIGNAL_SEND
+                            task_info['cache_worker'] = cache_worker
+                            task_info['cache_pages_list'] = pages_list
+
                     if task_info['task_type'] == SIGNAL_RECV:
                         self.lru.put(task_info)
+                        load_res = self.page_manager.load_list(task_info['id'], task_info['token_num'])
+                        cache_worker = load_res[0]
+                        pages_list = load_res[1]
+                        task_info['cache_worker'] = cache_worker
+                        task_info['cache_pages_list'] = pages_list
+
+                    cache_worker = task_info['cache_worker']
+
                     # 初始化finished_counter_table
                     if self.finished_counter_table.get(task_info['request_id']) == None:
                         self.finished_counter_table[task_info['request_id']] = 0

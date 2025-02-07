@@ -1,3 +1,5 @@
+from config import *
+
 class PageManager:
     def __init__(self, buffer_size, page_size, pm_id = 0):
         self.pm_id = pm_id
@@ -51,8 +53,10 @@ class PageManager:
         for list_id, info in lru_entries:
             # 换出该列表
             self.free_pages.update(info['pages'])
-            print(f"换出列表 {list_id}，页号 {info['pages']}")
-            del self.page_table[list_id]
+            if DEBUG:
+                print(f"换出列表 {list_id}，页号 {info['pages']}")
+            # TODO 处理删除逻辑
+            # del self.page_table[list_id]
             freed_ids.append(list_id)
             if len(self.free_pages) >= required_pages:
                 break
@@ -97,12 +101,13 @@ class MultiPageManager:
         # 选择剩余页数最多的pm
         target_pm = max(self.page_managers, key=lambda x: len(x.free_pages))
         target_pm_id = target_pm.pm_id
-        _, freed_ids = target_pm.load_list(list_id, list_length)
+        allocated_pages, freed_ids = target_pm.load_list(list_id, list_length)
         # 记录已缓存的列表
         self.cached_ids[target_pm_id].add(list_id)
         # 删除已换出的列表
         for id in freed_ids:
             self.cached_ids[target_pm_id].remove(id)
+        return target_pm_id, allocated_pages
 
     def access_list(self, list_id):
         """访问列表，更新最近使用时间，返回页号，否则返回None"""

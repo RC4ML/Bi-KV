@@ -174,7 +174,7 @@ class Worker:
             item_tensor = recv_tensor[start_pos:start_pos+offset]
             start_pos += offset
             # 让page manager管理buffer
-            page_set = self.page_manager.load_list(item_id, offset)
+            page_set, _ = self.page_manager.load_list(item_id, offset)
             # 按照得到的page写入buffer
             for idx,page in enumerate(page_set):
                 if idx == len(page_set) - 1:
