@@ -28,7 +28,7 @@ class Worker:
         self.buffer_size = 10000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
-        self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size, del_flag=False)
+        self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
         self.compute_buffer = torch.full(
             (self.buffer_size,) + token_shape, 
             self.rank,
@@ -134,8 +134,11 @@ class Worker:
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
         for task_info in task_info_list:
-            id = task_info['id']
-            self.page_manager.load_list(id, task_info['token_num'])
+            item_id = task_info['id']
+            if item_id == -1:
+                continue
+            self.page_manager.load_item(item_id, task_info['token_num'])
+            self.page_manager.set_protected(item_id)
         self.forward_with_computation(task_info_list)
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
@@ -173,7 +176,10 @@ class Worker:
             item_tensor = recv_tensor[start_pos:start_pos+offset]
             start_pos += offset
             # 让page manager管理buffer
-            page_set, _ = self.page_manager.load_list(item_id, offset)
+            if item_id not in self.page_manager.get_loaded_lists():
+                page_set, _ = self.page_manager.load_item(item_id, offset)
+            else:
+                page_set = self.page_manager.access_item(item_id)
             # 按照得到的page写入buffer
             for idx,page in enumerate(page_set):
                 if idx == len(page_set) - 1:
@@ -199,14 +205,14 @@ class Worker:
         dst_rank = combined_task_info['cache_worker'] + KVCACHE_offset
         token_num = combined_task_info['token_num']
         id_pair_list = combined_task_info['id_token_pair']
+        id_list = [i[0] for i in id_pair_list]
         send_tensor_list = []
         for id_pair in id_pair_list:
             i = id_pair[0]
             token_num = id_pair[1]
             if i not in self.page_manager.get_loaded_lists():
-                # TODO 实现换出后会遇到访问换出后的id
-                print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
-            page_set = self.page_manager.access_list(i)
+                print(f"[Worker][RANK {self.rank}][{time.time()}] Error: id {i} not in page manager")
+            page_set = self.page_manager.access_item(i)
             send_tensor = torch.empty(
                 (token_num,) + token_shape, 
                 dtype=torch.float16
@@ -218,12 +224,14 @@ class Worker:
                 else:
                     send_tensor[idx*self.page_size:(idx+1)*self.page_size] = self.compute_buffer[page*self.page_size:(page+1)*self.page_size]
             send_tensor_list.append(send_tensor)
+            self.page_manager.remove_protected(i)
         send_tensor = torch.cat(send_tensor_list, dim=0)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=send_tensor, dst=dst_rank)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+            
 
     def write_compute_buffer(self, task_info:Dict):
         cache_worker = task_info['cache_worker']
@@ -261,6 +269,10 @@ class Worker:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
+            else:
+                # 为什么会提前解除保护？
+                if item_id in self.page_manager.get_loaded_lists():
+                    self.page_manager.remove_protected(item_id)
         hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
         if hit_rate > 0.7:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 

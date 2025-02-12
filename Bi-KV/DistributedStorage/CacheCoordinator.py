@@ -72,7 +72,7 @@ class CacheCoordinator:
                     if task_info['task_type'] == SIGNAL_CHECK:
                         if self.page_miss_dict.get(req_id)==None:
                             self.page_miss_dict[req_id] = {}
-                        access_res = self.page_manager.access_list(task_info['id'])
+                        access_res = self.page_manager.access_item(task_info['id'])
                         if access_res[0] == None:
                             # if DEBUG:
                             # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
@@ -87,7 +87,7 @@ class CacheCoordinator:
                             task_info['cache_pages_list'] = pages_list
 
                     if task_info['task_type'] == SIGNAL_RECV:
-                        load_res = self.page_manager.load_list(task_info['id'], task_info['token_num'])
+                        load_res = self.page_manager.load_item(task_info['id'], task_info['token_num'])
                         cache_worker = load_res[0]
                         pages_list = load_res[1]
                         task_info['cache_worker'] = cache_worker
