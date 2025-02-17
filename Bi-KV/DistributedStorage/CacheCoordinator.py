@@ -6,9 +6,10 @@ import torch.distributed.rpc as rpc
 from threading import Lock, Thread
 from DistributedStorage.kvcache import KVCache
 from DistributedStorage.Storage import LRUCache
+from DistributedStorage.PageManager import MultiPageManager
 from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, CACHE_MISS, CACHE_HIT,SIGNAL_SKIP
 from Remote.remote_call import call_remote_method
-from rpc_def import KVCACHE_offset,WORKER_offset
+from rpc_def import KVCACHE_offset,WORKER_offset,PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info
 from config import *
 
 class CacheCoordinator:
@@ -27,12 +28,19 @@ class CacheCoordinator:
         self.lock = Lock()
         self.kvcache_ref = []
         self.stop_limit = 10000
+        self.cache = 5000
+        self.page_size = 50
         for i in range(self.kvcache_num):
-            print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
-            self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,)))  # 创建远程实例
-        self.lru_capacity = 10000 # 10000时命中率尚可
-        self.lru = LRUCache(self.lru_capacity, self.kvcache_num)
-        self.lru_miss_dict = {}
+            cache_rank= 2*i+3 
+            proc_type, proc_index = get_process_info(cache_rank)
+            rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
+            print(f"[CacheCoordinator] 创建远程实例 KVCache {i}")
+            self.kvcache_ref.append(rpc.remote(rpc_info, KVCache, args=(cache_rank,self.cache,self.page_size,)))  # 创建远程实例
+        self.page_miss_dict = {}
+
+        # 测试MultiPageManager
+        self.page_manager = MultiPageManager(self.cache, self.page_size, self.kvcache_num)
+
     
     def add_requests(self, requests:List[Dict]):
         for request in requests:
@@ -42,7 +50,7 @@ class CacheCoordinator:
         request_id = task_info["request_id"]
         infer_worker = task_info["infer_worker"]
         if DEBUG:
-            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Rank={infer_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Wroker{infer_worker}Rank={2*infer_worker+2}")
         # TODO 需要补全cache miss逻辑，且用strategy庖代
         task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
@@ -63,22 +71,33 @@ class CacheCoordinator:
                 idle_time_counter = 0
                 task_info = self.request_table.get_nowait()
                 req_id = task_info['request_id']
-                cache_worker = task_info['cache_worker']
                 if True: 
                     if task_info['task_type'] == SIGNAL_CHECK:
-                        if self.lru_miss_dict.get(req_id)==None:
-                            self.lru_miss_dict[req_id] = {}
-                        # TODO: support cache management and cache write
-                        if self.lru.get(task_info)==None:
+                        if self.page_miss_dict.get(req_id)==None:
+                            self.page_miss_dict[req_id] = {}
+                        access_res = self.page_manager.access_item(task_info['id'])
+                        if access_res[0] == None:
                             # if DEBUG:
                             # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
-                            self.lru_miss_dict[req_id][task_info['id']] = CACHE_MISS
+                            self.page_miss_dict[req_id][task_info['id']] = CACHE_MISS
                         else:
                             # cache hit
-                            self.lru_miss_dict[req_id][task_info['id']] = CACHE_HIT
+                            cache_worker = access_res[0]
+                            pages_list = access_res[1]
+                            self.page_miss_dict[req_id][task_info['id']] = CACHE_HIT
                             task_info['task_type'] = SIGNAL_SEND
+                            task_info['cache_worker'] = cache_worker
+                            task_info['cache_pages_list'] = pages_list
+
                     if task_info['task_type'] == SIGNAL_RECV:
-                        self.lru.put(task_info)
+                        load_res = self.page_manager.load_item(task_info['id'], task_info['token_num'])
+                        cache_worker = load_res[0]
+                        pages_list = load_res[1]
+                        task_info['cache_worker'] = cache_worker
+                        task_info['cache_pages_list'] = pages_list
+
+                    cache_worker = task_info['cache_worker']
+
                     # 初始化finished_counter_table
                     if self.finished_counter_table.get(task_info['request_id']) == None:
                         self.finished_counter_table[task_info['request_id']] = 0
@@ -117,7 +136,8 @@ class CacheCoordinator:
                 confirmation_msg = future.wait()
                 if len(confirmation_msg) > 0:
                     if DEBUG:
-                        print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {cache_worker+KVCACHE_offset}")
+                        request_id=task_info['request_id']
+                        print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {2*cache_worker+3}")
                     for request_id in confirmation_msg:
                         self.finished_counter_table[request_id] += confirmation_msg[request_id]
                 
@@ -139,7 +159,7 @@ class CacheCoordinator:
     def _execute_request(self, req:Dict):
         request_id, cache_worker, infer_worker = req['request_id'], req['cache_worker'], req['infer_worker']
         if DEBUG:
-            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
         # 若这里仍然是Check，则不执行
         if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_SKIP:
             confirmation_msg = request_id
@@ -154,7 +174,7 @@ class CacheCoordinator:
             confirmation_msg = future_send.wait()
         if confirmation_msg == request_id:
             if DEBUG:
-                print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+                print(f"[CacheCoordinator] 请求 {request_id} 完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
             self.finished_counter_table[request_id] += 1
             self.finished_flag_table[request_id] = True
 
@@ -162,7 +182,7 @@ class CacheCoordinator:
         if DEBUG:
             request_id = req_list[0]['request_id']
             infer_worker = req_list[0]['infer_worker']
-            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
         # TODO 若这里仍然是Check，则应该不执行
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
@@ -170,6 +190,8 @@ class CacheCoordinator:
             args=(KVCache.receive_task_info_batch,
                 self.kvcache_ref[cache_worker],self.worker_ref, 
                 req_list))
+        if DEBUG:
+            print(f"[CacheCoordinator]finish _execute_request_batch")
         return future
 
             
@@ -205,13 +227,13 @@ class CacheCoordinator:
         # print(f"[CacheCoordinator] lru_miss_dict: {self.lru_miss_dict}")
         for i in task_info_list:
             # 如果得到None是不是得多做一些操作？
-            if self.lru_miss_dict.get(request_id)==None:
+            if self.page_miss_dict.get(request_id)==None:
                 # print(f"[CacheCoordinator] Error: request_id {request_id} not found in lru_miss_dict")
                 continue
             if i['id'] == -1:
                 continue
             # print(f"[CacheCoordinator] Polling id {i['id']}")
-            cache_miss_dict[i['id']] = self.lru_miss_dict[request_id].get(i['id'],-1)
+            cache_miss_dict[i['id']] = self.page_miss_dict[request_id].get(i['id'],-1)
         if res_counter == task_list_length and res_flag:
             return True, cache_miss_dict
         return False, cache_miss_dict
@@ -239,7 +261,7 @@ class CacheCoordinator:
                 # 判断任务是否完成
                 if res_counter == task_num:
                     # self.lru_miss_dict[req_id][task_info['id']] = Cache状态 
-                    cache_miss_dict[request_id] = self.lru_miss_dict.get(request_id)
+                    cache_miss_dict[request_id] = self.page_miss_dict.get(request_id)
                     finish_count += 1
                     unfinished_requests.remove(request_id)  # 移除已完成的 request_id
 

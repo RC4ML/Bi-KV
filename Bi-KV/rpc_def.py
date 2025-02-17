@@ -16,8 +16,8 @@ PROCESS_TYPES = [
 # scheduler rank = 0
 # coordinator rank = 1
 # worker从 rank=2 开始
-WORKER_offset = 1 + 1  # scheduler(0) + coordinator(1) = 2
-KVCACHE_offset = WORKER_offset + WORKER_NUM  # worker结束后是kvcache的起始
+WORKER_offset = 2  # LLMScheduler和CacheCoordinator结束后是worker的起始
+KVCACHE_offset = 3  # 一个worker对应一个kvcache，所以kvcache的rank从worker的下一个开始
 
 # 模拟宏定义，创建一个类型到函数的映射(如果有需要在其他地方动态创建实例时使用)
 typefunc_map = {
@@ -26,8 +26,9 @@ typefunc_map = {
     'inferworker': 'Worker',
     'kvcache': 'KVCache'
 }
-
-def get_process_info(rank, process_types=PROCESS_TYPES):
+def glo_CacheRank(cacherank):
+    a=1
+def get_process_info(rank):
     """
     根据全局 rank 返回进程类型和该类型下的索引。
 
@@ -38,11 +39,20 @@ def get_process_info(rank, process_types=PROCESS_TYPES):
     Returns:
         tuple: (process_type, type_index)
     """
-    current_rank = 0
-    for process_type, count in process_types:
-        if current_rank + count > rank:
-            type_index = rank - current_rank
-            return process_type, type_index
-        current_rank += count
-    raise ValueError(f"Rank {rank} 超出定义的进程类型范围。")
+    # current_rank = 0
+    # for process_type, count in process_types:
+    #     if current_rank + count > rank:
+    #         type_index = rank - current_rank
+    #         return process_type, type_index
+    #     current_rank += count
+    # raise ValueError(f"Rank {rank} 超出定义的进程类型范围。")
+    if rank == 0 :   # rank 0 is LLMScheduler
+        return 'LLMScheduler',0
+    if rank ==1 :    # rank 1 is CacheCoordinator
+        return 'CacheCoordinator',0
+    if rank % 2 ==0:  # rank 2,4,6,8.... is Worker
+        return 'Worker',int(rank/2)-1
+    else:             # rank 3,5,7,9.... is kvcache
+        return 'KVCache' , int(rank/2)-1
+
 

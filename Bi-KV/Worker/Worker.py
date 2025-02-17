@@ -5,6 +5,7 @@ import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
+from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 import torch
@@ -18,14 +19,16 @@ import time
 class Worker:
     def __init__(self, rank, coordinator_rref):
         self.rank = rank
-        self.worker_index=rank-WORKER_offset
+        self.worker_index=int(rank/2) -1
         self.coordinator_rref = coordinator_rref
-        self.gpu_index = rank # NOTE: set to rank in a single machine
+        self.gpu_index = self.worker_index # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_control_dict = {}
-        self.buffer_size = 10000
+        self.buffer_size = 2000
+        self.page_size = 50
+        # PageManager会不会遇到并发？？？
+        self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
         self.compute_buffer = torch.full(
             (self.buffer_size,) + token_shape, 
             self.rank,
@@ -100,7 +103,7 @@ class Worker:
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
         if DEBUG:
-            print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
@@ -109,6 +112,8 @@ class Worker:
         
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                             args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
         # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
         cache_miss_dict = future_call_poll.wait()
         for req_id in cache_miss_dict:
@@ -131,11 +136,16 @@ class Worker:
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
         for task_info in task_info_list:
-            id = task_info['id']
-            self._manage_buffer(id, task_info['token_num'])
+            item_id = task_info['id']
+            if item_id == -1:
+                continue
+            self.page_manager.load_item(item_id, task_info['token_num'])
+            self.page_manager.set_protected(item_id)
         self.forward_with_computation(task_info_list)
-        # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
+        if DEBUG:
+            print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
+        # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
 
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
@@ -147,6 +157,8 @@ class Worker:
             task_info_dict[req_id].append(i)
         for i in task_info_dict.values():
             self.receive_task_info(i)
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
 
     def receive_kvcache_data(self, task_info):
         if DEBUG:
@@ -155,7 +167,7 @@ class Worker:
 
     def receive_kvcache_data_batch(self, combined_task_info):
         cache_worker = combined_task_info['cache_worker']
-        src_rank = cache_worker + KVCACHE_offset
+        src_rank = 2*cache_worker + KVCACHE_offset
         token_num = combined_task_info['token_num']
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
@@ -167,45 +179,65 @@ class Worker:
         for id_pair in combined_task_info['id_token_pair']:
             item_id = id_pair[0]
             offset = id_pair[1]
-            pos = self.buffer_control_dict[item_id]
-            self.compute_buffer[pos[0]:pos[1]] = recv_tensor[start_pos:start_pos+offset]
+            item_tensor = recv_tensor[start_pos:start_pos+offset]
             start_pos += offset
+            # 让page manager管理buffer
+            if item_id not in self.page_manager.get_loaded_lists():
+                page_set, _ = self.page_manager.load_item(item_id, offset)
+            else:
+                page_set = self.page_manager.access_item(item_id)
+            # 按照得到的page写入buffer
+            for idx,page in enumerate(page_set):
+                if idx == len(page_set) - 1:
+                    self.compute_buffer[page*self.page_size:page*self.page_size + offset % self.page_size] \
+                        = item_tensor[idx*self.page_size:]
+                else:
+                    self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
 
     def send_kvcache_data(self, task_info):
-        dst_rank = task_info['cache_worker'] + KVCACHE_offset
+        dst_rank = 2*task_info['cache_worker'] + 3
         token_num = task_info['token_num']
         id = task_info['id']
-        if id not in self.buffer_control_dict:
-            print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
+        # if id not in self.buffer_control_dict:
+        #     print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
         start_pos,offest = self._manage_buffer(id, token_num)
-        # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=self.compute_buffer[start_pos:offest], dst=dst_rank)
-        # if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def send_kvcache_data_batch(self, combined_task_info):
-        dst_rank = combined_task_info['cache_worker'] + KVCACHE_offset
+        dst_rank = 2*combined_task_info['cache_worker'] + KVCACHE_offset
         token_num = combined_task_info['token_num']
         id_pair_list = combined_task_info['id_token_pair']
+        id_list = [i[0] for i in id_pair_list]
         send_tensor_list = []
         for id_pair in id_pair_list:
             i = id_pair[0]
             token_num = id_pair[1]
-            if i not in self.buffer_control_dict:
-                print(f"[Worker][RANK {self.rank}] Error: id {i} not in buffer control dict")
-            start_pos,offest = self.buffer_control_dict[i]
-            if offest - start_pos != token_num:
-                print(f"[Worker][RANK {self.rank}] Fatal Error: token_num {token_num} != buffer size {offest - start_pos} id index{id_pair_list.index(id_pair)}")
-                print(f"[Worker][Rank {self.rank}] To continue the process, we have to ignore this error")
-                offest = start_pos + token_num
-            send_tensor_list.append(self.compute_buffer[start_pos:offest])
+            if i not in self.page_manager.get_loaded_lists():
+                print(f"[Worker][RANK {self.rank}][{time.time()}] Error: id {i} not in page manager")
+            page_set = self.page_manager.access_item(i)
+            send_tensor = torch.empty(
+                (token_num,) + token_shape, 
+                dtype=torch.float16
+            )
+            for idx,page in enumerate(page_set):
+                if idx == len(page_set) - 1:
+                    send_tensor[idx*self.page_size:] \
+                        = self.compute_buffer[page*self.page_size:page*self.page_size+token_num%self.page_size]
+                else:
+                    send_tensor[idx*self.page_size:(idx+1)*self.page_size] = self.compute_buffer[page*self.page_size:(page+1)*self.page_size]
+            send_tensor_list.append(send_tensor)
+            self.page_manager.remove_protected(i)
         send_tensor = torch.cat(send_tensor_list, dim=0)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=send_tensor, dst=dst_rank)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+            
 
     def write_compute_buffer(self, task_info:Dict):
         cache_worker = task_info['cache_worker']
@@ -217,7 +249,7 @@ class Worker:
         # ind = task_info['index']
         # start_pos,offest = self.buffer_control_dict[req_id][ind] 
         # NOTE: disable buffer management temporarily
-        src_rank = cache_worker + KVCACHE_offset
+        src_rank = 2*cache_worker + 3
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Writting kvcache data from Rank {src_rank}")
         recv_tensor = torch.empty(
@@ -243,8 +275,12 @@ class Worker:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
+            else:
+                # 为什么会提前解除保护？
+                if item_id in self.page_manager.get_loaded_lists():
+                    self.page_manager.remove_protected(item_id)
         hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
-        if hit_rate > 0.7:
+        if hit_rate > 0.7 and DEBUG:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         rpc.rpc_sync(to=coordinator_owner, 
@@ -252,16 +288,3 @@ class Worker:
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
-
-    def _manage_buffer(self, item_id, token_num):
-        # TODO 按批次丢弃 换出
-        if item_id in self.buffer_control_dict:
-            return self.buffer_control_dict[item_id]
-        next_pos = self.start_pos + token_num
-        if next_pos > self.buffer_size:
-            self.start_pos = 0
-            next_pos = token_num
-        # TODO 换出的时候需要删除ID
-        self.buffer_control_dict[item_id] = (self.start_pos,next_pos)
-        self.start_pos = next_pos
-        return self.buffer_control_dict[item_id]
