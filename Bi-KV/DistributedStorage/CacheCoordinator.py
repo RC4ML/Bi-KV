@@ -9,7 +9,7 @@ from DistributedStorage.Storage import LRUCache
 from DistributedStorage.PageManager import MultiPageManager
 from DistributedStorage.Signals import SIGNAL_CHECK, SIGNAL_SEND, SIGNAL_RECV, CACHE_MISS, CACHE_HIT,SIGNAL_SKIP
 from Remote.remote_call import call_remote_method
-from rpc_def import KVCACHE_offset,WORKER_offset
+from rpc_def import KVCACHE_offset,WORKER_offset,PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info
 from config import *
 
 class CacheCoordinator:
@@ -31,8 +31,11 @@ class CacheCoordinator:
         self.cache = 5000
         self.page_size = 50
         for i in range(self.kvcache_num):
-            print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
-            self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,self.cache,self.page_size,)))  # 创建远程实例
+            cache_rank= 2*i+3 
+            proc_type, proc_index = get_process_info(cache_rank)
+            rpc_info = rpc.get_worker_info(f"{proc_type}{proc_index}")
+            print(f"[CacheCoordinator] 创建远程实例 KVCache {i}")
+            self.kvcache_ref.append(rpc.remote(rpc_info, KVCache, args=(cache_rank,self.cache,self.page_size,)))  # 创建远程实例
         self.page_miss_dict = {}
 
         # 测试MultiPageManager
@@ -47,7 +50,7 @@ class CacheCoordinator:
         request_id = task_info["request_id"]
         infer_worker = task_info["infer_worker"]
         if DEBUG:
-            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Rank={infer_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Wroker{infer_worker}Rank={2*infer_worker+2}")
         # TODO 需要补全cache miss逻辑，且用strategy庖代
         task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
@@ -133,7 +136,8 @@ class CacheCoordinator:
                 confirmation_msg = future.wait()
                 if len(confirmation_msg) > 0:
                     if DEBUG:
-                        print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {cache_worker+KVCACHE_offset}")
+                        request_id=task_info['request_id']
+                        print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {2*cache_worker+3}")
                     for request_id in confirmation_msg:
                         self.finished_counter_table[request_id] += confirmation_msg[request_id]
                 
@@ -155,7 +159,7 @@ class CacheCoordinator:
     def _execute_request(self, req:Dict):
         request_id, cache_worker, infer_worker = req['request_id'], req['cache_worker'], req['infer_worker']
         if DEBUG:
-            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
         # 若这里仍然是Check，则不执行
         if req['task_type'] == SIGNAL_CHECK or req['task_type'] == SIGNAL_SKIP:
             confirmation_msg = request_id
@@ -170,7 +174,7 @@ class CacheCoordinator:
             confirmation_msg = future_send.wait()
         if confirmation_msg == request_id:
             if DEBUG:
-                print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+                print(f"[CacheCoordinator] 请求 {request_id} 完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
             self.finished_counter_table[request_id] += 1
             self.finished_flag_table[request_id] = True
 
@@ -178,7 +182,7 @@ class CacheCoordinator:
         if DEBUG:
             request_id = req_list[0]['request_id']
             infer_worker = req_list[0]['infer_worker']
-            print(f"[CacheCoordinator] 执行请求 {request_id} - Rank {cache_worker+KVCACHE_offset} -> Rank {infer_worker+WORKER_offset}")
+            print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
         # TODO 若这里仍然是Check，则应该不执行
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
@@ -186,6 +190,8 @@ class CacheCoordinator:
             args=(KVCache.receive_task_info_batch,
                 self.kvcache_ref[cache_worker],self.worker_ref, 
                 req_list))
+        if DEBUG:
+            print(f"[CacheCoordinator]finish _execute_request_batch")
         return future
 
             
