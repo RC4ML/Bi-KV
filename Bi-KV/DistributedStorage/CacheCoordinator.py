@@ -28,15 +28,15 @@ class CacheCoordinator:
         self.lock = Lock()
         self.kvcache_ref = []
         self.stop_limit = 10000
-        self.buffer_size = 100000
+        self.cache = 5000
         self.page_size = 50
         for i in range(self.kvcache_num):
             print(f"[CacheCoordinator] 创建远程实例 kvcache {i}")
-            self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,self.buffer_size,self.page_size,)))  # 创建远程实例
+            self.kvcache_ref.append(rpc.remote(f"kvcache{i}", KVCache, args=(i,self.cache,self.page_size,)))  # 创建远程实例
         self.page_miss_dict = {}
 
         # 测试MultiPageManager
-        self.page_manager = MultiPageManager(self.buffer_size, self.page_size, self.kvcache_num)
+        self.page_manager = MultiPageManager(self.cache, self.page_size, self.kvcache_num)
 
     
     def add_requests(self, requests:List[Dict]):
