@@ -16,8 +16,8 @@ PROCESS_TYPES = [
 # scheduler rank = 0
 # coordinator rank = 1
 # worker从 rank=2 开始
-WORKER_offset = 1 + 1  # scheduler(0) + coordinator(1) = 2
-KVCACHE_offset = WORKER_offset + WORKER_NUM  # worker结束后是kvcache的起始
+WORKER_offset = 2  # LLMScheduler和CacheCoordinator结束后是worker的起始
+KVCACHE_offset = 3  # 一个worker对应一个kvcache，所以kvcache的rank从worker的下一个开始
 
 # 模拟宏定义，创建一个类型到函数的映射(如果有需要在其他地方动态创建实例时使用)
 typefunc_map = {

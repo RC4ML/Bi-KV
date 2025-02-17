@@ -42,7 +42,7 @@ class KVCache:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
 
     def send_data_batch(self,combined_task_info:Dict):
-        dst_rank = 2*combined_task_info['infer_worker'] + 2
+        dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
         token_num = combined_task_info['token_num']
         id_token_pair_list = combined_task_info['id_token_pair']
         cache_pages_list = combined_task_info['cache_pages_list']
@@ -116,7 +116,7 @@ class KVCache:
         token_num = combined_task_info['token_num']
         id_token_pair_list = combined_task_info['id_token_pair']
         cache_pages_list = combined_task_info['cache_pages_list']
-        src_rank = 2*infer_worker + 2
+        src_rank = 2*infer_worker + WORKER_offset
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始接收数据从 Rank {src_rank} 长度为{token_num}")
         recv_tensor = torch.empty(

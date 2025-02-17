@@ -167,7 +167,7 @@ class Worker:
 
     def receive_kvcache_data_batch(self, combined_task_info):
         cache_worker = combined_task_info['cache_worker']
-        src_rank = 2*cache_worker +3
+        src_rank = 2*cache_worker + KVCACHE_offset
         token_num = combined_task_info['token_num']
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
@@ -208,7 +208,7 @@ class Worker:
             print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def send_kvcache_data_batch(self, combined_task_info):
-        dst_rank = 2*combined_task_info['cache_worker']+3
+        dst_rank = 2*combined_task_info['cache_worker'] + KVCACHE_offset
         token_num = combined_task_info['token_num']
         id_pair_list = combined_task_info['id_token_pair']
         id_list = [i[0] for i in id_pair_list]
