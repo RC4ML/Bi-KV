@@ -287,23 +287,4 @@ class Worker:
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
-<<<<<<< HEAD
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
-=======
-        if DEBUG:
-            print(f"[Worker][RANK {self.rank}] finfished Sending data to kvcache")
-        # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
-
-    def _manage_buffer(self, item_id, token_num):
-        # TODO 按批次丢弃 换出
-        if item_id in self.buffer_control_dict:
-            return self.buffer_control_dict[item_id]
-        next_pos = self.start_pos + token_num
-        if next_pos > self.buffer_size:
-            self.start_pos = 0
-            next_pos = token_num
-        # TODO 换出的时候需要删除ID
-        self.buffer_control_dict[item_id] = (self.start_pos,next_pos)
-        self.start_pos = next_pos
-        return self.buffer_control_dict[item_id]
->>>>>>> zzm-dev
