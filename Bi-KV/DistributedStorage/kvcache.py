@@ -251,21 +251,20 @@ class KVCache:
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
                     self.send_data_batch(task_info)
                     remote_recv.wait()
-                    if DEBUG:
-                        print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
             
                 elif task_type == SIGNAL_RECV:
                     cache_worker = task_info['cache_worker']
                     infer_worker = task_info['infer_worker']
                     worker_ref = worker_ref_list[infer_worker]
                     if DEBUG:
-                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
-                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     remote_send = rpc.rpc_async(
                         to=worker_ref.owner(), func=call_remote_method, 
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
                     self.receive_data_batch(task_info)
                     remote_send.wait()
-                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     
         return confirmation_msg
