@@ -1,5 +1,5 @@
-from functools import cache
 from typing import Dict, Tuple
+from datetime import datetime
 import random
 
 import torch
@@ -26,6 +26,8 @@ class KVCache:
         )
         self.start_pos = 0
         self.page_size = page_size
+        self.recv_counter = 0
+        self.send_counter = 0
         if DEBUG:
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
@@ -148,6 +150,7 @@ class KVCache:
     def terminate(self):
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 收到终止信号，退出运行")
+        self.show_counter()
         return "Terminated"
     
     def receive_task_info(self, task_info:Dict, worker_ref):
@@ -251,8 +254,9 @@ class KVCache:
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
                     self.send_data_batch(task_info)
                     remote_recv.wait()
-                    print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
-            
+                    # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    self.send_counter += 1
+
                 elif task_type == SIGNAL_RECV:
                     cache_worker = task_info['cache_worker']
                     infer_worker = task_info['infer_worker']
@@ -265,6 +269,12 @@ class KVCache:
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
                     self.receive_data_batch(task_info)
                     remote_send.wait()
+                    now = datetime.now()
+                    nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
                     print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
-                    
+                    self.recv_counter += 1
+
         return confirmation_msg
+    
+    def show_counter(self):
+        print(f"[KVCache][RANK {self.rank}] send_counter: {self.send_counter}, recv_counter: {self.recv_counter}")

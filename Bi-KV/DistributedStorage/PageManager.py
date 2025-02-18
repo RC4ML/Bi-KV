@@ -129,14 +129,21 @@ class MultiPageManager:
         self.page_managers = [PageManager(cache_size, page_size, pm_id=i) for i in range(kvcahe_num)]
         self.buffer_size = cache_size
         self.page_size = page_size
+        self.num_pages = cache_size // page_size
         # 记录每个pm的缓存列表
         self.cached_ids = [set() for _ in range(kvcahe_num)]
 
     def load_item(self, item_id, list_length):
         """加载列表，必要时换出旧列表"""
         # NOTE 需要注意的是，应该先查询在不在缓存中，如果在缓存中则直接返回页号
-        # 选择剩余页数最多的pm
-        target_pm = max(self.page_managers, key=lambda x: len(x.free_pages))
+        # 计算最大剩余页数
+        max_page_num = max(len(pm.free_pages) for pm in self.page_managers)
+        if max_page_num>(self.num_pages/10):
+            # 选择剩余页数最多的pm
+            target_pm = max(self.page_managers, key=lambda x: len(x.free_pages))
+        else:
+            # 随机选择一个pm 防止负载不均衡
+            target_pm = random.choice(self.page_managers)
         target_pm_id = target_pm.pm_id
         allocated_pages, freed_ids = target_pm.load_item(item_id, list_length)
         # 记录已缓存的列表
