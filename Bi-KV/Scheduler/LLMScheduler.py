@@ -17,6 +17,7 @@ model_params = {
     "num_layers": 28 
 }
 
+
 class LLMScheduler:
     def __init__(self, world_size:int):
         self.world_size = world_size
@@ -28,6 +29,7 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self.batchsize = 32
+        self.timestamp=0
         
         # 获取coordinator的rpc info
         # 根据PROCESS_TYPES: scheduler=0, coordinator=1, workers=2...(2+WORKER_NUM-1), kvcache后面
@@ -92,6 +94,8 @@ class LLMScheduler:
                         
     def _send_prompt(self, prompt:InputPrompt):
         prompt_order = PromptOrder(prompt)
+        # 时间戳避免共享内存冲突
+        #timestamp = int(time.time() * 1000) 
         # 历史优先，调度用户历史kvcache
         if prompt_order == "User History First":
             task_info_list_dict = {}
@@ -99,6 +103,7 @@ class LLMScheduler:
             token_num = prompt.user_history_tokens
             data_length = self.calculate_data_len(token_num) 
             self._id_counter += 1
+            self.timestamp=self.timestamp+1
             # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
             task_info = {"request_id":self._id_counter,
                          "id":prompt.user_id, 
@@ -107,12 +112,14 @@ class LLMScheduler:
                          'data_length':data_length,
                          'task_type': SIGNAL_CHECK,
                          'index': 0,
-                         'type': 'user cache'
+                         'type': 'user cache',
+                         'timestamp':self.timestamp
                          }
             task_info_list_dict[infer_worker]=[task_info]
             ## append recomputing tokens
             recomputing_tokens = 0
             for ind,i in enumerate(prompt.items):
+                self.timestamp=self.timestamp+1
                 recomputing_tokens = i.token_count
             task_info = {"request_id":self._id_counter,
                             "id":-1, 
@@ -121,7 +128,8 @@ class LLMScheduler:
                             "data_length":-1,
                             'index':-1,
                             'task_type': SIGNAL_SKIP,
-                            'type':'compute'}                                            
+                            'type':'compute',
+                            'timestamp':self.timestamp}                                            
             task_info_list_dict[infer_worker].append(task_info)
             infer_worker_ref = self.worker_ref[infer_worker]
             owner_worker_ref = infer_worker_ref.owner()
@@ -134,6 +142,7 @@ class LLMScheduler:
             infer_worker = self.strategy(prompt.user_id)
             # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
             for ind,i in enumerate(prompt.items):
+                self.timestamp=self.timestamp+1
                 token_num = i.token_count
                 data_length = self.calculate_data_len(token_num) 
                 task_info = {"request_id":self._id_counter,
@@ -143,12 +152,14 @@ class LLMScheduler:
                              "data_length":data_length,
                              'index':ind,
                              'task_type': SIGNAL_CHECK,
-                             'type':'item cache'}
+                             'type':'item cache',
+                             'timestamp':self.timestamp}
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
                 else:
                     task_info_list_dict[infer_worker]=[task_info]
             ## append recomputing tokens
+            self.timestamp=self.timestamp+1
             task_info = {"request_id":self._id_counter,
                 "id":-1, 
                 "infer_worker":infer_worker, 
@@ -156,7 +167,8 @@ class LLMScheduler:
                 "data_length":-1,
                 'index':-1,
                 'task_type': SIGNAL_SKIP,
-                'type':'compute'}
+                'type':'compute',
+                'timestamp':self.timestamp}
             task_info_list_dict[infer_worker].append(task_info)
             # TODO 还需要解决cache是否miss的问题
             if infer_worker in task_info_list_dict:
@@ -169,11 +181,13 @@ class LLMScheduler:
     def _send_prompt_batch(self, prompt_list:List[InputPrompt]):
         future_list = []
         task_info_list_dict = {}
+        #timestamp = int(time.time() * 1000) 
 
         for ind,prompt in enumerate(prompt_list): 
             prompt_order = PromptOrder(prompt)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First":
+                self.timestamp=self.timestamp+1
                 infer_worker = self.strategy(self._id_counter)
                 token_num = prompt.user_history_tokens
                 data_length = self.calculate_data_len(token_num) 
@@ -189,6 +203,7 @@ class LLMScheduler:
                             'task_type': SIGNAL_CHECK,
                             'type': 'user cache',
                             'task_num': 1, # 不考虑recompute
+                            'timestamp':self.timestamp
                             }
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -197,6 +212,7 @@ class LLMScheduler:
                 ## append recomputing tokens
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
+                    self.timestamp=self.timestamp+1
                     recomputing_tokens = i.token_count
                 task_info = {"request_id":self._id_counter,
                                 "id":-1, 
@@ -206,7 +222,8 @@ class LLMScheduler:
                                 'index':-1,
                                 'task_type': SIGNAL_SKIP,
                                 'type':'compute',
-                                'task_num': 1}                                            
+                                'task_num': 1,
+                                'timestamp':self.timestamp}                                            
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
@@ -215,6 +232,7 @@ class LLMScheduler:
                 infer_worker = self.strategy(self._id_counter)
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
+                    self.timestamp=self.timestamp+1
                     token_num = i.token_count
                     data_length = self.calculate_data_len(token_num) 
                     task_info = {"request_id":self._id_counter,
@@ -225,12 +243,14 @@ class LLMScheduler:
                                 'index':ind,
                                 'task_type': SIGNAL_CHECK,
                                 'type':'item cache',
-                                'task_num': len(prompt.items)} # 不考虑recompute
+                                'task_num': len(prompt.items),
+                                'timestamp':self.timestamp } # 不考虑recompute
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
                     else:
                         task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
+                self.timestamp=self.timestamp+1
                 task_info = {"request_id":self._id_counter,
                     "id":-1, 
                     "infer_worker":infer_worker, 
@@ -239,7 +259,8 @@ class LLMScheduler:
                     'index':-1,
                     'task_type': SIGNAL_SKIP,
                     'type':'compute',
-                    'task_num': len(prompt.items)}
+                    'task_num': len(prompt.items),
+                    'timestamp':self.timestamp}
                 task_info_list_dict[infer_worker].append(task_info)
 
         for infer_worker in task_info_list_dict:

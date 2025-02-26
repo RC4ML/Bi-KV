@@ -4,6 +4,7 @@ import time
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
 from rpc_def import *
+from multiprocessing import shared_memory
 from DistributedStorage.CacheCoordinator import CacheCoordinator
 from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
@@ -118,6 +119,8 @@ class Worker:
         cache_miss_dict = future_call_poll.wait()
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
+
+        self._process_local_tasks(task_info_list)
 
         # ## start model inference
         # time3 = time.time()
@@ -288,3 +291,60 @@ class Worker:
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
+    
+    def _process_local_tasks(self, task_list):
+        """处理本地共享内存任务（改进版）"""
+        for task_info in task_list:
+            item_id = task_info['id']
+            token_num = task_info['token_num']
+            timestamp=task_info['timestamp']
+            # 从共享内存读取并处理
+            self._read_from_shared_memory(item_id, token_num,timestamp)
+            
+            # # 更新任务状态
+            # self._update_task_status(task_info)'
+
+    def _read_from_shared_memory(self, item_id, token_num,timestamp):
+        """从共享内存读取数据（模仿receive_kvcache_data_batch处理）"""
+        shm_name = f'sm_worker{self.worker_index}_task{[(item_id,token_num)]}_timestamp{timestamp}'
+        
+        try:
+            # 访问共享内存
+            shm = shared_memory.SharedMemory(name=shm_name)
+            data = torch.frombuffer(shm.buf, dtype=torch.float16)
+            data = data.reshape((token_num,) + token_shape)
+            
+            # 通过页管理器分配空间（确保页已分配）
+            allocated_pages, _ = self.page_manager.load_item(item_id, token_num)
+            
+            # # 分页写入计算缓冲区
+            # self._write_to_compute_buffer(data, cache_pages)
+            
+            print(f"[Worker][RANK {self.rank}] 加载SharedMemory {shm_name}")
+            shm.unlink()
+            return True  # 明确返回成功状态
+        except FileNotFoundError:
+            if DEBUG:
+                print(f"[WARN] 共享内存 {shm_name} 不存在，跳过处理")
+            return False  # 明确返回失败状态
+        finally:
+            if 'shm' in locals():
+                shm.close()
+
+    def _write_to_compute_buffer(self, data, cache_pages):
+        """分页写入计算缓冲区（精确匹配receive_kvcache_data_batch逻辑）"""
+        for page_idx, page in enumerate(cache_pages):
+            # 计算数据分片范围
+            data_start = page_idx * self.page_size
+            data_end = min((page_idx+1)*self.page_size, data.size(0))
+            
+            # 计算缓冲区位置
+            buffer_start = page * self.page_size
+            buffer_end = buffer_start + (data_end - data_start)
+            
+            # 执行分片写入
+            self.compute_buffer[buffer_start:buffer_end] = data[data_start:data_end]
+            
+            print(f"[Worker][RANK {self.rank}] 页 {page} 写入区间 [{buffer_start}:{buffer_end}]")
+
+    

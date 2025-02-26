@@ -55,6 +55,7 @@ class CacheCoordinator:
         task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
         self.request_table.put(task_info)
+        #print(f"task_info{task_info}")
 
 
     def process_requests(self):
