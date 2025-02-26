@@ -1,13 +1,21 @@
 from ast import Dict, List
 import time
 
+
+from protos import TaskInfo_pb2,TaskInfo_pb2_grpc
+import grpc
+
 import torch.distributed.rpc as rpc
 import torch.distributed as dist
+
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator
 from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
+
+
+
 import torch
 from config import *
 from Model.qwen2 import process_task_info, prepare_attention_meta, Qwen2ForCausalLM, AttentionMetadata, token_shape, model_params
@@ -16,16 +24,17 @@ from vllm.config import CacheConfig
 
 import time
 
-class Worker:
-    def __init__(self, rank, coordinator_rref):
+class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
+    def __init__(self, rank,master_port:int, coordinator_rank = None):
         self.rank = rank
         self.worker_index=int(rank/2) -1
-        self.coordinator_rref = coordinator_rref
+        self.coordinator_rank = coordinator_rank
+        self.cache_coordinator_address = f"localhost:{master_port+coordinator_rank}"
         self.gpu_index = self.worker_index # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 2000
+        self.buffer_size = 200000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
@@ -62,13 +71,13 @@ class Worker:
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
     def forward(self, task_info_list:List):
-        coordinator_owner = self.coordinator_rref.owner()
+        coordinator_owner = self.coordinator_rank.owner()
         req_id = task_info_list[0]['request_id']
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
-                         args=(CacheCoordinator.add_requests,self.coordinator_rref, 
+                         args=(CacheCoordinator.add_requests,self.coordinator_rank, 
                                task_info_list))
         finished_signal = False
         cache_miss_dict = {'0':-1}
@@ -76,7 +85,7 @@ class Worker:
             if DEBUG:
                 print(f"[Worker][RANK {self.rank}] Poll requests...")
             future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-                                         args=(CacheCoordinator.poll,self.coordinator_rref,task_info_list))
+                                         args=(CacheCoordinator.poll,self.coordinator_rank,task_info_list))
             res = future_call_poll.wait()
             if DEBUG:
                 print(f"[Worker][RANK {self.rank}] Poll result: {res} Task info list: {[task['id'] for task in task_info_list]}")
@@ -101,17 +110,17 @@ class Worker:
     def forward_with_computation(self, task_info_list:List):
         # 这里的task_info同样有着一样的req_id
         time1 = time.time()
-        coordinator_owner = self.coordinator_rref.owner()
+        coordinator_owner = self.coordinator_rank.owner()
         if DEBUG:
             print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(task_info_list)} requests to coordinator")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
-                         args=(CacheCoordinator.add_requests,self.coordinator_rref, 
+                         args=(CacheCoordinator.add_requests,self.coordinator_rank, 
                                task_info_list))
         time2 = time.time()
         
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
-                            args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
+                            args=(CacheCoordinator.poll_batch,self.coordinator_rank,task_info_list))
         if DEBUG:
             print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
         # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
@@ -146,6 +155,20 @@ class Worker:
             print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
         self.preprare_send_data(task_info_list)
         # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
+
+    def ReceiveTasksFromScheduler(self, request, context):
+        # if DEBUG:
+        print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(request.tasks)} from scheduler")
+        for task in request.tasks:
+            item_id = task.id
+            if item_id == -1:
+                continue
+            self.page_manager.load_item(item_id, task.token_num)
+            self.page_manager.set_protected(item_id)
+        self.forward_with_computation_grpc(request.tasks)
+        self.preprare_send_data_grpc(request.tasks)
+        return TaskInfo_pb2.Empty()
+
 
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
@@ -264,7 +287,7 @@ class Worker:
 
     def preprare_send_data(self,task_info_list):
         # 这里的task_info同样有着一样的req_id
-        coordinator_owner = self.coordinator_rref.owner()
+        coordinator_owner = self.coordinator_rank.owner()
         request_id = task_info_list[0]['request_id']
         cache_miss_dict = self.cache_miss_dict.get(request_id,{})
         send_task_list = []
@@ -285,6 +308,49 @@ class Worker:
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
-                         args=(CacheCoordinator.add_requests,self.coordinator_rref, 
+                         args=(CacheCoordinator.add_requests,self.coordinator_rank, 
                                send_task_list))
+        # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
+
+    def forward_with_computation_grpc(self, tasks):
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(tasks)} requests to coordinator")
+        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+            stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
+        
+        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+            future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+        # TODO cache miss dict的结构需要设计
+        cache_miss_dict = future_call_poll.result()
+        for req_id in cache_miss_dict:
+            self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
+
+    def preprare_send_data_grpc(self, task_info_list):
+        # 这里的task_info同样有着一样的req_id
+        request_id = task_info_list[0].request_id
+        cache_miss_dict = self.cache_miss_dict.get(request_id,{})
+        send_task_list = []
+        for task_info in task_info_list:
+            item_id = task_info.id
+            # 这里能保证item_id在cache_miss_dict中吗？
+            if cache_miss_dict.get(item_id) == CACHE_MISS:
+                # print(f"[Worker][RANK {self.rank}] Cache miss detected")
+                task_info.task_type = SIGNAL_RECV
+                send_task_list.append(task_info)
+            else:
+                # 为什么会提前解除保护？
+                if item_id in self.page_manager.get_loaded_lists():
+                    self.page_manager.remove_protected(item_id)
+        hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
+        if hit_rate > 0.7 and DEBUG:
+            print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
+        # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
+        send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
+        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+            stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖

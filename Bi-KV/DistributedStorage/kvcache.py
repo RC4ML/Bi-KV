@@ -2,6 +2,8 @@ from typing import Dict, Tuple
 from datetime import datetime
 import random
 
+from protos import TaskInfo_pb2, TaskInfo_pb2_grpc
+
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
@@ -13,7 +15,8 @@ from config import *
 import time
 
 
-class KVCache:
+
+class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
     def __init__(self, rank, cache_size, page_size):
         self.rank = rank
         self.cache_index = int(rank/2) -1
@@ -278,3 +281,95 @@ class KVCache:
     
     def show_counter(self):
         print(f"[KVCache][RANK {self.rank}] send_counter: {self.send_counter}, recv_counter: {self.recv_counter}")
+
+
+    def receive_task_info_batch_gprc(self, worker_ref_list, task_info_list): ## only support send from kvcache to worker, all tasks have the same cache worker        
+        from Worker.Worker import Worker
+        combined_task_info = {} ## key: infer worker
+        confirmation_msg = {} ## key: request id
+        for task_info in task_info_list:
+            infer_worker = task_info.infer_worker
+            if infer_worker !=0 and DEBUG:
+                print(f"[KVCache][RANK {self.rank}] infer worker is {infer_worker}") 
+            cache_worker = task_info.cache_worker
+            req_id = task_info.request_id
+            token_num = task_info.token_num
+            item_id = task_info.id
+            cache_pages_list = task_info.get('cache_pages_list',[])
+            if item_id == -1:
+                continue
+            # 到底是什么时候需要管理缓存？
+            # 为什么只在RECV管理时会出现key error？
+            if combined_task_info.get(infer_worker) == None:
+                combined_task_info[infer_worker] = {}
+            if task_info.task_type == SIGNAL_SEND:
+                if combined_task_info[infer_worker].get(SIGNAL_SEND) == None:
+                    combined_task_info[infer_worker][SIGNAL_SEND] = {"infer_worker":infer_worker, 
+                                                                "cache_worker":cache_worker,
+                                                                "token_num":token_num,
+                                                                'task_type': SIGNAL_SEND,
+                                                                'id_token_pair':[(item_id,token_num)],
+                                                                'cache_pages_list':[cache_pages_list],
+                                                                } 
+                else:
+                    combined_task_info[infer_worker][SIGNAL_SEND]['token_num'] += token_num
+                    combined_task_info[infer_worker][SIGNAL_SEND]['id_token_pair'].append((item_id,token_num))
+                    combined_task_info[infer_worker][SIGNAL_SEND]['cache_pages_list'].append(cache_pages_list)
+            if task_info.task_type == SIGNAL_RECV:
+                if combined_task_info[infer_worker].get(SIGNAL_RECV) == None:
+                    combined_task_info[infer_worker][SIGNAL_RECV] = {"infer_worker":infer_worker, 
+                                                                "cache_worker":cache_worker,
+                                                                "token_num":token_num,
+                                                                'task_type': SIGNAL_RECV,
+                                                                'id_token_pair':[(item_id,token_num)],
+                                                                'cache_pages_list':[cache_pages_list],
+                                                                }    
+                else:
+                    combined_task_info[infer_worker][SIGNAL_RECV]['token_num'] += token_num
+                    combined_task_info[infer_worker][SIGNAL_RECV]['id_token_pair'].append((item_id,token_num))
+                    combined_task_info[infer_worker][SIGNAL_RECV]['cache_pages_list'].append(cache_pages_list)
+            if confirmation_msg.get(req_id) == None:
+                confirmation_msg[req_id] = 1
+            else:
+                confirmation_msg[req_id] += 1
+        # 初始状态下，第一轮是全空的任务
+        for task_infer_worker in combined_task_info:
+            combined_task_list = combined_task_info[task_infer_worker]
+            for task_info in combined_task_list.values():
+                task_type = task_info['task_type']
+                infer_worker = task_info['infer_worker']
+                if task_type == SIGNAL_SEND:
+                    if DEBUG:
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    remote_recv = rpc.rpc_async(
+                        to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
+                        args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
+                    self.send_data_batch(task_info)
+                    remote_recv.wait()
+                    # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    self.send_counter += 1
+
+                elif task_type == SIGNAL_RECV:
+                    cache_worker = task_info['cache_worker']
+                    infer_worker = task_info['infer_worker']
+                    worker_ref = worker_ref_list[infer_worker]
+                    if DEBUG:
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    remote_send = rpc.rpc_async(
+                        to=worker_ref.owner(), func=call_remote_method, 
+                        args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
+                    self.receive_data_batch(task_info)
+                    remote_send.wait()
+                    now = datetime.now()
+                    nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
+                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    self.recv_counter += 1
+
+        return confirmation_msg
+
+
+    def ReceiveTasksFromCoordinator(self, request, context):
+        self.receive_task_info_batch_gprc(request.worker_ref_list, request.tasks)
+        return TaskInfo_pb2.Empty()

@@ -54,5 +54,24 @@ def get_process_info(rank):
         return 'Worker',int(rank/2)-1
     else:             # rank 3,5,7,9.... is kvcache
         return 'KVCache' , int(rank/2)-1
+    
+def generate_rank_map(world_size):
+    """
+    生成全局 rank 到进程类型和索引的映射。
+
+    Args:
+        world_size (int): 总进程数量。
+
+    Returns:
+        dict: 全局 rank 到进程类型和索引的映射。
+    """
+    rank_map = {}
+    for rank in range(world_size):
+        process_type, _ = get_process_info(rank)
+        if rank_map.get(process_type) is None:
+            rank_map[process_type] = [rank]
+        else:
+            rank_map[process_type].append(rank)
+    return rank_map
 
 

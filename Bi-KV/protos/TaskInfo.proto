@@ -1,9 +1,5 @@
 syntax = "proto3";
 
-service TaskInfoTransport{
-    // 函数没想好
-}
-
 // 信号和Signals.py中定义的不一样
 enum Signal{
     SIGNAL_SEND = 0;      // 发送数据信号
@@ -20,15 +16,39 @@ message IdTokenPair{
 }
 
 message TaskInfo {
-    string request_id = 1;
+    int32 request_id = 1;
     int32 id = 2;
-    string infer_worker = 3;
+    int32 infer_worker = 3;
     int32 token_num = 4;
-    int32 data_length = 5;
-    int32 index = 6;
-    int32 task_type = 7;
-    string type = 8;
-    int32 task_num = 9;
-    repeated int32 cache_pages_list = 10;
-    repeated IdTokenPair id_token_pair = 11;
+    int32 index = 5;
+    int32 task_type = 6;
+    string type = 7;
+    int32 task_num = 8;
+    repeated int32 cache_pages_list = 9;
+    repeated IdTokenPair id_token_pair = 10;
   }
+
+message TaskInfoList {
+    repeated TaskInfo tasks = 1;
+}
+
+// 空响应消息
+message Empty {}
+
+// InferWorker 服务
+service InferWorkerService {
+    rpc ReceiveTasksFromScheduler(TaskInfoList) returns (Empty);
+    rpc SendKVCacheData(TaskInfoList) returns (Empty);
+    rpc RecvKVCacheData(TaskInfoList) returns (Empty);
+}
+
+// CacheCoordinator 服务
+service CacheCoordinatorService {
+    rpc ReceiveTasksFromInferWorker(TaskInfoList) returns (Empty);
+    rpc PollBatchFromInferWorker(TaskInfoList) returns (Empty);
+}
+
+// KVCache 服务
+service KVCacheService {
+    rpc ReceiveTasksFromCoordinator(TaskInfoList) returns (Empty);
+}
