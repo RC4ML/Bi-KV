@@ -7,7 +7,7 @@ from multiprocessing import shared_memory
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV
-from rpc_def import KVCACHE_offset,WORKER_offset
+from rpc_def import KVCACHE_offset,WORKER_offset,get_worker_rank
 from Remote.remote_call import call_remote_method
 from Model.qwen2 import token_shape
 from config import *
@@ -208,10 +208,6 @@ class KVCache:
             cache_pages_list = task_info.get('cache_pages_list',[])
             if item_id == -1:
                 continue
-            if infer_worker ==cache_worker:
-                    print(f"[KVCache.move_to_shared_data][RANK {self.rank}]{task_info}")
-                    self.share_data(task_info)
-                    self.send_counter += 1
             # 到底是什么时候需要管理缓存？
             # 为什么只在RECV管理时会出现key error？
             if combined_task_info.get(infer_worker) == None:
@@ -224,13 +220,13 @@ class KVCache:
                                                                 'task_type': SIGNAL_SEND,
                                                                 'id_token_pair':[(item_id,token_num)],
                                                                 'cache_pages_list':[cache_pages_list],
-                                                                'timestamp':[(timestamp)]
+                    #                                            'timestamp':[(timestamp)]
                                                                 } 
                 else:
                     combined_task_info[infer_worker][SIGNAL_SEND]['token_num'] += token_num
                     combined_task_info[infer_worker][SIGNAL_SEND]['id_token_pair'].append((item_id,token_num))
                     combined_task_info[infer_worker][SIGNAL_SEND]['cache_pages_list'].append(cache_pages_list)
-                    combined_task_info[infer_worker][SIGNAL_SEND]['timestamp'].append(timestamp)
+                    #combined_task_info[infer_worker][SIGNAL_SEND]['timestamp'].append(timestamp)
             if task_info['task_type'] == SIGNAL_RECV:
                 if combined_task_info[infer_worker].get(SIGNAL_RECV) == None:
                     combined_task_info[infer_worker][SIGNAL_RECV] = {"infer_worker":infer_worker, 
@@ -239,13 +235,13 @@ class KVCache:
                                                                 'task_type': SIGNAL_RECV,
                                                                 'id_token_pair':[(item_id,token_num)],
                                                                 'cache_pages_list':[cache_pages_list],
-                                                                'timestamp':[(timestamp)]
+                    #                                            'timestamp':[(timestamp)]
                                                                 }    
                 else:
                     combined_task_info[infer_worker][SIGNAL_RECV]['token_num'] += token_num
                     combined_task_info[infer_worker][SIGNAL_RECV]['id_token_pair'].append((item_id,token_num))
                     combined_task_info[infer_worker][SIGNAL_RECV]['cache_pages_list'].append(cache_pages_list)
-                    combined_task_info[infer_worker][SIGNAL_RECV]['timestamp'].append(timestamp)
+                    #combined_task_info[infer_worker][SIGNAL_RECV]['timestamp'].append(timestamp)
             if confirmation_msg.get(req_id) == None:
                 confirmation_msg[req_id] = 1
             else:
@@ -261,18 +257,28 @@ class KVCache:
                         if DEBUG:
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                        time_send1=time.time()
                         remote_recv = rpc.rpc_async(
                             to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                             args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
                         self.send_data_batch(task_info)
                         remote_recv.wait()
+                        time_send2=time.time()
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] remote_send time ={time_send2-time_send1}")
                         # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                         self.send_counter += 1
                     elif infer_worker ==cache_worker:
-                        # print(f"[KVCache.move_to_shared_data][RANK {self.rank}]{task_info}")
-                        # self.share_data(task_info)
-                        # self.send_counter += 1
-                        continue
+                        if DEBUG:
+                            print(f"[KVCache.move_to_shared_data][RANK {self.rank}]{task_info}")
+                        time_share1=time.time()
+                        self.share_data_batch(task_info)
+                        remote_share = rpc.rpc_async(
+                            to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
+                            args=(Worker._read_from_shared_memory_batch, worker_ref_list[infer_worker], task_info))
+                        remote_share.wait()
+                        time_share2=time.time()
+                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
+                        self.send_counter += 1
 
                 elif task_type == SIGNAL_RECV:
                     cache_worker = task_info['cache_worker']
@@ -304,7 +310,6 @@ class KVCache:
         token_num = task_info['token_num']
         #shm_name = f'sm_worker{infer_worker}_task{id_token_pair}_timestamp{timestamp}'
         shm_name = f'sm_worker{infer_worker}_task{[(item_id,token_num)]}_timestamp{timestamp}'
-        send_tensor_list = []
         cache_pages_list = task_info.get('cache_pages_list',[])
         # 重构版send tensor，依托cache_pages_list
         page_list=cache_pages_list
@@ -339,3 +344,67 @@ class KVCache:
             'create_time': time.time()
         }
         print(f"[KVCache][Rank {self.rank}] 已将 tensor 存储到共享内存中，tensor 形状：{send_tensor.shape}")
+    
+    def share_data_batch(self,combined_task_info:Dict):
+        infer_worker=combined_task_info["infer_worker"]
+        #id_token_pair=task_info["id_token_pair"]
+        dst_rank = get_worker_rank(infer_worker)
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        cache_pages_list = combined_task_info['cache_pages_list']
+        send_tensor_list = []
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始移动共享数据和Worker{dst_rank}共享, 长度={token_num}")
+        # for id_token_pair in id_token_pair_list:
+        #     item_id = id_token_pair[0]
+        #     if item_id not in self.cache_control_dict:
+        #         pass
+        #     start_pos,next_pos = self.cache_control_dict[item_id]
+        #     if next_pos-start_pos != id_token_pair[1]:
+        #         print(f"[KVCache][Rank {self.rank}] Fatal Error: offest({next_pos-start_pos}) != token num({id_token_pair[1]}) id index{id_token_pair_list.index(id_token_pair)}")
+        #         print(f"[KVCache][Rank {self.rank}] item_id={item_id}, start_pos={start_pos}, next_pos={next_pos} id_token_pair={id_token_pair}")  
+        #         print(f"[KVCache][Rank {self.rank}] To continue the process, we have to ignore this error")
+        #         next_pos = start_pos + id_token_pair[1]
+        #     send_tensor_list.append(self.cache_data[start_pos:next_pos])
+        
+        # 重构版send tensor，依托cache_pages_list
+        for idx,page_list in enumerate(cache_pages_list):
+            id_token_pair = id_token_pair_list[idx]
+            item_token_num = id_token_pair[1]
+            send_tensor = torch.empty(
+                (item_token_num,) + token_shape, 
+                dtype=torch.float16
+            )
+            for page_idx,page in enumerate(page_list):
+                if page_idx == len(page_list) - 1:
+                    send_tensor[page_idx*self.page_size:] \
+                        = self.cache_data[page*self.page_size:page*self.page_size+item_token_num%self.page_size]
+                else:
+                    send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
+            assert send_tensor.size(0) == item_token_num
+            send_tensor_list.append(send_tensor)
+        
+        send_tensor = torch.cat(send_tensor_list, dim=0)
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] share_tensor shape: {send_tensor.size()} token num: {token_num}")
+         #开始构建共享内存
+        time0 = time.time()
+        shm_name = f'sm_worker{infer_worker}'
+        # 创建共享内存，分配空间
+        shm = shared_memory.SharedMemory(create=True, size=send_tensor.nbytes, name=shm_name)
+        # 转换memoryview为numpy array
+        np_buffer = np.frombuffer(shm.buf, dtype=np.float16)
+        shared_tensor = torch.from_numpy(np_buffer).reshape(send_tensor.shape)
+        shared_tensor.copy_(send_tensor)
+        # 记录共享内存引用
+        if not hasattr(self, '_shared_memory_refs'):
+            self._shared_memory_refs = {}
+        self._shared_memory_refs[shm_name] = {
+            'shm': shm,
+            'create_time': time.time()
+        }
+        print(f"[KVCache][Rank {self.rank}] 已将 tensor 存储到共享内存中，tensor 形状：{send_tensor.shape}")
+        time1 = time.time()
+        # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
