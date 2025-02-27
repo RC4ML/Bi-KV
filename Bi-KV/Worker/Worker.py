@@ -1,4 +1,5 @@
 from ast import Dict, List
+import json
 import time
 
 
@@ -34,7 +35,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 200000
+        self.buffer_size = 35000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
@@ -157,8 +158,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
 
     def ReceiveTasksFromScheduler(self, request, context):
-        # if DEBUG:
-        print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(request.tasks)} from scheduler")
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(request.tasks)} from scheduler")
         for task in request.tasks:
             item_id = task.id
             if item_id == -1:
@@ -189,9 +190,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.write_compute_buffer(task_info)
 
     def receive_kvcache_data_batch(self, combined_task_info):
-        cache_worker = combined_task_info['cache_worker']
+        cache_worker = combined_task_info.cache_worker
         src_rank = 2*cache_worker + KVCACHE_offset
-        token_num = combined_task_info['token_num']
+        token_num = combined_task_info.token_num
         recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
@@ -199,9 +200,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         dist.recv(tensor=recv_tensor, src=src_rank)
         # TODO 写入到buffer中
         start_pos = 0
-        for id_pair in combined_task_info['id_token_pair']:
-            item_id = id_pair[0]
-            offset = id_pair[1]
+        for id_pair in combined_task_info.id_token_pair:
+            item_id = id_pair.id
+            offset = id_pair.token_num
             item_tensor = recv_tensor[start_pos:start_pos+offset]
             start_pos += offset
             # 让page manager管理buffer
@@ -218,9 +219,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                     self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
 
     def send_kvcache_data(self, task_info):
-        dst_rank = 2*task_info['cache_worker'] + 3
-        token_num = task_info['token_num']
-        id = task_info['id']
+        dst_rank = 2*task_info.cache_worker + 3
+        token_num = task_info.token_num
+        id = task_info.id
         # if id not in self.buffer_control_dict:
         #     print(f"[Worker][RANK {self.rank}] Error: id {id} not in buffer control dict")
         start_pos,offest = self._manage_buffer(id, token_num)
@@ -231,14 +232,13 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def send_kvcache_data_batch(self, combined_task_info):
-        dst_rank = 2*combined_task_info['cache_worker'] + KVCACHE_offset
-        token_num = combined_task_info['token_num']
-        id_pair_list = combined_task_info['id_token_pair']
-        id_list = [i[0] for i in id_pair_list]
+        dst_rank = 2*combined_task_info.cache_worker + KVCACHE_offset
+        token_num = combined_task_info.token_num
+        id_pair_list = combined_task_info.id_token_pair
         send_tensor_list = []
         for id_pair in id_pair_list:
-            i = id_pair[0]
-            token_num = id_pair[1]
+            i = id_pair.id
+            token_num = id_pair.token_num
             if i not in self.page_manager.get_loaded_lists():
                 print(f"[Worker][RANK {self.rank}][{time.time()}] Error: id {i} not in page manager")
             page_set = self.page_manager.access_item(i)
@@ -315,29 +315,38 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
     def forward_with_computation_grpc(self, tasks):
         if DEBUG:
             print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(tasks)} requests to coordinator")
+        tasks = TaskInfo_pb2.TaskInfoList(tasks=tasks)
         with grpc.insecure_channel(self.cache_coordinator_address) as channel:
             stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
             stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
-        
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] try to poll_batch")
         with grpc.insecure_channel(self.cache_coordinator_address) as channel:
             stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+            # stub.PollBatchFromInferWorker(tasks)
+            time1 = time.time()
             future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
+            if DEBUG:
+                print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+            cache_miss_dict_data = future_call_poll.result()
+        time2 = time.time()
+        print(f"[Worker.forward_with_computation][RANK {self.rank}] poll {len(tasks.tasks)} time {time2-time1}s")
+        cache_miss_dict = json.loads(cache_miss_dict_data.msg)
         if DEBUG:
-            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
-        # TODO cache miss dict的结构需要设计
-        cache_miss_dict = future_call_poll.result()
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] cache_miss_dict: {cache_miss_dict}")
+        # cache_miss_dict = future_call_poll.result()
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
 
     def preprare_send_data_grpc(self, task_info_list):
         # 这里的task_info同样有着一样的req_id
         request_id = task_info_list[0].request_id
-        cache_miss_dict = self.cache_miss_dict.get(request_id,{})
+        cache_miss_dict = self.cache_miss_dict.get(str(request_id),{})
         send_task_list = []
         for task_info in task_info_list:
             item_id = task_info.id
             # 这里能保证item_id在cache_miss_dict中吗？
-            if cache_miss_dict.get(item_id) == CACHE_MISS:
+            if cache_miss_dict.get(str(item_id)) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info.task_type = SIGNAL_RECV
                 send_task_list.append(task_info)
@@ -354,3 +363,30 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
             stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
+
+    def RecvKVCacheData(self, request, context):
+        task_info = request
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}] Recv kvcache data {task_info} from kvcache")
+        self.receive_kvcache_data_batch(task_info)
+        return TaskInfo_pb2.Empty()
+    
+    def SendKVCacheData(self, request, context):
+        task_info = request
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
+        self.send_kvcache_data_batch(task_info)
+        return TaskInfo_pb2.Empty()
+    
+    # def ShutDown(self, request, context):
+    #     # 在这里处理关闭逻辑
+    #     print("Server shutting down...")
+    #     import threading
+    #     stop_event = threading.Event()
+
+    #     def stop():
+    #         server.stop(grace=3)  # grace period allows ongoing RPCs to complete
+    #         stop_event.set()
+        
+    #     threading.Thread(target=stop).start()
+    #     return TaskInfo_pb2.Empty()

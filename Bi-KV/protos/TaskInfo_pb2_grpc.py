@@ -42,12 +42,17 @@ class InferWorkerServiceStub(object):
                 _registered_method=True)
         self.SendKVCacheData = channel.unary_unary(
                 '/InferWorkerService/SendKVCacheData',
-                request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
+                request_serializer=TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
                 response_deserializer=TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
         self.RecvKVCacheData = channel.unary_unary(
                 '/InferWorkerService/RecvKVCacheData',
-                request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
+                request_serializer=TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
+                response_deserializer=TaskInfo__pb2.Empty.FromString,
+                _registered_method=True)
+        self.ShutDown = channel.unary_unary(
+                '/InferWorkerService/ShutDown',
+                request_serializer=TaskInfo__pb2.Empty.SerializeToString,
                 response_deserializer=TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
 
@@ -74,6 +79,13 @@ class InferWorkerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ShutDown(self, request, context):
+        """关闭 infer worker
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_InferWorkerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -84,12 +96,17 @@ def add_InferWorkerServiceServicer_to_server(servicer, server):
             ),
             'SendKVCacheData': grpc.unary_unary_rpc_method_handler(
                     servicer.SendKVCacheData,
-                    request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
+                    request_deserializer=TaskInfo__pb2.CombindedTaskInfo.FromString,
                     response_serializer=TaskInfo__pb2.Empty.SerializeToString,
             ),
             'RecvKVCacheData': grpc.unary_unary_rpc_method_handler(
                     servicer.RecvKVCacheData,
-                    request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
+                    request_deserializer=TaskInfo__pb2.CombindedTaskInfo.FromString,
+                    response_serializer=TaskInfo__pb2.Empty.SerializeToString,
+            ),
+            'ShutDown': grpc.unary_unary_rpc_method_handler(
+                    servicer.ShutDown,
+                    request_deserializer=TaskInfo__pb2.Empty.FromString,
                     response_serializer=TaskInfo__pb2.Empty.SerializeToString,
             ),
     }
@@ -146,7 +163,7 @@ class InferWorkerService(object):
             request,
             target,
             '/InferWorkerService/SendKVCacheData',
-            TaskInfo__pb2.TaskInfoList.SerializeToString,
+            TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
             TaskInfo__pb2.Empty.FromString,
             options,
             channel_credentials,
@@ -173,7 +190,34 @@ class InferWorkerService(object):
             request,
             target,
             '/InferWorkerService/RecvKVCacheData',
-            TaskInfo__pb2.TaskInfoList.SerializeToString,
+            TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
+            TaskInfo__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ShutDown(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/InferWorkerService/ShutDown',
+            TaskInfo__pb2.Empty.SerializeToString,
             TaskInfo__pb2.Empty.FromString,
             options,
             channel_credentials,
@@ -204,6 +248,16 @@ class CacheCoordinatorServiceStub(object):
         self.PollBatchFromInferWorker = channel.unary_unary(
                 '/CacheCoordinatorService/PollBatchFromInferWorker',
                 request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
+                response_deserializer=TaskInfo__pb2.ComfirmationMessage.FromString,
+                _registered_method=True)
+        self.StartProcessRequest = channel.unary_unary(
+                '/CacheCoordinatorService/StartProcessRequest',
+                request_serializer=TaskInfo__pb2.StartRequest.SerializeToString,
+                response_deserializer=TaskInfo__pb2.Empty.FromString,
+                _registered_method=True)
+        self.ShutDown = channel.unary_unary(
+                '/CacheCoordinatorService/ShutDown',
+                request_serializer=TaskInfo__pb2.Empty.SerializeToString,
                 response_deserializer=TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
 
@@ -224,6 +278,19 @@ class CacheCoordinatorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartProcessRequest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ShutDown(self, request, context):
+        """关闭 cache coordinator
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_CacheCoordinatorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -235,6 +302,16 @@ def add_CacheCoordinatorServiceServicer_to_server(servicer, server):
             'PollBatchFromInferWorker': grpc.unary_unary_rpc_method_handler(
                     servicer.PollBatchFromInferWorker,
                     request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
+                    response_serializer=TaskInfo__pb2.ComfirmationMessage.SerializeToString,
+            ),
+            'StartProcessRequest': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartProcessRequest,
+                    request_deserializer=TaskInfo__pb2.StartRequest.FromString,
+                    response_serializer=TaskInfo__pb2.Empty.SerializeToString,
+            ),
+            'ShutDown': grpc.unary_unary_rpc_method_handler(
+                    servicer.ShutDown,
+                    request_deserializer=TaskInfo__pb2.Empty.FromString,
                     response_serializer=TaskInfo__pb2.Empty.SerializeToString,
             ),
     }
@@ -292,6 +369,60 @@ class CacheCoordinatorService(object):
             target,
             '/CacheCoordinatorService/PollBatchFromInferWorker',
             TaskInfo__pb2.TaskInfoList.SerializeToString,
+            TaskInfo__pb2.ComfirmationMessage.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartProcessRequest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/CacheCoordinatorService/StartProcessRequest',
+            TaskInfo__pb2.StartRequest.SerializeToString,
+            TaskInfo__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ShutDown(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/CacheCoordinatorService/ShutDown',
+            TaskInfo__pb2.Empty.SerializeToString,
             TaskInfo__pb2.Empty.FromString,
             options,
             channel_credentials,
@@ -317,6 +448,11 @@ class KVCacheServiceStub(object):
         self.ReceiveTasksFromCoordinator = channel.unary_unary(
                 '/KVCacheService/ReceiveTasksFromCoordinator',
                 request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
+                response_deserializer=TaskInfo__pb2.ComfirmationMessage.FromString,
+                _registered_method=True)
+        self.ShutDown = channel.unary_unary(
+                '/KVCacheService/ShutDown',
+                request_serializer=TaskInfo__pb2.Empty.SerializeToString,
                 response_deserializer=TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
 
@@ -331,12 +467,24 @@ class KVCacheServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ShutDown(self, request, context):
+        """关闭 KVCache
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_KVCacheServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ReceiveTasksFromCoordinator': grpc.unary_unary_rpc_method_handler(
                     servicer.ReceiveTasksFromCoordinator,
                     request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
+                    response_serializer=TaskInfo__pb2.ComfirmationMessage.SerializeToString,
+            ),
+            'ShutDown': grpc.unary_unary_rpc_method_handler(
+                    servicer.ShutDown,
+                    request_deserializer=TaskInfo__pb2.Empty.FromString,
                     response_serializer=TaskInfo__pb2.Empty.SerializeToString,
             ),
     }
@@ -367,6 +515,33 @@ class KVCacheService(object):
             target,
             '/KVCacheService/ReceiveTasksFromCoordinator',
             TaskInfo__pb2.TaskInfoList.SerializeToString,
+            TaskInfo__pb2.ComfirmationMessage.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ShutDown(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/KVCacheService/ShutDown',
+            TaskInfo__pb2.Empty.SerializeToString,
             TaskInfo__pb2.Empty.FromString,
             options,
             channel_credentials,

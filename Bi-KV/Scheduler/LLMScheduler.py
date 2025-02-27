@@ -269,19 +269,20 @@ class LLMScheduler:
                 # return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
                 #             args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
-            print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
+            # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
-            with grpc.insecure_channel(f"localhost:{infer_worker_port}") as channel:
-                stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
-                future = stub.ReceiveTasksFromScheduler.future(task_info_list)
+            channel = grpc.insecure_channel(f"localhost:{infer_worker_port}")
+            stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+            future = stub.ReceiveTasksFromScheduler.future(task_info_list)
             #     time1 = time.time()
-            #     stub.ReceiveTasksFromScheduler(task_info_list)
+                # stub.ReceiveTasksFromScheduler(task_info_list)
             # time2 = time.time()
             # print(f'[LLMScheduler] Grpc send task to worker {infer_worker} cost {time2-time1} s')
-            future_list.append(future)  
+            future_list.append((future,channel))  
             
-        for future in future_list:
+        for future,channel in future_list:
             future.result()
+            channel.close()
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers

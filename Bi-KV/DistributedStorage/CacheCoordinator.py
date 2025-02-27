@@ -1,3 +1,5 @@
+from asyncio import tasks
+import json
 from typing import Tuple,Dict, List
 import time
 from queue import Queue
@@ -18,7 +20,7 @@ from rpc_def import KVCACHE_offset,WORKER_offset,PROCESS_TYPES, WORKER_NUM, KVCA
 from config import *
 
 class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
-    def __init__(self, rank, master_port, cache_ranks):
+    def __init__(self, rank, master_port, cache_ranks, infer_ranks):
         """初始化调度器"""
         print("[CacheCoordinator] 初始化调度器")
         self.kvcache_num = len(cache_ranks)
@@ -32,7 +34,8 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
         # cpu_state_table记录每个kvcache的状态(0-based)
         self.cpu_state_table = {i: {'status': 'idle'} for i in range(self.kvcache_num)}
         self.lock = Lock()
-        self.kvcache_ref = []
+        self.cache_ranks = cache_ranks
+        self.infer_ranks = infer_ranks
         self.stop_limit = 10000
         self.cache = 5000
         self.page_size = 50
@@ -46,6 +49,7 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
 
         # 测试MultiPageManager
         self.page_manager = MultiPageManager(self.cache, self.page_size, self.kvcache_num)
+        print("[CacheCoordinator] 初始化完成")
 
     
     def add_requests(self, requests:List[Dict]):
@@ -199,14 +203,14 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                             self.page_miss_dict[req_id][task_info.id] = CACHE_HIT
                             task_info.task_type = SIGNAL_SEND
                             task_info.cache_worker = cache_worker
-                            task_info.cache_pages_list = pages_list
+                            task_info.cache_pages_list.extend(pages_list)
 
                     if task_info.task_type == SIGNAL_RECV:
                         load_res = self.page_manager.load_item(task_info.id, task_info.token_num)
                         cache_worker = load_res[0]
                         pages_list = load_res[1]
                         task_info.cache_worker = cache_worker
-                        task_info.cache_pages_list = pages_list
+                        task_info.cache_pages_list.extend(pages_list)
 
                     cache_worker = task_info.cache_worker
 
@@ -230,8 +234,8 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
             # count = 0
             cache_future = []
             for cache_worker in executable_requests:
-                future = self._execute_request_batch_gprc(executable_requests[cache_worker], cache_worker) 
-                cache_future.append(future)
+                channel,future = self._execute_request_batch_gprc(executable_requests[cache_worker], cache_worker) 
+                cache_future.append((channel,future))
                 # count = 0
                 # batched_request = []
                 # for request in executable_requests[cache_worker]:
@@ -243,15 +247,18 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                 # if len(batched_request) > 0:
                 #     self._execute_request_batch(batched_request, cache_worker) 
 
-            for future in cache_future:
+            for channel,future in cache_future:
                 # confirmation_msg是一个字典，key是request_id，value是完成的task数量
-                confirmation_msg = future.wait()
+                # 在grpc下用字符串序列化反序列化了，希望属性能对上
+                confirmation_msg_data = future.result()
+                confirmation_msg = json.loads(confirmation_msg_data.msg)
+                channel.close()
                 if len(confirmation_msg) > 0:
                     if DEBUG:
                         request_id=task_info.request_id
                         print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {2*cache_worker+3}")
                     for request_id in confirmation_msg:
-                        self.finished_counter_table[request_id] += confirmation_msg[request_id]
+                        self.finished_counter_table[int(request_id)] += confirmation_msg[request_id]
                 
             
             if idle_time_counter>self.stop_limit and self.request_table.empty():
@@ -275,15 +282,15 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
             infer_worker = req_list[0].infer_worker
             print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
         # TODO 若这里仍然是Check，则应该不执行
-        send_task_list_gprc = TaskInfo_pb2.TaskInfoList()
-        cache_rank = 2*cache_worker+WORKER_offset
+        send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=req_list)
+        cache_rank = 2*cache_worker+KVCACHE_offset
         cache_coordinator_address = f"localhost:{self.master_port+cache_rank}"
-        with grpc.insecure_channel(cache_coordinator_address) as channel:
-            stub = TaskInfo_pb2_grpc.KVCacheServiceServicer(channel)
-            future = stub.ReceiveTasksFromCoordinator.future(send_task_list_gprc)
+        channel =  grpc.insecure_channel(cache_coordinator_address)
+        stub = TaskInfo_pb2_grpc.KVCacheServiceStub(channel)
+        future = stub.ReceiveTasksFromCoordinator.future(send_task_list_gprc)
         if DEBUG:
             print(f"[CacheCoordinator]finish _execute_request_batch")
-        return future
+        return channel,future
 
     def _execute_request(self, req:Dict):
         request_id, cache_worker, infer_worker = req['request_id'], req['cache_worker'], req['infer_worker']
@@ -336,6 +343,16 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
             fut.wait()
         print("[CacheCoordinator] 终止信号已发送")
         
+    def send_terminate_signal_grpc(self):
+        print("[CacheCoordinator] 发送终止信号给所有 KVCache")
+        futures = []
+        for i in self.cache_ranks:
+            cache_rank = 2*i+KVCACHE_offset
+            cache_coordinator_address = f"localhost:{self.master_port+cache_rank}"
+            channel =  grpc.insecure_channel(cache_coordinator_address)
+            stub = TaskInfo_pb2_grpc.KVCacheServiceStub(channel)
+            fut = stub.Terminate(TaskInfo_pb2.Empty())
+            futures.append(fut)
 
     def set_workers_rref(self,workers_rref):
         self.worker_ref = workers_rref
@@ -427,7 +444,6 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                 if request_to_task_num[request_id] != task_num:
                     raise ValueError(f"Conflicting task_num for request id {request_id}")
         finish_count = 0
-
         unfinished_requests = set(request_to_task_num.keys())  # 未完成的 request_id 集合
 
         while finish_count != len(request_to_task_num):
@@ -441,5 +457,11 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                     cache_miss_dict[request_id] = self.page_miss_dict.get(request_id)
                     finish_count += 1
                     unfinished_requests.remove(request_id)  # 移除已完成的 request_id
+        
+        comfirmation_data = json.dumps(cache_miss_dict)
+        return TaskInfo_pb2.ComfirmationMessage(msg = comfirmation_data)
 
-        return cache_miss_dict
+    def StartProcessRequest(self, request, context):
+        self.process_flag = True
+        self.process_requests_grpc()
+        return TaskInfo_pb2.Empty()

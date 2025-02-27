@@ -24,27 +24,35 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eTaskInfo.proto\",\n\x0bIdTokenPair\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x11\n\ttoken_num\x18\x02 \x01(\t\"\xd4\x01\n\x08TaskInfo\x12\x12\n\nrequest_id\x18\x01 \x01(\x05\x12\n\n\x02id\x18\x02 \x01(\x05\x12\x14\n\x0cinfer_worker\x18\x03 \x01(\x05\x12\x11\n\ttoken_num\x18\x04 \x01(\x05\x12\r\n\x05index\x18\x05 \x01(\x05\x12\x11\n\ttask_type\x18\x06 \x01(\x05\x12\x0c\n\x04type\x18\x07 \x01(\t\x12\x10\n\x08task_num\x18\x08 \x01(\x05\x12\x18\n\x10\x63\x61\x63he_pages_list\x18\t \x03(\x05\x12#\n\rid_token_pair\x18\n \x03(\x0b\x32\x0c.IdTokenPair\"(\n\x0cTaskInfoList\x12\x18\n\x05tasks\x18\x01 \x03(\x0b\x32\t.TaskInfo\"\x07\n\x05\x45mpty*s\n\x06Signal\x12\x0f\n\x0bSIGNAL_SEND\x10\x00\x12\x0f\n\x0bSIGNAL_RECV\x10\x01\x12\x0e\n\nSIGNAL_ACK\x10\x02\x12\x10\n\x0cSIGNAL_CHECK\x10\x03\x12\x0f\n\x0bSIGNAL_SKIP\x10\x04\x12\x14\n\x10SIGNAL_TERMINATE\x10\t2\x9c\x01\n\x12InferWorkerService\x12\x32\n\x19ReceiveTasksFromScheduler\x12\r.TaskInfoList\x1a\x06.Empty\x12(\n\x0fSendKVCacheData\x12\r.TaskInfoList\x1a\x06.Empty\x12(\n\x0fRecvKVCacheData\x12\r.TaskInfoList\x1a\x06.Empty2\x82\x01\n\x17\x43\x61\x63heCoordinatorService\x12\x34\n\x1bReceiveTasksFromInferWorker\x12\r.TaskInfoList\x1a\x06.Empty\x12\x31\n\x18PollBatchFromInferWorker\x12\r.TaskInfoList\x1a\x06.Empty2F\n\x0eKVCacheService\x12\x34\n\x1bReceiveTasksFromCoordinator\x12\r.TaskInfoList\x1a\x06.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eTaskInfo.proto\",\n\x0bIdTokenPair\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x11\n\ttoken_num\x18\x02 \x01(\x05\"\xc5\x01\n\x08TaskInfo\x12\x12\n\nrequest_id\x18\x01 \x01(\x05\x12\n\n\x02id\x18\x02 \x01(\x05\x12\x14\n\x0cinfer_worker\x18\x03 \x01(\x05\x12\x14\n\x0c\x63\x61\x63he_worker\x18\x04 \x01(\x05\x12\x11\n\ttoken_num\x18\x05 \x01(\x05\x12\r\n\x05index\x18\x06 \x01(\x05\x12\x11\n\ttask_type\x18\x07 \x01(\x05\x12\x0c\n\x04type\x18\x08 \x01(\t\x12\x10\n\x08task_num\x18\t \x01(\x05\x12\x18\n\x10\x63\x61\x63he_pages_list\x18\n \x03(\x05\"\xfe\x01\n\x11\x43ombindedTaskInfo\x12\x12\n\nrequest_id\x18\x01 \x01(\x05\x12\n\n\x02id\x18\x02 \x01(\x05\x12\x14\n\x0cinfer_worker\x18\x03 \x01(\x05\x12\x14\n\x0c\x63\x61\x63he_worker\x18\x04 \x01(\x05\x12\x11\n\ttoken_num\x18\x05 \x01(\x05\x12\r\n\x05index\x18\x06 \x01(\x05\x12\x11\n\ttask_type\x18\x07 \x01(\x05\x12\x0c\n\x04type\x18\x08 \x01(\t\x12\x10\n\x08task_num\x18\t \x01(\x05\x12#\n\x10\x63\x61\x63he_pages_list\x18\n \x03(\x0b\x32\t.PageList\x12#\n\rid_token_pair\x18\x0b \x03(\x0b\x32\x0c.IdTokenPair\"$\n\x08PageList\x12\x18\n\x10\x63\x61\x63he_pages_list\x18\x01 \x03(\x05\"(\n\x0cTaskInfoList\x12\x18\n\x05tasks\x18\x01 \x03(\x0b\x32\t.TaskInfo\"\"\n\x13\x43omfirmationMessage\x12\x0b\n\x03msg\x18\x01 \x01(\t\"\x07\n\x05\x45mpty\"\x1b\n\x0cStartRequest\x12\x0b\n\x03msg\x18\x01 \x01(\t*s\n\x06Signal\x12\x0f\n\x0bSIGNAL_SEND\x10\x00\x12\x0f\n\x0bSIGNAL_RECV\x10\x01\x12\x0e\n\nSIGNAL_ACK\x10\x02\x12\x10\n\x0cSIGNAL_CHECK\x10\x03\x12\x0f\n\x0bSIGNAL_SKIP\x10\x04\x12\x14\n\x10SIGNAL_TERMINATE\x10\t2\xc2\x01\n\x12InferWorkerService\x12\x32\n\x19ReceiveTasksFromScheduler\x12\r.TaskInfoList\x1a\x06.Empty\x12-\n\x0fSendKVCacheData\x12\x12.CombindedTaskInfo\x1a\x06.Empty\x12-\n\x0fRecvKVCacheData\x12\x12.CombindedTaskInfo\x1a\x06.Empty\x12\x1a\n\x08ShutDown\x12\x06.Empty\x1a\x06.Empty2\xda\x01\n\x17\x43\x61\x63heCoordinatorService\x12\x34\n\x1bReceiveTasksFromInferWorker\x12\r.TaskInfoList\x1a\x06.Empty\x12?\n\x18PollBatchFromInferWorker\x12\r.TaskInfoList\x1a\x14.ComfirmationMessage\x12,\n\x13StartProcessRequest\x12\r.StartRequest\x1a\x06.Empty\x12\x1a\n\x08ShutDown\x12\x06.Empty\x1a\x06.Empty2p\n\x0eKVCacheService\x12\x42\n\x1bReceiveTasksFromCoordinator\x12\r.TaskInfoList\x1a\x14.ComfirmationMessage\x12\x1a\n\x08ShutDown\x12\x06.Empty\x1a\x06.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'TaskInfo_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_SIGNAL']._serialized_start=330
-  _globals['_SIGNAL']._serialized_end=445
+  _globals['_SIGNAL']._serialized_start=675
+  _globals['_SIGNAL']._serialized_end=790
   _globals['_IDTOKENPAIR']._serialized_start=18
   _globals['_IDTOKENPAIR']._serialized_end=62
   _globals['_TASKINFO']._serialized_start=65
-  _globals['_TASKINFO']._serialized_end=277
-  _globals['_TASKINFOLIST']._serialized_start=279
-  _globals['_TASKINFOLIST']._serialized_end=319
-  _globals['_EMPTY']._serialized_start=321
-  _globals['_EMPTY']._serialized_end=328
-  _globals['_INFERWORKERSERVICE']._serialized_start=448
-  _globals['_INFERWORKERSERVICE']._serialized_end=604
-  _globals['_CACHECOORDINATORSERVICE']._serialized_start=607
-  _globals['_CACHECOORDINATORSERVICE']._serialized_end=737
-  _globals['_KVCACHESERVICE']._serialized_start=739
-  _globals['_KVCACHESERVICE']._serialized_end=809
+  _globals['_TASKINFO']._serialized_end=262
+  _globals['_COMBINDEDTASKINFO']._serialized_start=265
+  _globals['_COMBINDEDTASKINFO']._serialized_end=519
+  _globals['_PAGELIST']._serialized_start=521
+  _globals['_PAGELIST']._serialized_end=557
+  _globals['_TASKINFOLIST']._serialized_start=559
+  _globals['_TASKINFOLIST']._serialized_end=599
+  _globals['_COMFIRMATIONMESSAGE']._serialized_start=601
+  _globals['_COMFIRMATIONMESSAGE']._serialized_end=635
+  _globals['_EMPTY']._serialized_start=637
+  _globals['_EMPTY']._serialized_end=644
+  _globals['_STARTREQUEST']._serialized_start=646
+  _globals['_STARTREQUEST']._serialized_end=673
+  _globals['_INFERWORKERSERVICE']._serialized_start=793
+  _globals['_INFERWORKERSERVICE']._serialized_end=987
+  _globals['_CACHECOORDINATORSERVICE']._serialized_start=990
+  _globals['_CACHECOORDINATORSERVICE']._serialized_end=1208
+  _globals['_KVCACHESERVICE']._serialized_start=1210
+  _globals['_KVCACHESERVICE']._serialized_end=1322
 # @@protoc_insertion_point(module_scope)

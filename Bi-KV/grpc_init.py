@@ -1,12 +1,13 @@
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message=".*TORCH_CUDA_ARCH_LIST.*")
 import os
+import time
 # os.environ["CUDA_VISIBLE_DEVICES"] = ""  # 禁用所有GPU
 import grpc
 
 import torch.multiprocessing as mp
 import torch.distributed as dist
-
+from protos import TaskInfo_pb2,TaskInfo_pb2_grpc
 
 from Scheduler.LLMScheduler import LLMScheduler
 from DistributedStorage.CacheCoordinator import CacheCoordinator
@@ -19,7 +20,6 @@ from config import *
 from rpc_def import PROCESS_TYPES, KVCACHE_NUM, WORKER_NUM, get_process_info, generate_rank_map
 from Remote.remote_call import call_remote_method
 
-from protos import TaskInfo_pb2,TaskInfo_pb2_grpc
 from concurrent import futures
 
 
@@ -42,7 +42,7 @@ logging.basicConfig(
 
 def init_backend(rank, world_size, process_type, type_index, timeout = 120):
     os.environ["MASTER_ADDR"] = "127.0.0.1"
-    os.environ["MASTER_PORT"] = "29502"
+    os.environ["MASTER_PORT"] = "29503"
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
     
@@ -68,16 +68,26 @@ def init_process(rank, world_size):
         # scheduler.test_write_cache()
         input_generator = LLMInput(20,5,args)
         # input_generator.set_random('random')
-        logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
+        CacheCoordinator_addr = f"localhost:{master_port+rank_map['CacheCoordinator'][0]}"
+        channel = grpc.insecure_channel(CacheCoordinator_addr)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        fut = stub.StartProcessRequest.future(TaskInfo_pb2.StartRequest(msg='start'))
+            # stub.StartProcess(TaskInfo_pb2.StartRequest(msg='start'))
+        logging.info("开始测试")
+        time1 = time.time()
         scheduler.start(5,128)
+        time2 = time.time()
+        print(f"Test Time cost: {time2-time1}")
+        fut.result()
+        channel.close()
 
     if process_type == 'CacheCoordinator':
         port = master_port + rank
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         # 需要传入cache和worker的地址
         TaskInfo_pb2_grpc.add_CacheCoordinatorServiceServicer_to_server(
-            CacheCoordinator(rank,master_port,rank_map['KVCache']), server
+            CacheCoordinator(rank,master_port,rank_map['KVCache'],rank_map['Worker']), server
         )
         server.add_insecure_port(f'[::]:{port}')
         server.start()
@@ -101,7 +111,7 @@ def init_process(rank, world_size):
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         #
         TaskInfo_pb2_grpc.add_KVCacheServiceServicer_to_server(
-            KVCache(rank,1000,50), server
+            KVCache(rank,5000,50,master_port), server
         )
         server.add_insecure_port(f'[::]:{port}')
         server.start()

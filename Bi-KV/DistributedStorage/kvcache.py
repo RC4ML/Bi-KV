@@ -1,9 +1,12 @@
+from functools import cache
+import json
 from typing import Dict, Tuple
 from datetime import datetime
 import random
 
 from protos import TaskInfo_pb2, TaskInfo_pb2_grpc
 
+import grpc
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
@@ -17,7 +20,7 @@ import time
 
 
 class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
-    def __init__(self, rank, cache_size, page_size):
+    def __init__(self, rank, cache_size, page_size, master_port):
         self.rank = rank
         self.cache_index = int(rank/2) -1
         self.cache_size = cache_size
@@ -31,6 +34,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.page_size = page_size
         self.recv_counter = 0
         self.send_counter = 0
+        self.master_port = master_port
         if DEBUG:
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
@@ -283,10 +287,11 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         print(f"[KVCache][RANK {self.rank}] send_counter: {self.send_counter}, recv_counter: {self.recv_counter}")
 
 
-    def receive_task_info_batch_gprc(self, worker_ref_list, task_info_list): ## only support send from kvcache to worker, all tasks have the same cache worker        
-        from Worker.Worker import Worker
+    def receive_task_info_batch_gprc(self, task_info_list): ## only support send from kvcache to worker, all tasks have the same cache worker        
         combined_task_info = {} ## key: infer worker
         confirmation_msg = {} ## key: request id
+        if DEBUG:
+            print(f"[KVCache][RANK {self.rank}] receive_task_info_batch_gprc len:{len(task_info_list)}")
         for task_info in task_info_list:
             infer_worker = task_info.infer_worker
             if infer_worker !=0 and DEBUG:
@@ -295,7 +300,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             req_id = task_info.request_id
             token_num = task_info.token_num
             item_id = task_info.id
-            cache_pages_list = task_info.get('cache_pages_list',[])
+            cache_pages_list = task_info.cache_pages_list
             if item_id == -1:
                 continue
             # 到底是什么时候需要管理缓存？
@@ -338,30 +343,32 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             for task_info in combined_task_list.values():
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
+                infer_worker_port = 2*infer_worker + WORKER_offset
+                infer_worker_addr = f"localhost:{self.master_port+infer_worker_port}"
                 if task_type == SIGNAL_SEND:
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
-                    remote_recv = rpc.rpc_async(
-                        to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
-                        args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
-                    self.send_data_batch(task_info)
-                    remote_recv.wait()
+                    combined_task_info_pb = self._task_info_json_to_pb(task_info)
+                    with grpc.insecure_channel(infer_worker_addr) as channel:
+                        stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+                        remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
+                        self.send_data_batch(task_info)
+                        remote_recv.result()
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
 
                 elif task_type == SIGNAL_RECV:
                     cache_worker = task_info['cache_worker']
-                    infer_worker = task_info['infer_worker']
-                    worker_ref = worker_ref_list[infer_worker]
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
-                    remote_send = rpc.rpc_async(
-                        to=worker_ref.owner(), func=call_remote_method, 
-                        args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
-                    self.receive_data_batch(task_info)
-                    remote_send.wait()
+                    combined_task_info_pb = self._task_info_json_to_pb(task_info)
+                    with grpc.insecure_channel(infer_worker_addr) as channel:
+                        stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+                        remote_send = stub.SendKVCacheData.future(combined_task_info_pb)
+                        self.receive_data_batch(task_info)
+                        remote_send.result()
                     now = datetime.now()
                     nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
                     print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
@@ -371,5 +378,17 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
 
 
     def ReceiveTasksFromCoordinator(self, request, context):
-        self.receive_task_info_batch_gprc(request.worker_ref_list, request.tasks)
-        return TaskInfo_pb2.Empty()
+        confirmation_msg = self.receive_task_info_batch_gprc(request.tasks)
+        # confirmation_msg是dict，需要转成字符串后传输
+        comfirmation_data = json.dumps(confirmation_msg)
+        return TaskInfo_pb2.ComfirmationMessage(msg = comfirmation_data)
+    
+    def _task_info_json_to_pb(self, task_info:Dict):
+        combined_task_info_pb = TaskInfo_pb2.CombindedTaskInfo()
+        combined_task_info_pb.infer_worker = task_info['infer_worker']
+        combined_task_info_pb.cache_worker = task_info['cache_worker']
+        combined_task_info_pb.token_num = task_info['token_num']
+        combined_task_info_pb.task_type = task_info['task_type']
+        combined_task_info_pb.cache_pages_list.extend([TaskInfo_pb2.PageList(cache_pages_list=page_list) for page_list in task_info['cache_pages_list']])
+        combined_task_info_pb.id_token_pair.extend([TaskInfo_pb2.IdTokenPair(id=id_token_pair[0], token_num=id_token_pair[1]) for id_token_pair in task_info['id_token_pair']])
+        return combined_task_info_pb
