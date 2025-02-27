@@ -25,7 +25,7 @@ class Worker:
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 2000
+        self.buffer_size = 35000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
@@ -149,14 +149,15 @@ class Worker:
 
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
-        task_info_dict = {}
-        for i in task_info_list:
-            req_id = i['request_id']
-            if req_id not in task_info_dict:
-                task_info_dict[req_id] = []
-            task_info_dict[req_id].append(i)
-        for i in task_info_dict.values():
-            self.receive_task_info(i)
+        self.receive_task_info(task_info_list)
+        # task_info_dict = {}
+        # for i in task_info_list:
+        #     req_id = i['request_id']
+        #     if req_id not in task_info_dict:
+        #         task_info_dict[req_id] = []
+        #     task_info_dict[req_id].append(i)
+        # for i in task_info_dict.values():
+        #     self.receive_task_info(i)
         if DEBUG:
             print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
 
