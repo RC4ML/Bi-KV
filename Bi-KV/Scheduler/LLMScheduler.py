@@ -28,6 +28,7 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self.batchsize = 32
+        self.rpc_call_counter_dict = {}
         
         # 获取coordinator的rpc info
         # 根据PROCESS_TYPES: scheduler=0, coordinator=1, workers=2...(2+WORKER_NUM-1), kvcache后面
@@ -247,11 +248,13 @@ class LLMScheduler:
             owner_worker_ref = infer_worker_ref.owner() 
             # future = rpc.rpc_sync(to=owner_worker_ref, func=call_remote_method, 
             #         args=(Worker.receive_task_info_batch, infer_worker_ref, task_info_list_dict[infer_worker]))
+            # NOTE 一次rpc call
             future = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
                     args=(Worker.receive_task_info_batch, infer_worker_ref, task_info_list_dict[infer_worker]))
             future_list.append(future)  
             
         for future in future_list:
+            self.add_rpc_call_counter('Worker.receive_task_info_batch')
             future.wait()
 
     def strategy(self, req_id: int) -> int:
@@ -300,7 +303,24 @@ class LLMScheduler:
         send_data_call.wait()
         recv_data_call.wait()
         print(f"[LLMScheduler] Write test success!")
-        
+    
+    def show_rpc_call_counter(self):
+        print(f"[LLMScheduler] RPC call counter: {self.rpc_call_counter_dict}")
+
+    def add_rpc_call_counter(self, func_name:str):
+        if self.rpc_call_counter_dict.get(func_name):
+            self.rpc_call_counter_dict[func_name] += 1
+        else:
+            self.rpc_call_counter_dict[func_name] = 1
+
+    def show_worker_call_count(self):
+        futures = []
+        for cpu_rank in range(self.num_workers):
+            fut = rpc.rpc_async(self.worker_ref[cpu_rank].owner(), 
+                          call_remote_method, args=(Worker.show_rpc_call_counter,self.worker_ref[cpu_rank],))
+            futures.append(fut)
+        for fut in futures:
+            fut.wait()
 
 
 def PromptOrder(prompt: InputPrompt) -> str:

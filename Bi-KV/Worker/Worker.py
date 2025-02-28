@@ -37,6 +37,7 @@ class Worker:
         )
         self.start_pos = 0
         self.cache_miss_dict = {}
+        self.rpc_call_counter_dict = {}
         
         ## initialize model and parameters for inference
         intermediate_size = 8960
@@ -100,6 +101,7 @@ class Worker:
 
     def forward_with_computation(self, task_info_list:List):
         # 这里的task_info同样有着一样的req_id
+        # NOTE 一次rpc call
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
         if DEBUG:
@@ -109,13 +111,16 @@ class Worker:
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                task_info_list))
         time2 = time.time()
-        
+        # NOTE 一次rpc call
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                             args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
+        time3 = time.time()
+        print(f"[Worker.forward_with_computation][RANK {self.rank}] poll time cost: {time3-time2}s")
         if DEBUG:
             print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
         # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
         cache_miss_dict = future_call_poll.wait()
+        self.add_rpc_call_counter('CacheCoordinator.poll_batch')
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
 
@@ -284,8 +289,19 @@ class Worker:
         if hit_rate > 0.7 and DEBUG:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
+        # NOTE 一次rpc call
         rpc.rpc_sync(to=coordinator_owner, 
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                send_task_list))
+        self.add_rpc_call_counter('CacheCoordinator.add_requests')
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
+    
+    def show_rpc_call_counter(self):
+        print(f"[Worker][RANK {self.rank}] RPC call counter: {self.rpc_call_counter_dict}")
+
+    def add_rpc_call_counter(self, func_name:str):
+        if self.rpc_call_counter_dict.get(func_name):
+            self.rpc_call_counter_dict[func_name] += 1
+        else:
+            self.rpc_call_counter_dict[func_name] = 1

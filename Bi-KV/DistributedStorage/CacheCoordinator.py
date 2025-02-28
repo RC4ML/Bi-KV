@@ -37,6 +37,7 @@ class CacheCoordinator:
             print(f"[CacheCoordinator] 创建远程实例 KVCache {i}")
             self.kvcache_ref.append(rpc.remote(rpc_info, KVCache, args=(cache_rank,self.cache,self.page_size,)))  # 创建远程实例
         self.page_miss_dict = {}
+        self.rpc_call_counter_dict = {}
 
         # 测试MultiPageManager
         self.page_manager = MultiPageManager(self.cache, self.page_size, self.kvcache_num)
@@ -134,6 +135,7 @@ class CacheCoordinator:
             for future in cache_future:
                 # confirmation_msg是一个字典，key是request_id，value是完成的task数量
                 confirmation_msg = future.wait()
+                self.add_rpc_call_counter("KVCache.receive_task_info_batch")
                 if len(confirmation_msg) > 0:
                     if DEBUG:
                         request_id=task_info['request_id']
@@ -145,6 +147,7 @@ class CacheCoordinator:
             if idle_time_counter>self.stop_limit and self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. B R E A K")
                 self.send_terminate_signal()
+                self.show_rpc_call_counter()
                 break
             # time2 = time.time()
             if self.request_table.empty():
@@ -184,6 +187,7 @@ class CacheCoordinator:
             infer_worker = req_list[0]['infer_worker']
             print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
         # TODO 若这里仍然是Check，则应该不执行
+        # NOTE 一次rpc call
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
             call_remote_method, 
@@ -280,3 +284,12 @@ class CacheCoordinator:
         owner_cache_ref = recv_cache_ref.owner()
         rpc.rpc_sync(to=owner_cache_ref, func=call_remote_method, 
                             args=(KVCache.receive_data, recv_cache_ref, task_info))
+        
+    def show_rpc_call_counter(self):
+        print(f"[CacheCoordinator] RPC Call Counter: {self.rpc_call_counter_dict}")
+
+    def add_rpc_call_counter(self, func_name:str):
+        if self.rpc_call_counter_dict.get(func_name):
+            self.rpc_call_counter_dict[func_name] += 1
+        else:
+            self.rpc_call_counter_dict[func_name] = 1

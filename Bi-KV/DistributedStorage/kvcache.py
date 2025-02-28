@@ -28,6 +28,7 @@ class KVCache:
         self.page_size = page_size
         self.recv_counter = 0
         self.send_counter = 0
+        self.rpc_call_counter_dict = {}
         if DEBUG:
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
@@ -151,6 +152,7 @@ class KVCache:
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 收到终止信号，退出运行")
         self.show_counter()
+        self.show_rpc_call_counter()
         return "Terminated"
     
     def receive_task_info(self, task_info:Dict, worker_ref):
@@ -245,15 +247,20 @@ class KVCache:
             for task_info in combined_task_list.values():
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
+                time1 = time.time()
                 if task_type == SIGNAL_SEND:
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    # NOTE 一次rpc call
                     remote_recv = rpc.rpc_async(
                         to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
                     self.send_data_batch(task_info)
                     remote_recv.wait()
+                    self.add_rpc_call_counter('Worker.receive_kvcache_data_batch')
+                    time2 = time.time()
+                    print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] send time cost: {time2-time1}s")
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
 
@@ -264,11 +271,15 @@ class KVCache:
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    # NOTE 一次rpc call                    
                     remote_send = rpc.rpc_async(
                         to=worker_ref.owner(), func=call_remote_method, 
                         args=(Worker.send_kvcache_data_batch,worker_ref, task_info))
                     self.receive_data_batch(task_info)
                     remote_send.wait()
+                    self.add_rpc_call_counter('Worker.send_kvcache_data_batch')
+                    time2 = time.time()
+                    print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] recv time cost: {time2-time1}s")
                     now = datetime.now()
                     nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
                     print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
@@ -278,3 +289,12 @@ class KVCache:
     
     def show_counter(self):
         print(f"[KVCache][RANK {self.rank}] send_counter: {self.send_counter}, recv_counter: {self.recv_counter}")
+
+    def show_rpc_call_counter(self):
+        print(f"[KVCache][RANK {self.rank}] rpc_call_counter: {self.rpc_call_counter_dict}")
+
+    def add_rpc_call_counter(self, func_name:str):
+        if self.rpc_call_counter_dict.get(func_name):
+            self.rpc_call_counter_dict[func_name] += 1
+        else:
+            self.rpc_call_counter_dict[func_name] = 1
