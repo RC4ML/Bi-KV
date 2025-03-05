@@ -264,13 +264,12 @@ class Worker:
         # self.compute_buffer[start_pos:offest] = recv_tensor
 
     def preprare_send_data(self,task_info_list):
-        # 这里的task_info同样有着一样的req_id
         coordinator_owner = self.coordinator_rref.owner()
-        request_id = task_info_list[0]['request_id']
-        cache_miss_dict = self.cache_miss_dict.get(request_id,{})
         send_task_list = []
         for task_info in task_info_list:
+            request_id = task_info['request_id']
             item_id = task_info['id']
+            cache_miss_dict = self.cache_miss_dict.get(request_id,{})
             # 这里能保证item_id在cache_miss_dict中吗？
             if cache_miss_dict.get(item_id) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
