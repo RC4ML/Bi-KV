@@ -116,6 +116,8 @@ class Worker:
             print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
         # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
         cache_miss_dict = future_call_poll.wait()
+        time3 = time.time()
+        print(f"[Worker.forward_with_computation][RANK {self.rank}] Poll {len(task_info_list)} tasks cost {time3-time2}s")
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
 
@@ -176,24 +178,48 @@ class Worker:
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
         # TODO 写入到buffer中
+        # 计算总大小并预分配索引 tensor
+        total_size = sum(id_pair[1] for id_pair in combined_task_info['id_token_pair'])
+        indices = torch.empty(total_size, dtype=torch.long)
+        buffer_indices = torch.empty(total_size, dtype=torch.long)
+
+        # 第一步：收集索引
         start_pos = 0
+        buffer_pos = 0
         for id_pair in combined_task_info['id_token_pair']:
             item_id = id_pair[0]
             offset = id_pair[1]
-            item_tensor = recv_tensor[start_pos:start_pos+offset]
-            start_pos += offset
-            # 让page manager管理buffer
+            
+            # 管理 page
             if item_id not in self.page_manager.get_loaded_lists():
                 page_set, _ = self.page_manager.load_item(item_id, offset)
             else:
                 page_set = self.page_manager.access_item(item_id)
-            # 按照得到的page写入buffer
-            for idx,page in enumerate(page_set):
+            
+            # 生成索引
+            item_size = offset
+            indices[start_pos:start_pos + item_size] = torch.arange(start_pos, start_pos + item_size)
+            
+            # 生成 buffer 对应的索引
+            for idx, page in enumerate(page_set):
                 if idx == len(page_set) - 1:
-                    self.compute_buffer[page*self.page_size:page*self.page_size + offset % self.page_size] \
-                        = item_tensor[idx*self.page_size:]
+                    size = offset % self.page_size if offset % self.page_size != 0 else self.page_size
+                    buffer_indices[buffer_pos:buffer_pos + size] = torch.arange(
+                        page * self.page_size, 
+                        page * self.page_size + size
+                    )
+                    buffer_pos += size
                 else:
-                    self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
+                    buffer_indices[buffer_pos:buffer_pos + self.page_size] = torch.arange(
+                        page * self.page_size, 
+                        (page + 1) * self.page_size
+                    )
+                    buffer_pos += self.page_size
+            
+            start_pos += offset
+
+        # 第二步：一次性提取数据并写入 buffer
+        self.compute_buffer[buffer_indices] = recv_tensor[indices]
 
     def send_kvcache_data(self, task_info):
         dst_rank = 2*task_info['cache_worker'] + 3
@@ -212,27 +238,59 @@ class Worker:
         dst_rank = 2*combined_task_info['cache_worker'] + KVCACHE_offset
         token_num = combined_task_info['token_num']
         id_pair_list = combined_task_info['id_token_pair']
-        id_list = [i[0] for i in id_pair_list]
-        send_tensor_list = []
+        # 计算总 token 数并预分配索引
+        total_token_num = sum(id_pair[1] for id_pair in id_pair_list)
+        buffer_indices = torch.empty(total_token_num, dtype=torch.long)
+        send_indices = torch.empty(total_token_num, dtype=torch.long)
+
+        # 第一步：收集索引
+        buffer_pos = 0
+        send_pos = 0
         for id_pair in id_pair_list:
             i = id_pair[0]
             token_num = id_pair[1]
+            
             if i not in self.page_manager.get_loaded_lists():
                 print(f"[Worker][RANK {self.rank}][{time.time()}] Error: id {i} not in page manager")
+            
             page_set = self.page_manager.access_item(i)
-            send_tensor = torch.empty(
-                (token_num,) + token_shape, 
-                dtype=torch.float16
-            )
-            for idx,page in enumerate(page_set):
+            
+            # 生成索引
+            for idx, page in enumerate(page_set):
                 if idx == len(page_set) - 1:
-                    send_tensor[idx*self.page_size:] \
-                        = self.compute_buffer[page*self.page_size:page*self.page_size+token_num%self.page_size]
+                    size = token_num % self.page_size if token_num % self.page_size != 0 else self.page_size
+                    buffer_indices[buffer_pos:buffer_pos + size] = torch.arange(
+                        page * self.page_size,
+                        page * self.page_size + size
+                    )
+                    send_indices[send_pos:send_pos + size] = torch.arange(
+                        send_pos,
+                        send_pos + size
+                    )
+                    buffer_pos += size
+                    send_pos += size
                 else:
-                    send_tensor[idx*self.page_size:(idx+1)*self.page_size] = self.compute_buffer[page*self.page_size:(page+1)*self.page_size]
-            send_tensor_list.append(send_tensor)
-            self.page_manager.remove_protected(i)
-        send_tensor = torch.cat(send_tensor_list, dim=0)
+                    buffer_indices[buffer_pos:buffer_pos + self.page_size] = torch.arange(
+                        page * self.page_size,
+                        (page + 1) * self.page_size
+                    )
+                    send_indices[send_pos:send_pos + self.page_size] = torch.arange(
+                        send_pos,
+                        send_pos + self.page_size
+                    )
+                    buffer_pos += self.page_size
+                    send_pos += self.page_size
+
+        # 第二步：一次性创建并填充 send_tensor
+        send_tensor = torch.empty(
+            (total_token_num,) + token_shape,
+            dtype=torch.float16
+        )
+        send_tensor[send_indices] = self.compute_buffer[buffer_indices]
+
+        # 第三步：移除保护
+        for id_pair in id_pair_list:
+            self.page_manager.remove_protected(id_pair[0])
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=send_tensor, dst=dst_rank)
