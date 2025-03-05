@@ -34,7 +34,7 @@ logging.basicConfig(
 
 def init_backend(rank, world_size, process_type, type_index, timeout = 120):
     os.environ["MASTER_ADDR"] = "127.0.0.1"
-    os.environ["MASTER_PORT"] = "29502"
+    os.environ["MASTER_PORT"] = "30502"
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
     
@@ -56,7 +56,7 @@ def init_process(rank, world_size):
     if process_type == 'scheduler':
         timeout = 1000
     else:
-        timeout = 360
+        timeout = 180
     init_backend(rank, world_size, process_type, type_index, timeout=timeout)
     dist.barrier()
 
@@ -68,7 +68,7 @@ def init_process(rank, world_size):
         # input_generator.set_random('random')
         logging.info("开始测试")
         scheduler.set_prompt_generator(input_generator)
-        scheduler.start(10,256)
+        scheduler.start(5,256)
         scheduler.show_worker_call_count()
         scheduler.show_rpc_call_counter()
 

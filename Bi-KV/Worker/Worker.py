@@ -1,4 +1,5 @@
 from ast import Dict, List
+from datetime import datetime
 import time
 
 import torch.distributed.rpc as rpc
@@ -25,7 +26,7 @@ class Worker:
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 35000
+        self.buffer_size = 100000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
@@ -101,6 +102,7 @@ class Worker:
 
     def forward_with_computation(self, task_info_list:List):
         # 这里的task_info同样有着一样的req_id
+        # 现在没有了，会有什么影响？
         # NOTE 一次rpc call
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
@@ -110,19 +112,24 @@ class Worker:
                          func=call_remote_method, 
                          args=(CacheCoordinator.add_requests,self.coordinator_rref, 
                                task_info_list))
+        self.add_rpc_call_counter('CacheCoordinator.add_requests')
         time2 = time.time()
         # NOTE 一次rpc call
         future_call_poll = rpc.rpc_async(to=coordinator_owner,func=call_remote_method, 
                             args=(CacheCoordinator.poll_batch,self.coordinator_rref,task_info_list))
-        time3 = time.time()
-        print(f"[Worker.forward_with_computation][RANK {self.rank}] poll time cost: {time3-time2}s")
         if DEBUG:
             print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+        time3 = time.time()
         # cache_miss_dict是一个嵌套字典，第一层是req_id，第二层是item_id
         cache_miss_dict = future_call_poll.wait()
         self.add_rpc_call_counter('CacheCoordinator.poll_batch')
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
+        time4 = time.time()
+        print(f"[Worker.forward_with_computation][RANK {self.rank}] process poll result cost: {time4-time2}s")
+        # # 如果时间大于1s则打印更多信息
+        # if time4-time2 > 1:
+        #     print(f"[Worker.forward_with_computation][RANK {self.rank}] process poll result cost: {time4-time2}s")
 
         # ## start model inference
         # time3 = time.time()
@@ -138,8 +145,12 @@ class Worker:
 
     def receive_task_info(self, task_info_list):
         # 此时的task_info_list是一个request的所有task，req_id相同
+        # 已经不同了，应该是多个request的所有task
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
+        if 131 in [i['request_id'] for i in task_info_list]:
+            nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+            print(f"{nowtime}[Worker][RANK {self.rank}] Recv 131")
         for task_info in task_info_list:
             item_id = task_info['id']
             if item_id == -1:
@@ -149,7 +160,7 @@ class Worker:
         self.forward_with_computation(task_info_list)
         if DEBUG:
             print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
-        self.preprare_send_data(task_info_list)
+        # self.preprare_send_data(task_info_list)
         # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
 
     def receive_task_info_batch(self, task_info_list):
@@ -180,25 +191,52 @@ class Worker:
             dtype=torch.float16
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[Worker][Rank {self.rank}] Recv tensor from Rank {src_rank}")
         # TODO 写入到buffer中
+        time1 = time.time()
+        total_size = sum(id_pair[1] for id_pair in combined_task_info['id_token_pair'])
+        indices = torch.empty(total_size, dtype=torch.long)
+        buffer_indices = torch.empty(total_size, dtype=torch.long)
+
+        # 第一步：收集索引
         start_pos = 0
+        buffer_pos = 0
         for id_pair in combined_task_info['id_token_pair']:
             item_id = id_pair[0]
             offset = id_pair[1]
-            item_tensor = recv_tensor[start_pos:start_pos+offset]
-            start_pos += offset
-            # 让page manager管理buffer
+            # 管理 page
             if item_id not in self.page_manager.get_loaded_lists():
                 page_set, _ = self.page_manager.load_item(item_id, offset)
             else:
                 page_set = self.page_manager.access_item(item_id)
-            # 按照得到的page写入buffer
-            for idx,page in enumerate(page_set):
+            # 生成索引
+            item_size = offset
+            indices[start_pos:start_pos + item_size] = torch.arange(start_pos, start_pos + item_size)
+            
+            # 生成 buffer 对应的索引
+            for idx, page in enumerate(page_set):
                 if idx == len(page_set) - 1:
-                    self.compute_buffer[page*self.page_size:page*self.page_size + offset % self.page_size] \
-                        = item_tensor[idx*self.page_size:]
+                    size = offset % self.page_size if offset % self.page_size != 0 else self.page_size
+                    buffer_indices[buffer_pos:buffer_pos + size] = torch.arange(
+                        page * self.page_size, 
+                        page * self.page_size + size
+                    )
+                    buffer_pos += size
                 else:
-                    self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
+                    buffer_indices[buffer_pos:buffer_pos + self.page_size] = torch.arange(
+                        page * self.page_size, 
+                        (page + 1) * self.page_size
+                    )
+                    buffer_pos += self.page_size
+            
+            start_pos += offset
+
+        # 第二步：一次性提取数据并写入 buffer
+        self.compute_buffer[buffer_indices] = recv_tensor[indices]
+        time2 = time.time()
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[Worker][Rank {self.rank}] Finish writing tensor from Rank {src_rank} time cost: {time2-time1}") 
 
     def send_kvcache_data(self, task_info):
         dst_rank = 2*task_info['cache_worker'] + 3
@@ -237,12 +275,15 @@ class Worker:
                     send_tensor[idx*self.page_size:(idx+1)*self.page_size] = self.compute_buffer[page*self.page_size:(page+1)*self.page_size]
             send_tensor_list.append(send_tensor)
             self.page_manager.remove_protected(i)
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[Worker][RANK {self.rank}][{time.time()}] Prepare tensors to Rank {dst_rank}")
         send_tensor = torch.cat(send_tensor_list, dim=0)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         dist.send(tensor=send_tensor, dst=dst_rank)
-        if DEBUG:
-            print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        # if DEBUG:
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
             
 
     def write_compute_buffer(self, task_info:Dict):
@@ -270,13 +311,14 @@ class Worker:
 
     def preprare_send_data(self,task_info_list):
         # 这里的task_info同样有着一样的req_id
+        # 已经不同了，应该是多个request的所有task
+        # 这里逻辑有问题！！！
         coordinator_owner = self.coordinator_rref.owner()
-        request_id = task_info_list[0]['request_id']
-        cache_miss_dict = self.cache_miss_dict.get(request_id,{})
         send_task_list = []
         for task_info in task_info_list:
             item_id = task_info['id']
-            # 这里能保证item_id在cache_miss_dict中吗？
+            request_id = task_info['request_id']
+            cache_miss_dict = self.cache_miss_dict.get(request_id,{})
             if cache_miss_dict.get(item_id) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV

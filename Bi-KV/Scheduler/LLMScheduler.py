@@ -1,4 +1,5 @@
 # import uuid
+from datetime import datetime
 from typing import List
 
 import torch.distributed.rpc as rpc
@@ -242,7 +243,9 @@ class LLMScheduler:
                     'type':'compute',
                     'task_num': len(prompt.items)}
                 task_info_list_dict[infer_worker].append(task_info)
-
+        if self._id_counter == 131:
+            nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+            print(f"{nowtime} [LLMScheduler]Start send prompt batch {131}")
         for infer_worker in task_info_list_dict:
             infer_worker_ref = self.worker_ref[infer_worker]
             owner_worker_ref = infer_worker_ref.owner() 

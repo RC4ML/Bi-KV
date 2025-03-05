@@ -65,31 +65,66 @@ class KVCache:
         #     send_tensor_list.append(self.cache_data[start_pos:next_pos])
         
         # 重构版send tensor，依托cache_pages_list
-        for idx,page_list in enumerate(cache_pages_list):
+        time_a = time.time()
+        # for idx,page_list in enumerate(cache_pages_list):
+        #     id_token_pair = id_token_pair_list[idx]
+        #     item_token_num = id_token_pair[1]
+        #     send_tensor = torch.empty(
+        #         (item_token_num,) + token_shape, 
+        #         dtype=torch.float16
+        #     )
+        #     for page_idx,page in enumerate(page_list):
+        #         if page_idx == len(page_list) - 1:
+        #             send_tensor[page_idx*self.page_size:] \
+        #                 = self.cache_data[page*self.page_size:page*self.page_size+item_token_num%self.page_size]
+        #         else:
+        #             send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
+        #     assert send_tensor.size(0) == item_token_num
+        #     send_tensor_list.append(send_tensor)
+        
+        # send_tensor = torch.cat(send_tensor_list, dim=0)
+
+
+        # 计算总 token 数
+        total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
+
+        # 一次性分配大 tensor
+        send_tensor = torch.empty(
+            (total_token_num,) + token_shape,
+            dtype=torch.float16
+        )
+
+        indices = torch.empty(total_token_num, dtype=torch.long)
+        offset = 0
+        circle_counter = 0
+        for idx, page_list in enumerate(cache_pages_list):
             id_token_pair = id_token_pair_list[idx]
             item_token_num = id_token_pair[1]
-            send_tensor = torch.empty(
-                (item_token_num,) + token_shape, 
-                dtype=torch.float16
-            )
-            for page_idx,page in enumerate(page_list):
+            for page_idx, page in enumerate(page_list):
+                start = page * self.page_size
+                circle_counter += 1
                 if page_idx == len(page_list) - 1:
-                    send_tensor[page_idx*self.page_size:] \
-                        = self.cache_data[page*self.page_size:page*self.page_size+item_token_num%self.page_size]
+                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+                    indices[offset:offset + size] = torch.arange(start, start + size)
+                    offset += size
                 else:
-                    send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
-            assert send_tensor.size(0) == item_token_num
-            send_tensor_list.append(send_tensor)
-        
-        send_tensor = torch.cat(send_tensor_list, dim=0)
+                    indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
+                    offset += self.page_size
+
+        send_tensor[:] = self.cache_data[indices]
+
+
+        time_b = time.time()
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
         dist.send(tensor=send_tensor, dst=dst_rank)
         time1 = time.time()
-        # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[KVCache.send_data_batch][Rank {self.rank}]prepare time: {time_b-time_a}s/{circle_counter} round send once time: {time1-time0}s")
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        return send_tensor.shape[0]
 
     def receive_data(self, task_info:Dict):
         # request_id = task_info['request_id']
@@ -151,7 +186,7 @@ class KVCache:
     def terminate(self):
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 收到终止信号，退出运行")
-        self.show_counter()
+        # self.show_counter()
         self.show_rpc_call_counter()
         return "Terminated"
     
@@ -196,6 +231,7 @@ class KVCache:
         from Worker.Worker import Worker
         combined_task_info = {} ## key: infer worker
         confirmation_msg = {} ## key: request id
+        time_a = time.time()
         for task_info in task_info_list:
             infer_worker = task_info['infer_worker']
             if infer_worker !=0 and DEBUG:
@@ -241,6 +277,9 @@ class KVCache:
                 confirmation_msg[req_id] = 1
             else:
                 confirmation_msg[req_id] += 1
+        time_b = time.time()
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] have combined task infos cost:{time_b-time_a}s")
         # 初始状态下，第一轮是全空的任务
         for task_infer_worker in combined_task_info:
             combined_task_list = combined_task_info[task_infer_worker]
@@ -256,11 +295,14 @@ class KVCache:
                     remote_recv = rpc.rpc_async(
                         to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                         args=(Worker.receive_kvcache_data_batch, worker_ref_list[infer_worker], task_info))
-                    self.send_data_batch(task_info)
+                    time4 = time.time()
+                    data_len = self.send_data_batch(task_info)
+                    time3 = time.time()
                     remote_recv.wait()
                     self.add_rpc_call_counter('Worker.receive_kvcache_data_batch')
                     time2 = time.time()
-                    print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] send time cost: {time2-time1}s")
+                    nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+                    print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] total time cost: {time2-time1}s send time cost: {time3-time4}s wait time cost: {time2-time3} data length: {data_len}")
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
 
@@ -279,12 +321,13 @@ class KVCache:
                     remote_send.wait()
                     self.add_rpc_call_counter('Worker.send_kvcache_data_batch')
                     time2 = time.time()
-                    print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] recv time cost: {time2-time1}s")
-                    now = datetime.now()
-                    nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
-                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+                    print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] recv time cost: {time2-time1}s")
+                    # print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     self.recv_counter += 1
-
+        time_z = time.time()
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] total time cost: {time_z-time_a}s send cost: {time_z-time_b}s")
         return confirmation_msg
     
     def show_counter(self):
