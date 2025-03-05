@@ -99,7 +99,6 @@ class Worker:
         # self.compute_buffer.to(self.device)
 
     def forward_with_computation(self, task_info_list:List):
-        # 这里的task_info同样有着一样的req_id
         time1 = time.time()
         coordinator_owner = self.coordinator_rref.owner()
         if DEBUG:
@@ -134,7 +133,7 @@ class Worker:
         # print(f"worker {self.worker_index}, read kv cache time {time3-time2}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
 
     def receive_task_info(self, task_info_list):
-        # 此时的task_info_list是一个request的所有task，req_id相同
+        # 此时的task_info_list是多个request的所有task
         if DEBUG:
             print(f"[Worker][RANK {self.rank}] Recv taskinfo length:{len(task_info_list)} from scheduler")
         for task_info in task_info_list:
@@ -177,7 +176,6 @@ class Worker:
             dtype=torch.float16
         )
         dist.recv(tensor=recv_tensor, src=src_rank)
-        # TODO 写入到buffer中
         # 计算总大小并预分配索引 tensor
         total_size = sum(id_pair[1] for id_pair in combined_task_info['id_token_pair'])
         indices = torch.empty(total_size, dtype=torch.long)
@@ -328,13 +326,11 @@ class Worker:
             request_id = task_info['request_id']
             item_id = task_info['id']
             cache_miss_dict = self.cache_miss_dict.get(request_id,{})
-            # 这里能保证item_id在cache_miss_dict中吗？
             if cache_miss_dict.get(item_id) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info['task_type'] = SIGNAL_RECV
                 send_task_list.append(task_info)
             else:
-                # 为什么会提前解除保护？
                 if item_id in self.page_manager.get_loaded_lists():
                     self.page_manager.remove_protected(item_id)
         hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
