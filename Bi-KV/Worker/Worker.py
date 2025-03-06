@@ -9,12 +9,15 @@ from DistributedStorage.CacheCoordinator import CacheCoordinator
 from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
-import torch
+import pycuda.driver as cuda
+import pycuda.autoinit
+import cupy as cp
 from config import *
 from Model.qwen2 import process_task_info, prepare_attention_meta, Qwen2ForCausalLM, AttentionMetadata, token_shape, model_params
 from transformers import Qwen2Config
 from vllm.config import CacheConfig
-
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import time
 
 class Worker:
@@ -335,6 +338,71 @@ class Worker:
         finally:
             if 'shm' in locals():
                 shm.close()
+
+    
+    def _read_from_shared_memory_batch_gpu(self, combined_task_info,handle_bytes,shape):
+        """从共享内存读取数据（模仿receive_kvcache_data_batch处理）"""
+        shm_name = f'sm_worker{self.worker_index}'
+        cache_index = combined_task_info['cache_worker']
+        src_rank = get_cache_rank(cache_index)
+        token_num = combined_task_info['token_num']
+
+        # 映射共享内存
+        #cuda.init()
+        ctx = cuda.Device(self.gpu_index).make_context()
+        ipc_handle = cuda.IPCMemoryHandle(handle_bytes)
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] handle type: {type(ipc_handle)}")
+        ptr=int(ipc_handle)
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] ptr value: {ptr}")
+        # # c_ptr = ctypes.c_void_p(ptr)
+        # # print(f"[Worker][Rank {self.rank}] c_ptr value: {c_ptr}")
+        # dtype=torch.float16
+        # size = torch.prod(torch.tensor(shape)).item() * torch.tensor([], dtype=dtype).element_size()
+        # mem = cp.cuda.UnownedMemory(ptr=ptr, size=size, owner=None,device_id=self.gpu_index)
+        # memptr = cp.cuda.MemoryPointer(mem, 0)
+        # # 构建CuPy数组（假设为1维）
+        # shape = ((token_num,) + token_shape)
+        # cp_dtype = cp.float16  # 对应torch.float32
+        # cupy_array = cp.ndarray(shape, dtype=cp_dtype, memptr=memptr)
+        # # 通过DLPack转换为PyTorch张量
+        # recv_tensor = torch.from_dlpack(cupy_array.toDlpack())
+        gpu_array = cuda.from_device(
+            ptr, 
+            shape=shape,
+            dtype=np.float16,
+            order='C'
+        )
+        recv_tensor = torch.as_tensor(
+            gpu_array, 
+            device=f'cuda:{self.gpu_index}'
+        )
+        
+        recv_tensor = recv_tensor.reshape((token_num,) + token_shape)
+        #写入到buffer中
+        start_pos = 0
+        for id_pair in combined_task_info['id_token_pair']:
+            item_id = id_pair[0]
+            offset = id_pair[1]
+            item_tensor = recv_tensor[start_pos:start_pos+offset]
+            start_pos += offset
+            # 让page manager管理buffer
+            if item_id not in self.page_manager.get_loaded_lists():
+                page_set, _ = self.page_manager.load_item(item_id, offset)
+            else:
+                page_set = self.page_manager.access_item(item_id)
+            # 按照得到的page写入buffer
+            for idx,page in enumerate(page_set):
+                if idx == len(page_set) - 1:
+                    self.compute_buffer[page*self.page_size:page*self.page_size + offset % self.page_size] \
+                        = item_tensor[idx*self.page_size:]
+                else:
+                    self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
+        print(f"[Worker][RANK {self.rank}] GPU{self.gpu_index}加载SharedMemory,{recv_tensor.shape} ")
+        del recv_tensor, gpu_array
+        ctx.pop()
+        ipc_handle.close()
         
 
        

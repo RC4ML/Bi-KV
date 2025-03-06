@@ -8,6 +8,8 @@ import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV
 from rpc_def import KVCACHE_offset,WORKER_offset,get_worker_rank
+import pycuda.driver as cuda
+import pycuda.autoinit
 from Remote.remote_call import call_remote_method
 from Model.qwen2 import token_shape
 from config import *
@@ -18,7 +20,9 @@ class KVCache:
     def __init__(self, rank, cache_size, page_size):
         self.rank = rank
         self.cache_index = int(rank/2) -1
+        self.device = torch.device(f'cuda:{self.cache_index}' if torch.cuda.is_available() else 'cpu')
         self.cache_size = cache_size
+        self.gpu_index=self.cache_index
         self.cache_data = torch.full(
             (self.cache_size,) + token_shape, 
             self.rank,
@@ -253,7 +257,7 @@ class KVCache:
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
                 if task_type == SIGNAL_SEND:
-                    if infer_worker !=cache_worker:
+                    if infer_worker !=cache_worker:  # not same machine , use gloo
                         if DEBUG:
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
@@ -268,17 +272,32 @@ class KVCache:
                         # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                         self.send_counter += 1
                     elif infer_worker ==cache_worker:
-                        if DEBUG:
-                            print(f"[KVCache.move_to_shared_data][RANK {self.rank}]{task_info}")
-                        time_share1=time.time()
-                        self.share_data_batch(task_info)
-                        remote_share = rpc.rpc_async(
-                            to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
-                            args=(Worker._read_from_shared_memory_batch, worker_ref_list[infer_worker], task_info))
-                        remote_share.wait()
-                        time_share2=time.time()
-                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
-                        self.send_counter += 1
+                        use_gpu_shared_memory=1
+                        if use_gpu_shared_memory:
+                            if DEBUG:
+                                print(f"[KVCache.GPU:move_to_shared_data][RANK {self.rank}]{task_info}")
+                            time_share1=time.time()
+                            handle_bytes,shape=self.share_data_batch_gpu(task_info)
+                            remote_share = rpc.rpc_async(
+                                to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
+                                args=(Worker._read_from_shared_memory_batch_gpu, worker_ref_list[infer_worker], task_info,handle_bytes,shape))
+                            remote_share.wait()
+                            time_share2=time.time()
+                            if DEBUG:
+                                print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
+                            self.send_counter += 1
+                        else:    
+                            if DEBUG:
+                                print(f"[KVCache.GPU:move_to_shared_data][RANK {self.rank}]{task_info}")
+                            time_share1=time.time()
+                            self.share_data_batch(task_info)
+                            remote_share = rpc.rpc_async(
+                                to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
+                                args=(Worker._read_from_shared_memory_batch, worker_ref_list[infer_worker], task_info))
+                            remote_share.wait()
+                            time_share2=time.time()
+                            print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
+                            self.send_counter += 1
 
                 elif task_type == SIGNAL_RECV:
                     cache_worker = task_info['cache_worker']
@@ -408,3 +427,64 @@ class KVCache:
         # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+
+
+    def share_data_batch_gpu(self,combined_task_info:Dict):
+        infer_worker=combined_task_info["infer_worker"]
+        #id_token_pair=task_info["id_token_pair"]
+        dst_rank = get_worker_rank(infer_worker)
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        cache_pages_list = combined_task_info['cache_pages_list']
+        send_tensor_list = []
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始移动共享数据到GPU{infer_worker}上和Worker{dst_rank}共享, 长度={token_num}")
+        # for id_token_pair in id_token_pair_list:
+        #     item_id = id_token_pair[0]
+        #     if item_id not in self.cache_control_dict:
+        #         pass
+        #     start_pos,next_pos = self.cache_control_dict[item_id]
+        #     if next_pos-start_pos != id_token_pair[1]:
+        #         print(f"[KVCache][Rank {self.rank}] Fatal Error: offest({next_pos-start_pos}) != token num({id_token_pair[1]}) id index{id_token_pair_list.index(id_token_pair)}")
+        #         print(f"[KVCache][Rank {self.rank}] item_id={item_id}, start_pos={start_pos}, next_pos={next_pos} id_token_pair={id_token_pair}")  
+        #         print(f"[KVCache][Rank {self.rank}] To continue the process, we have to ignore this error")
+        #         next_pos = start_pos + id_token_pair[1]
+        #     send_tensor_list.append(self.cache_data[start_pos:next_pos])
+        
+        # 重构版send tensor，依托cache_pages_list
+        for idx,page_list in enumerate(cache_pages_list):
+            id_token_pair = id_token_pair_list[idx]
+            item_token_num = id_token_pair[1]
+            send_tensor = torch.empty(
+                (item_token_num,) + token_shape, 
+                dtype=torch.float16
+            )
+            for page_idx,page in enumerate(page_list):
+                if page_idx == len(page_list) - 1:
+                    send_tensor[page_idx*self.page_size:] \
+                        = self.cache_data[page*self.page_size:page*self.page_size+item_token_num%self.page_size]
+                else:
+                    send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
+            assert send_tensor.size(0) == item_token_num
+            send_tensor_list.append(send_tensor)
+        
+        send_tensor = torch.cat(send_tensor_list, dim=0)
+        send_tensor = send_tensor.to(self.device).contiguous()
+        shape=send_tensor.shape
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] device:{self.device}share_tensor shape: {send_tensor.size()} ")
+         #开始构建共享内存
+        try:
+                cuda.Device(self.gpu_index).make_context()
+                print(f"[KVCache][Rank {self.rank}] make_context")
+                ptr = send_tensor.data_ptr()
+                handle = cuda.mem_get_ipc_handle(ptr)
+                if DEBUG:
+                    print(f"[KVCache][Rank {self.rank}] Handle type: {type(handle)}")
+                    print(f"[KVCache][Rank {self.rank}] Handle value: {handle}")
+                    print(f"[KVCache][Rank {self.rank}] IPC Handle: {handle}")
+                    print(f"[KVCache][Rank {self.rank}] 完成共享数据建立gpu{self.device}")
+                return handle, shape
+        except Exception as e:
+            print(f"[KVCache][Rank {self.rank}] Error generating IPC handle: {e}")
+            raise RuntimeError("Failed to generate IPC handle")
