@@ -23,6 +23,7 @@ class KVCache:
         self.device = torch.device(f'cuda:{self.cache_index}' if torch.cuda.is_available() else 'cpu')
         self.cache_size = cache_size
         self.gpu_index=self.cache_index
+        self.ctx = cuda.Device( self.gpu_index).make_context()
         self.cache_data = torch.full(
             (self.cache_size,) + token_shape, 
             self.rank,
@@ -268,7 +269,10 @@ class KVCache:
                         self.send_data_batch(task_info)
                         remote_recv.wait()
                         time_send2=time.time()
-                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] remote_send time ={time_send2-time_send1}")
+                        if DEBUG:
+                            print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] remote_send time ={time_send2-time_send1}")
+                        with open(f'kvcache_log_rank_{self.rank}.txt', 'a') as f:
+                                f.write(f"[KVCache:finish remote send][RANK {self.rank}] remote_send time ={time_send2-time_send1},token_num={token_num}\n")
                         # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                         self.send_counter += 1
                     elif infer_worker ==cache_worker:
@@ -276,15 +280,19 @@ class KVCache:
                         if use_gpu_shared_memory:
                             if DEBUG:
                                 print(f"[KVCache.GPU:move_to_shared_data][RANK {self.rank}]{task_info}")
-                            time_share1=time.time()
                             handle_bytes,shape=self.share_data_batch_gpu(task_info)
-                            remote_share = rpc.rpc_async(
+                            time_share1=time.time()
+                            remote_share=rpc.rpc_async(
                                 to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                                 args=(Worker._read_from_shared_memory_batch_gpu, worker_ref_list[infer_worker], task_info,handle_bytes,shape))
                             remote_share.wait()
                             time_share2=time.time()
                             if DEBUG:
-                                print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
+                                print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time gpu ={time_share2-time_share1}")
+                            with open(f'kvcache_log_rank_{self.rank}.txt', 'a') as f:
+                                f.write(f"[KVCache:finish local move][RANK {self.rank}] local_shared time ={time_share2 - time_share1},token_num={token_num}\n")
+                            self.ctx.pop()
+                            torch.cuda.empty_cache()
                             self.send_counter += 1
                         else:    
                             if DEBUG:
@@ -467,15 +475,17 @@ class KVCache:
                     send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
             assert send_tensor.size(0) == item_token_num
             send_tensor_list.append(send_tensor)
-        
+        print(f"[Worker][Rank {self.rank}] 创建张量前显存: {self._get_gpu_memory()}")
         send_tensor = torch.cat(send_tensor_list, dim=0)
         send_tensor = send_tensor.to(self.device).contiguous()
+        print(f"[Worker][Rank {self.rank}] 创建张量后显存: {self._get_gpu_memory()}")
         shape=send_tensor.shape
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] device:{self.device}share_tensor shape: {send_tensor.size()} ")
          #开始构建共享内存
         try:
-                cuda.Device(self.gpu_index).make_context()
+                #ctx=cuda.Device(self.gpu_index).make_context()
+                self.ctx.push()
                 print(f"[KVCache][Rank {self.rank}] make_context")
                 ptr = send_tensor.data_ptr()
                 handle = cuda.mem_get_ipc_handle(ptr)
@@ -488,3 +498,12 @@ class KVCache:
         except Exception as e:
             print(f"[KVCache][Rank {self.rank}] Error generating IPC handle: {e}")
             raise RuntimeError("Failed to generate IPC handle")
+        
+
+    def _get_gpu_memory(self):
+        if torch.cuda.is_available():
+            device = torch.device(f'cuda:{self.gpu_index}')
+            allocated = torch.cuda.memory_allocated(device) / 1024**2
+            reserved = torch.cuda.memory_reserved(device) / 1024**2
+            return f"Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB"
+        return "N/A"
