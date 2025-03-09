@@ -1,5 +1,6 @@
 from ast import Dict, List
 from datetime import datetime
+import re
 import time
 
 import torch.distributed.rpc as rpc
@@ -60,7 +61,7 @@ class Worker:
                                         num_attention_heads = model_params['num_q_heads'],
                                         num_key_value_heads = model_params['num_kv_heads'])
         torch.set_default_dtype(torch.float16)
-        self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
+        # self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
     def forward(self, task_info_list:List):
@@ -126,7 +127,8 @@ class Worker:
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
         time4 = time.time()
-        print(f"[Worker.forward_with_computation][RANK {self.rank}] process poll result cost: {time4-time2}s")
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[Worker][RANK {self.rank}] process poll result cost: {time4-time2}s")
         # # 如果时间大于1s则打印更多信息
         # if time4-time2 > 1:
         #     print(f"[Worker.forward_with_computation][RANK {self.rank}] process poll result cost: {time4-time2}s")
@@ -160,7 +162,7 @@ class Worker:
         self.forward_with_computation(task_info_list)
         if DEBUG:
             print(f"[Worker.receive_task_info][RANK {self.rank}] Sending data to kvcache")
-        # self.preprare_send_data(task_info_list)
+        self.preprare_send_data(task_info_list)
         # print(f"[Worker][RANK {self.rank}]finish receive_task_info")
 
     def receive_task_info_batch(self, task_info_list):

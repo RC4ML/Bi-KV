@@ -50,7 +50,7 @@ class CacheCoordinator:
             request_id = request["request_id"]
             nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
             req_count = len([i for i in requests if i['request_id']==request_id])
-            print(f"{nowtime}[CacheCoordinator] put req_id={request_id} count:{req_count}")
+            # print(f"{nowtime}[CacheCoordinator] put req_id={request_id} count:{req_count}")
             self.add_request(request)
 
     def add_request(self, task_info:Dict):
@@ -58,7 +58,6 @@ class CacheCoordinator:
         infer_worker = task_info["infer_worker"]
         if DEBUG:
             print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Wroker{infer_worker}Rank={2*infer_worker+2}")
-        # TODO 需要补全cache miss逻辑，且用strategy庖代
         task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
         self.request_table.put(task_info)
@@ -73,14 +72,14 @@ class CacheCoordinator:
             executable_requests = {}
             
             # time0 = time.time()
-
+            execute_counter = 0
             while not self.request_table.empty():
                 idle_time_counter = 0
                 task_info = self.request_table.get_nowait()
                 req_id = task_info['request_id']
                 if req_id:
                     nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                    print(f"{nowtime}[CacheCoordinator] process req_id={req_id} type {task_info['task_type']}")
+                    # print(f"{nowtime}[CacheCoordinator] process req_id={req_id} type {task_info['task_type']}")
                 if task_info['id'] == -1:
                     continue
                 time1 = time.time()
@@ -136,9 +135,11 @@ class CacheCoordinator:
                     elif executable_requests.get(cache_worker) == None:
                         # print(f"[CacheCoordinator] 初始化请求到 {2*cache_worker+3}")
                         executable_requests[cache_worker] = [task_info]
+                        execute_counter += 1
                     else:
                         # print(f"[CacheCoordinator] 添加请求到 {2*cache_worker+3}")
                         executable_requests[cache_worker].append(task_info)
+                        execute_counter += 1
                 time2 = time.time()
                 nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
                 # print(f"{nowtime}[CacheCoordinator] process_requests req_id={req_id} cost {(time2-time1)}s")
@@ -152,6 +153,10 @@ class CacheCoordinator:
             # count = 0
             # TODO 统计execute时间
             cache_future = []
+            execute_count = sum([len(executable_requests[i]) for i in executable_requests])
+            nowtime = nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+            if execute_count!=0:
+                print(f"{nowtime}[CacheCoordinator] execute {execute_count}")
             for cache_worker in executable_requests:
                 future = self._execute_request_batch(executable_requests[cache_worker], cache_worker) 
                 cache_future.append(future)
@@ -166,25 +171,37 @@ class CacheCoordinator:
                 # if len(batched_request) > 0:
                 #     self._execute_request_batch(batched_request, cache_worker) 
 
+            time8 = time.time()
             for future in cache_future:
                 time3 = time.time()
                 # confirmation_msg是一个字典，key是request_id，value是完成的task数量
                 confirmation_msg = future[0].wait()
                 time2 = future[1]
+                cache_worker = future[2]
+                time4 = time.time()
                 nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                print(f"{nowtime}[CacheCoordinator] execute times cost {time.time()-time2}s wait time {time.time()-time3}s")
+                print(f"{nowtime}[CacheCoordinator] Finish call kvc {cache_worker}")
+                # 时点4
+                if execute_count != 0:
+                    # print(f"{nowtime}[CacheCoordinator] execute once form {cache_worker} cost {time4-time2}s wait time {time4-time3}s")
+                    pass
                 self.add_rpc_call_counter("KVCache.receive_task_info_batch")
                 if len(confirmation_msg) > 0:
                     if DEBUG:
                         request_id=task_info['request_id']
                         print(f"[CacheCoordinator] 请求 {request_id} 完成 - Rank {2*cache_worker+3}")
                     for request_id in confirmation_msg:
+                        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+                        # print(f"{nowtime}[CacheCoordinator] write req_id={request_id} to dict")
                         self.finished_counter_table[request_id] += confirmation_msg[request_id]
-                
-            time2 = time.time()
-            if time2-time1 > 0.1:
+            time9 = time.time()
+            if execute_count!=0:
                 nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                print(f"{nowtime}[CacheCoordinator] excute requests cost {(time2-time1)}s")
+                # print(f"{nowtime}[CacheCoordinator] total execute cost: {time9-time8}s")
+            # time2 = time.time()
+            # if time2-time1 > 0.1:
+            #     nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+            #     print(f"{nowtime}[CacheCoordinator] excute requests cost {(time2-time1)}s")
             if idle_time_counter>self.stop_limit and self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. B R E A K")
                 self.send_terminate_signal()
@@ -230,6 +247,8 @@ class CacheCoordinator:
         # TODO 若这里仍然是Check，则应该不执行
         # NOTE 一次rpc call
         time1 = time.time()
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[CacheCoordinator] Start call kvc {cache_worker}")
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
             call_remote_method, 
@@ -238,7 +257,7 @@ class CacheCoordinator:
                 req_list))
         if DEBUG:
             print(f"[CacheCoordinator]finish _execute_request_batch")
-        return future,time1
+        return future,time1,cache_worker
 
             
     def send_terminate_signal(self):
@@ -288,13 +307,14 @@ class CacheCoordinator:
         cache_miss_dict = {}
         request_to_task_num = {}
         infer_worker = task_info_list[0]['infer_worker']
+        # print(f"[CacheCoordinator] Start poll batch from {infer_worker}")
         # if 131 in [task_info['request_id'] for task_info in task_info_list]:
-        # nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-        # print(f"{nowtime}[CacheCoordinator] poll {request_id}")
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[CacheCoordinator] Start poll from {infer_worker}")
         for task_info in task_info_list:
             request_id = task_info['request_id']
             nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-            print(f"{nowtime}[CacheCoordinator] start poll {request_id}")
+            # print(f"{nowtime}[CacheCoordinator] start poll {request_id}")
             task_num = task_info['task_num'] # task_num代表一个req_id中的task数量
             if request_id not in request_to_task_num:
                 request_to_task_num[request_id] = task_num
@@ -313,21 +333,22 @@ class CacheCoordinator:
                 task_num = request_to_task_num[request_id]
                 res_counter = self.finished_counter_table.get(request_id, -1)
                 time3 = time.time()
-                if time3 - time1 > 1 and has_showed_dict.get(request_id) == None:
-                    nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                    print(f"{nowtime}[CacheCoordinator] Polling request req_id={request_id} - {res_counter}/{task_num} time cost {time3-time1}")
-                    has_showed_dict[request_id] = True
+                # if time3 - time1 > 1 and has_showed_dict.get(request_id) == None:
+                #     nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+                #     print(f"{nowtime}[CacheCoordinator] Polling request req_id={request_id} - {res_counter}/{task_num} time cost {time3-time1}")
+                #     has_showed_dict[request_id] = True
                 # 判断任务是否完成
                 if res_counter == task_num:
                     # self.lru_miss_dict[req_id][task_info['id']] = Cache状态 
-                    if request_id in has_showed_dict.keys():
-                        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                        print(f"{nowtime}[CacheCoordinator] finish req_id={request_id}")
+                    # if request_id in has_showed_dict.keys():
+                    nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+                    # print(f"{nowtime}[CacheCoordinator] finish req_id={request_id}")
                     cache_miss_dict[request_id] = self.page_miss_dict.get(request_id)
                     finish_count += 1
                     unfinished_requests.remove(request_id)  # 移除已完成的 request_id
         time2 = time.time()
-        # print(f"[CacheCoordinator] Poll batch from {infer_worker} cost {(time2-time1)}s")
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[CacheCoordinator] Finish poll batch from {infer_worker} cost {(time2-time1)}s")
         return cache_miss_dict
 
     def stop_process(self):

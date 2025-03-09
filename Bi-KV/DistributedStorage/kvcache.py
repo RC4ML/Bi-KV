@@ -121,7 +121,7 @@ class KVCache:
         dist.send(tensor=send_tensor, dst=dst_rank)
         time1 = time.time()
         nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-        print(f"{nowtime}[KVCache.send_data_batch][Rank {self.rank}]prepare time: {time_b-time_a}s/{circle_counter} round send once time: {time1-time0}s")
+        print(f"{nowtime}[KVCache][Rank {self.rank}]prepare time: {time_b-time_a}s/{circle_counter} round send once time: {time1-time0}s")
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
         return send_tensor.shape[0]
@@ -228,6 +228,8 @@ class KVCache:
 
 
     def receive_task_info_batch(self, worker_ref_list, task_info_list): ## only support send from kvcache to worker, all tasks have the same cache worker        
+        nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
+        print(f"{nowtime}[KVCache][RANK {self.rank}] Start process task")
         from Worker.Worker import Worker
         combined_task_info = {} ## key: infer worker
         confirmation_msg = {} ## key: request id
@@ -279,7 +281,7 @@ class KVCache:
                 confirmation_msg[req_id] += 1
         time_b = time.time()
         nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-        print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] have combined task infos cost:{time_b-time_a}s")
+        # print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] have combined task infos cost:{time_b-time_a}s")
         # 初始状态下，第一轮是全空的任务
         for task_infer_worker in combined_task_info:
             combined_task_list = combined_task_info[task_infer_worker]
@@ -302,7 +304,7 @@ class KVCache:
                     self.add_rpc_call_counter('Worker.receive_kvcache_data_batch')
                     time2 = time.time()
                     nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                    print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] total time cost: {time2-time1}s send time cost: {time3-time4}s wait time cost: {time2-time3} data length: {data_len}")
+                    # print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] single time cost: {time2-time1}s send time cost: {time3-time4}s wait time cost: {time2-time3} data length: {data_len}")
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
 
@@ -322,12 +324,14 @@ class KVCache:
                     self.add_rpc_call_counter('Worker.send_kvcache_data_batch')
                     time2 = time.time()
                     nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-                    print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] recv time cost: {time2-time1}s")
+                    # print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] recv time cost: {time2-time1}s")
                     # print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     self.recv_counter += 1
         time_z = time.time()
         nowtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f",{datetime.now().microsecond // 1000:03d}"
-        print(f"{nowtime}[KVCache.receive_task_info_batch][RANK {self.rank}] total time cost: {time_z-time_a}s send cost: {time_z-time_b}s")
+        print(f"{nowtime}[KVCache][RANK {self.rank}] Finish process task")
+        # print(f"{nowtime}[KVCache][RANK {self.rank}] total time cost: {time_z-time_a}s send cost: {time_z-time_b}s")
+        # 时点3
         return confirmation_msg
     
     def show_counter(self):
