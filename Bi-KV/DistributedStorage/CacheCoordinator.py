@@ -263,7 +263,7 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
             
             if idle_time_counter>self.stop_limit and self.request_table.empty():
                 print(f"[CacheCoordinator] Empty request table. B R E A K")
-                self.send_terminate_signal()
+                self.send_terminate_signal_grpc()
                 break
             # time2 = time.time()
             if self.request_table.empty():
