@@ -55,39 +55,35 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         token_num = combined_task_info['token_num']
         id_token_pair_list = combined_task_info['id_token_pair']
         cache_pages_list = combined_task_info['cache_pages_list']
-        send_tensor_list = []
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
-        # for id_token_pair in id_token_pair_list:
-        #     item_id = id_token_pair[0]
-        #     if item_id not in self.cache_control_dict:
-        #         pass
-        #     start_pos,next_pos = self.cache_control_dict[item_id]
-        #     if next_pos-start_pos != id_token_pair[1]:
-        #         print(f"[KVCache][Rank {self.rank}] Fatal Error: offest({next_pos-start_pos}) != token num({id_token_pair[1]}) id index{id_token_pair_list.index(id_token_pair)}")
-        #         print(f"[KVCache][Rank {self.rank}] item_id={item_id}, start_pos={start_pos}, next_pos={next_pos} id_token_pair={id_token_pair}")  
-        #         print(f"[KVCache][Rank {self.rank}] To continue the process, we have to ignore this error")
-        #         next_pos = start_pos + id_token_pair[1]
-        #     send_tensor_list.append(self.cache_data[start_pos:next_pos])
-        
-        # 重构版send tensor，依托cache_pages_list
-        for idx,page_list in enumerate(cache_pages_list):
+        # 计算总 token 数
+        total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
+
+        # 一次性分配大 tensor
+        send_tensor = torch.empty(
+            (total_token_num,) + token_shape,
+            dtype=torch.float16
+        )
+
+        indices = torch.empty(total_token_num, dtype=torch.long)
+        offset = 0
+        circle_counter = 0
+        for idx, page_list in enumerate(cache_pages_list):
             id_token_pair = id_token_pair_list[idx]
             item_token_num = id_token_pair[1]
-            send_tensor = torch.empty(
-                (item_token_num,) + token_shape, 
-                dtype=torch.float16
-            )
-            for page_idx,page in enumerate(page_list):
+            for page_idx, page in enumerate(page_list):
+                start = page * self.page_size
+                circle_counter += 1
                 if page_idx == len(page_list) - 1:
-                    send_tensor[page_idx*self.page_size:] \
-                        = self.cache_data[page*self.page_size:page*self.page_size+item_token_num%self.page_size]
+                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+                    indices[offset:offset + size] = torch.arange(start, start + size)
+                    offset += size
                 else:
-                    send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
-            assert send_tensor.size(0) == item_token_num
-            send_tensor_list.append(send_tensor)
-        
-        send_tensor = torch.cat(send_tensor_list, dim=0)
+                    indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
+                    offset += self.page_size
+
+        send_tensor[:] = self.cache_data[indices]
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
@@ -135,19 +131,46 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         dist.recv(tensor=recv_tensor, src=src_rank)
         if DEBUG:
             print(f"[KVCache][CPU {self.cache_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
+        # 计算总 token 数
+        total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
+
+        # 预分配索引 tensor
+        recv_indices = torch.empty(total_token_num, dtype=torch.long)
+        cache_indices = torch.empty(total_token_num, dtype=torch.long)
+
+        # 第一步：收集索引
         start_pos = 0
-        # 写入cache
-        for idx,pages_list in enumerate(cache_pages_list):
+        cache_pos = 0
+        for idx, pages_list in enumerate(cache_pages_list):
             id_token_pair = id_token_pair_list[idx]
             item_token_num = id_token_pair[1]
-            item_recv_tensor = recv_tensor[start_pos:start_pos+item_token_num]
-            start_pos += item_token_num
-            for page_idx,page in enumerate(pages_list):
+            
+            # 生成 recv_tensor 的索引
+            recv_indices[start_pos:start_pos + item_token_num] = torch.arange(
+                start_pos, 
+                start_pos + item_token_num
+            )
+            
+            # 生成 cache_data 的索引
+            for page_idx, page in enumerate(pages_list):
                 if page_idx == len(pages_list) - 1:
-                    self.cache_data[page*self.page_size:page*self.page_size + item_token_num % self.page_size] \
-                        = item_recv_tensor[page_idx*self.page_size:]
+                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+                    cache_indices[cache_pos:cache_pos + size] = torch.arange(
+                        page * self.page_size, 
+                        page * self.page_size + size
+                    )
+                    cache_pos += size
                 else:
-                    self.cache_data[page*self.page_size:(page+1)*self.page_size] = item_recv_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size]
+                    cache_indices[cache_pos:cache_pos + self.page_size] = torch.arange(
+                        page * self.page_size, 
+                        (page + 1) * self.page_size
+                    )
+                    cache_pos += self.page_size
+            
+            start_pos += item_token_num
+
+        # 第二步：一次性写入 cache
+        self.cache_data[cache_indices] = recv_tensor[recv_indices]
 
     def send_confirmation(self, confirmation_msg):
         if DEBUG:
