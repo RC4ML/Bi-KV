@@ -83,16 +83,17 @@ def init_process(rank, world_size):
         channel.close()
 
     if process_type == 'CacheCoordinator':
-        port = master_port + rank
-        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-        # 需要传入cache和worker的地址
-        TaskInfo_pb2_grpc.add_CacheCoordinatorServiceServicer_to_server(
-            CacheCoordinator(rank,master_port,rank_map['KVCache'],rank_map['Worker']), server
-        )
-        server.add_insecure_port(f'[::]:{port}')
-        server.start()
-        print(f"CacheCoordinator started on port {port}")
-        server.wait_for_termination()
+        # port = master_port + rank
+        # server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        # # 需要传入cache和worker的地址
+        # TaskInfo_pb2_grpc.add_CacheCoordinatorServiceServicer_to_server(
+        #     CacheCoordinator(rank,master_port,rank_map['KVCache'],rank_map['Worker']), server
+        # )
+        # server.add_insecure_port(f'[::]:{port}')
+        # server.start()
+        # print(f"CacheCoordinator started on port {port}")
+        # server.wait_for_termination()
+        pass
 
     if process_type == 'Worker':
         port = master_port + rank

@@ -301,7 +301,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     remote_send.wait()
                     now = datetime.now()
                     nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
-                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    # print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     self.recv_counter += 1
 
         return confirmation_msg
@@ -314,7 +314,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         combined_task_info = {} ## key: infer worker
         confirmation_msg = {} ## key: request id
         if DEBUG:
-            print(f"[KVCache][RANK {self.rank}] receive_task_info_batch_gprc len:{len(task_info_list)}")
+            print(f"[KVCache {self.rank}] receive_task_info_batch_gprc len:{len(task_info_list)}")
         for task_info in task_info_list:
             infer_worker = task_info.infer_worker
             if infer_worker !=0 and DEBUG:
@@ -371,7 +371,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                 if task_type == SIGNAL_SEND:
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
-                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                        print(f"[KVCache {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
@@ -385,7 +385,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     cache_worker = task_info['cache_worker']
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
-                        print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                        print(f"[KVCache {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
@@ -394,13 +394,13 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         remote_send.result()
                     now = datetime.now()
                     nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
-                    print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    # print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     self.recv_counter += 1
-
         return confirmation_msg
 
 
     def ReceiveTasksFromCoordinator(self, request, context):
+        print(f"[KVCache {self.rank}]收到Coordinator请求 长度为{len(request.tasks)}")
         confirmation_msg = self.receive_task_info_batch_gprc(request.tasks)
         # confirmation_msg是dict，需要转成字符串后传输
         comfirmation_data = json.dumps(confirmation_msg)
