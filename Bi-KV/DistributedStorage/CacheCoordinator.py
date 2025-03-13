@@ -191,19 +191,27 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                     if task_info.task_type == SIGNAL_CHECK:
                         if self.page_miss_dict.get(req_id)==None:
                             self.page_miss_dict[req_id] = {}
-                        access_res = self.page_manager.access_item(task_info.id)
-                        if access_res[0] == None:
-                            # if DEBUG:
-                            # print(f"[CacheCoordinator] Cache Miss! id = {task_info.id}")
-                            self.page_miss_dict[req_id][task_info.id] = CACHE_MISS
-                        else:
-                            # cache hit
-                            cache_worker = access_res[0]
-                            pages_list = access_res[1]
-                            self.page_miss_dict[req_id][task_info.id] = CACHE_HIT
-                            task_info.task_type = SIGNAL_SEND
-                            task_info.cache_worker = cache_worker
-                            task_info.cache_pages_list.extend(pages_list)
+                        # access_res = self.page_manager.access_item(task_info.id)
+                        # if access_res[0] == None:
+                        #     # if DEBUG:
+                        #     # print(f"[CacheCoordinator] Cache Miss! id = {task_info.id}")
+                        #     self.page_miss_dict[req_id][task_info.id] = CACHE_MISS
+                        # else:
+                        #     # cache hit
+                        #     cache_worker = access_res[0]
+                        #     pages_list = access_res[1]
+                        #     self.page_miss_dict[req_id][task_info.id] = CACHE_HIT
+                        #     task_info.task_type = SIGNAL_SEND
+                        #     task_info.cache_worker = cache_worker
+                        #     task_info.cache_pages_list.extend(pages_list)
+                        load_res = self.page_manager.load_item(task_info.id, task_info.token_num)
+                        cache_worker = load_res[0]
+                        pages_list = load_res[1]
+                        self.page_miss_dict[req_id][task_info.id] = CACHE_HIT
+                        task_info.task_type = SIGNAL_SEND
+                        task_info.cache_worker = cache_worker
+                        task_info.cache_pages_list.extend(pages_list)
+
 
                     if task_info.task_type == SIGNAL_RECV:
                         load_res = self.page_manager.load_item(task_info.id, task_info.token_num)

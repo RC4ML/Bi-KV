@@ -76,7 +76,7 @@ def init_process(rank, world_size):
             # stub.StartProcess(TaskInfo_pb2.StartRequest(msg='start'))
         logging.info("开始测试")
         time1 = time.time()
-        scheduler.start(5,128)
+        scheduler.start(10,256)
         time2 = time.time()
         print(f"Test Time cost: {time2-time1}")
         fut.result()

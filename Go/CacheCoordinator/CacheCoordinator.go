@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -39,7 +40,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int) *Ca
 		cacheRanks:           cacheRanks,
 		inferRanks:           inferRanks,
 		kvcacheNum:           int32(len(cacheRanks)),
-		requestQueue:         make(chan *pb.TaskInfo), // 无缓冲的channel作为queue
+		requestQueue:         make(chan *pb.TaskInfo, 2000), // 无缓冲的channel作为queue
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
 		stopLimit:            10000,
@@ -63,7 +64,7 @@ func (cc *CacheCoordinator) Strategy(reqID int32) int32 {
 
 // ReceiveTasksFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.Empty, error) {
-	fmt.Printf("收到请求，长度为%d\n", len(req.Tasks))
+	log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
 	for _, task := range req.Tasks {
 		task.CacheWorker = int32(cc.Strategy(task.RequestId + task.Id))
 		cc.requestQueue <- task
@@ -73,7 +74,8 @@ func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req
 
 // PollBatchFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) PollBatchFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.ComfirmationMessage, error) {
-	fmt.Println("[CacheCoordinator] Start poll")
+	start := time.Now()
+	log.Println("[CacheCoordinator] Start poll")
 	requestToTaskNum := make(map[int32]int32)
 	for _, task := range req.Tasks {
 		if _, ok := requestToTaskNum[task.RequestId]; !ok {
@@ -106,6 +108,8 @@ func (cc *CacheCoordinator) PollBatchFromInferWorker(ctx context.Context, req *p
 	if err != nil {
 		return nil, err
 	}
+	duration := time.Since(start)
+	log.Printf("[CacheCoordinator] Finish poll time cost:%v\n", duration)
 	return &pb.ComfirmationMessage{Msg: string(data)}, nil
 }
 
@@ -133,15 +137,23 @@ func (cc *CacheCoordinator) processRequests() {
 					if _, ok := cc.cacheMissDict[reqID]; !ok {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
-					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
-					if cacheWorker == -1 {
-						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
-					} else {
-						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-						taskInfo.TaskType = SIGNAL_SEND
-						taskInfo.CacheWorker = cacheWorker
-						taskInfo.CachePagesList = setToList(pages)
-					}
+					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+					// if cacheWorker == -1 {
+					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
+					// } else {
+					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					// 	taskInfo.TaskType = SIGNAL_SEND
+					// 	taskInfo.CacheWorker = cacheWorker
+					// 	taskInfo.CachePagesList = setToList(pages)
+					// }
+
+					// 测试用 全hit
+					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					taskInfo.CacheWorker = cacheWorker
+					taskInfo.CachePagesList = setToList(pages)
+					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					taskInfo.TaskType = SIGNAL_SEND
+
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
 					taskInfo.CacheWorker = cacheWorker

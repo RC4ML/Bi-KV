@@ -14,6 +14,7 @@ from DistributedStorage.CacheCoordinator import CacheCoordinator
 from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
+from Utils.utils import now_time
 
 
 
@@ -370,13 +371,13 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
 
     def forward_with_computation_grpc(self, tasks):
         if DEBUG:
-            print(f"[Worker.forward_with_computation][RANK {self.rank}] Add {len(tasks)} requests to coordinator")
+            print(f"{now_time()}[Worker {self.rank}] Add {len(tasks)} requests to coordinator")
         tasks = TaskInfo_pb2.TaskInfoList(tasks=tasks)
         with grpc.insecure_channel(self.cache_coordinator_address) as channel:
             stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
             stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
         if DEBUG:
-            print(f"[Worker.forward_with_computation][RANK {self.rank}] try to poll_batch")
+            print(f"{now_time()}[Worker {self.rank}] try to poll_batch")
         with grpc.insecure_channel(self.cache_coordinator_address) as channel:
             stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
             # stub.PollBatchFromInferWorker(tasks)

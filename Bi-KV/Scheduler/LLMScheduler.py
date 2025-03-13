@@ -162,18 +162,6 @@ class LLMScheduler:
                 infer_worker = self.strategy(self._id_counter)
                 token_num = prompt.user_history_tokens
                 self._id_counter += 1
-                # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
-                # task_info = {"request_id":self._id_counter,
-                #              # 可以用type来判断，不用+2000000
-                #             "id":prompt.user_id+2000000, # 避免user和item碰撞，user_id+2000000 
-                #             "infer_worker":infer_worker, 
-                #             "token_num":token_num,
-                #             'data_length':data_length,
-                #             'index': 0,
-                #             'task_type': SIGNAL_CHECK,
-                #             'type': 'user cache',
-                #             'task_num': 1, # 不考虑recompute
-                #             }
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = self._id_counter,
                     id = prompt.user_id+2000000,
@@ -191,16 +179,7 @@ class LLMScheduler:
                 ## append recomputing tokens
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
-                    recomputing_tokens = i.token_count
-                # task_info = {"request_id":self._id_counter,
-                #                 "id":-1, 
-                #                 "infer_worker":infer_worker, 
-                #                 "token_num":recomputing_tokens,
-                #                 "data_length":-1,
-                #                 'index':-1,
-                #                 'task_type': SIGNAL_SKIP,
-                #                 'type':'compute',
-                #                 'task_num': 1}    
+                    recomputing_tokens = i.token_count 
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = self._id_counter,
                     id = -1,
@@ -220,14 +199,6 @@ class LLMScheduler:
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
                     token_num = i.token_count
-                    # task_info = {"request_id":self._id_counter,
-                    #             "id":i.item_id, 
-                    #             "infer_worker":infer_worker, 
-                    #             "token_num":token_num,
-                    #             'index':ind,
-                    #             'task_type': SIGNAL_CHECK,
-                    #             'type':'item cache',
-                    #             'task_num': len(prompt.items)} # 不考虑recompute
                     task_info = TaskInfo_pb2.TaskInfo(
                         request_id = self._id_counter,
                         id = i.item_id,
@@ -243,14 +214,6 @@ class LLMScheduler:
                     else:
                         task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
-                # task_info = {"request_id":self._id_counter,
-                #     "id":-1, 
-                #     "infer_worker":infer_worker, 
-                #     "token_num":prompt.user_history_tokens,
-                #     'index':-1,
-                #     'task_type': SIGNAL_SKIP,
-                #     'type':'compute',
-                #     'task_num': len(prompt.items)}
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = self._id_counter,
                     id = -1,
@@ -264,20 +227,12 @@ class LLMScheduler:
                 task_info_list_dict[infer_worker].append(task_info)
 
         for infer_worker in task_info_list_dict:
-                # infer_worker_ref = self.worker_ref[infer_worker]
-                # owner_worker_ref = infer_worker_ref.owner() 
-                # return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                #             args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
             channel = grpc.insecure_channel(f"localhost:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.ReceiveTasksFromScheduler.future(task_info_list)
-            #     time1 = time.time()
-                # stub.ReceiveTasksFromScheduler(task_info_list)
-            # time2 = time.time()
-            # print(f'[LLMScheduler] Grpc send task to worker {infer_worker} cost {time2-time1} s')
             future_list.append((future,channel))  
             
         for future,channel in future_list:

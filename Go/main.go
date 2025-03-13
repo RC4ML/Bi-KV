@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
+	"os"
 
 	coordinator "github.com/RC4ML/Bi-KV/CacheCoordinator"
 	pb "github.com/RC4ML/Bi-KV/protos"
@@ -15,6 +17,8 @@ func main() {
 	masterPort := 50500 // 示例端口
 	cacheRanks := []int{0, 1, 2, 3}
 	inferRanks := []int{0, 1, 2, 3}
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
 	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks)
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", masterPort+rank))
