@@ -19,16 +19,15 @@ func main() {
 	inferRanks := []int{0, 1, 2, 3}
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks)
+	s := grpc.NewServer()
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, s)
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)
 		return
 	}
-	s := grpc.NewServer()
 	pb.RegisterCacheCoordinatorServiceServer(s, cc)
-	fmt.Println("[Main] Starting gRPC server")
+	log.Printf("[Main] Starting gRPC server, listen in port %d\n", masterPort+rank)
 	if err := s.Serve(lis); err != nil {
 		fmt.Printf("Failed to serve: %v\n", err)
 	}

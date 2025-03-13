@@ -27,7 +27,7 @@ from vllm.config import CacheConfig
 import time
 
 class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
-    def __init__(self, rank,master_port:int, coordinator_rank = None):
+    def __init__(self, rank,master_port:int, coordinator_rank = None, server=None):
         self.rank = rank
         self.worker_index=int(rank/2) -1
         self.coordinator_rank = coordinator_rank
@@ -48,6 +48,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         )
         self.start_pos = 0
         self.cache_miss_dict = {}
+        self.server = server
         
         ## initialize model and parameters for inference
         intermediate_size = 8960
@@ -363,10 +364,11 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         if hit_rate > 0.7 and DEBUG:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
-        rpc.rpc_sync(to=coordinator_owner, 
-                         func=call_remote_method, 
-                         args=(CacheCoordinator.add_requests,self.coordinator_rank, 
-                               send_task_list))
+        if len(send_task_list)>0:
+            rpc.rpc_sync(to=coordinator_owner, 
+                            func=call_remote_method, 
+                            args=(CacheCoordinator.add_requests,self.coordinator_rank, 
+                                send_task_list))
         # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
 
     def forward_with_computation_grpc(self, tasks):
@@ -415,11 +417,11 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         if hit_rate > 0.7 and DEBUG:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
-        send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
-        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-            stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
-        # 发buffer上的数据可能会被写掉？加锁？ 保证worker上的buffer没有被覆盖
+        if len(send_task_list)>0:
+            send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
+            with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+                stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+                stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
 
     def RecvKVCacheData(self, request, context):
         task_info = request
@@ -435,15 +437,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.send_kvcache_data_batch(task_info)
         return TaskInfo_pb2.Empty()
     
-    # def ShutDown(self, request, context):
-    #     # 在这里处理关闭逻辑
-    #     print("Server shutting down...")
-    #     import threading
-    #     stop_event = threading.Event()
-
-    #     def stop():
-    #         server.stop(grace=3)  # grace period allows ongoing RPCs to complete
-    #         stop_event.set()
-        
-    #     threading.Thread(target=stop).start()
-    #     return TaskInfo_pb2.Empty()
+    def ShutDown(self, request, context):
+        # 在这里处理关闭逻辑
+        self.server.stop(0)
+        return TaskInfo_pb2.Empty()

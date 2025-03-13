@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ var (
 )
 
 // PageManager 单个页面管理器
+// TODO 验证用map模拟set是否顺序
 type PageManager struct {
 	pmID        int32
 	pageSize    int
@@ -43,7 +45,7 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 	for i := range numPages {
 		pm.freePages[int32(i)] = struct{}{}
 	}
-	fmt.Printf("初始空闲页数: %d\n", len(pm.freePages))
+	log.Printf("初始空闲页数: %d\n", len(pm.freePages))
 	return pm
 }
 
@@ -120,7 +122,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 		}
 		freedIDs = append(freedIDs, entry.id)
 		if DEBUG {
-			fmt.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
+			log.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
 				time.Now().Unix(), entry.id, len(entry.pages), len(pm.freePages))
 		}
 		if len(pm.freePages) >= requiredPages {
@@ -142,7 +144,7 @@ func (pm *PageManager) SetProtected(itemID int32) {
 		entry.Protected++
 		pm.pageTable[itemID] = entry
 		if DEBUG {
-			fmt.Printf("[[%d]] 保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
+			log.Printf("[[%d]] 保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
 		}
 	} else {
 		panic(fmt.Sprintf("列表 %d 未加载", itemID))
@@ -157,7 +159,7 @@ func (pm *PageManager) RemoveProtected(itemID int32) {
 		entry.Protected--
 		pm.pageTable[itemID] = entry
 		if DEBUG {
-			fmt.Printf("[[%d]] 取消保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
+			log.Printf("[[%d]] 取消保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
 		}
 	} else {
 		panic(fmt.Sprintf("列表 %d 未加载", itemID))

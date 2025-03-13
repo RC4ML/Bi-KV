@@ -98,9 +98,9 @@ def init_process(rank, world_size):
     if process_type == 'Worker':
         port = master_port + rank
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-        # 
+        worker = Worker(rank,master_port,rank_map['CacheCoordinator'][0],server)
         TaskInfo_pb2_grpc.add_InferWorkerServiceServicer_to_server(
-            Worker(rank,master_port,rank_map['CacheCoordinator'][0]), server
+            worker, server
         )
         server.add_insecure_port(f'[::]:{port}')
         server.start()
@@ -110,9 +110,9 @@ def init_process(rank, world_size):
     if process_type == 'KVCache':
         port = master_port + rank
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-        #
+        kv_cache = KVCache(rank, 5000, 50, master_port, server)
         TaskInfo_pb2_grpc.add_KVCacheServiceServicer_to_server(
-            KVCache(rank,5000,50,master_port), server
+            kv_cache, server
         )
         server.add_insecure_port(f'[::]:{port}')
         server.start()

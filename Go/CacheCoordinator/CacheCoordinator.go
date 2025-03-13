@@ -10,6 +10,7 @@ import (
 
 	pb "github.com/RC4ML/Bi-KV/protos"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // CacheCoordinator 定义调度器的结构体
@@ -30,10 +31,11 @@ type CacheCoordinator struct {
 	pageSize             int
 	pageManager          *MultiPageManager // MultiPageManager 的 Go 实现
 	cacheMissDict        map[int32]map[int32]int32
+	server               *grpc.Server
 }
 
 // NewCacheCoordinator 初始化调度器
-func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int) *CacheCoordinator {
+func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, server *grpc.Server) *CacheCoordinator {
 	cc := &CacheCoordinator{
 		rank:                 rank,
 		masterPort:           masterPort,
@@ -48,12 +50,13 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int) *Ca
 		pageSize:             50,
 		pageManager:          NewMultiPageManager(5000, 50, len(cacheRanks)), // 初始化 PageManager
 		cacheMissDict:        make(map[int32]map[int32]int32),
+		server:               server,
 	}
 	kvcacheNum := int(cc.kvcacheNum)
 	for i := range kvcacheNum {
 		cc.cpuStateTable[i] = map[string]string{"status": "idle"}
 	}
-	fmt.Println("[CacheCoordinator] 初始化完成")
+	log.Println("[CacheCoordinator] 初始化完成")
 	return cc
 }
 
@@ -189,7 +192,7 @@ func (cc *CacheCoordinator) processRequests() {
 
 		cc.lock.Lock()
 		if idleTimeCounter > cc.stopLimit && len(cc.requestQueue) == 0 {
-			fmt.Println("[CacheCoordinator] Empty request table. B R E A K")
+			log.Println("[CacheCoordinator] Empty request table. B R E A K")
 			cc.sendTerminateSignal()
 			cc.lock.Unlock()
 			break
@@ -201,16 +204,16 @@ func (cc *CacheCoordinator) processRequests() {
 			time.Sleep(500 * time.Microsecond)
 		}
 	}
-	fmt.Println("[CacheCoordinator] 所有请求处理完成")
+	log.Println("[CacheCoordinator] 所有请求处理完成")
 }
 
 // executeRequestBatch 执行批量请求
 func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.TaskInfo) {
 	cacheRank := 2*cacheWorker + KVCACHEOffset // 假设 KVCACHEOffset 已定义
 	addr := fmt.Sprintf("localhost:%d", cc.masterPort+cacheRank)
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		fmt.Printf("[CacheCoordinator] Failed to connect: %v\n", err)
+		log.Printf("[CacheCoordinator] Failed to connect: %v\n", err)
 		return
 	}
 	defer conn.Close()
@@ -219,12 +222,12 @@ func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.T
 	// fmt.Printf("[CacheCoordinator] Try to execute...len=%d\n", len(reqList))
 	resp, err := client.ReceiveTasksFromCoordinator(context.Background(), &pb.TaskInfoList{Tasks: reqList})
 	if err != nil {
-		fmt.Printf("[CacheCoordinator] Failed to send tasks: %v\n", err)
+		log.Printf("[CacheCoordinator] Failed to send tasks: %v\n", err)
 		return
 	}
 	var confirmationMsg map[int32]int32
 	if err := json.Unmarshal([]byte(resp.Msg), &confirmationMsg); err != nil {
-		fmt.Printf("[CacheCoordinator] Failed to unmarshal: %v\n", err)
+		log.Printf("[CacheCoordinator] Failed to unmarshal: %v\n", err)
 		return
 	}
 
@@ -237,28 +240,48 @@ func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.T
 
 // sendTerminateSignal 发送终止信号
 func (cc *CacheCoordinator) sendTerminateSignal() {
-	fmt.Println("[CacheCoordinator] 发送终止信号给所有 KVCache")
+	log.Println("[CacheCoordinator] 发送终止信号给所有 KVCache")
 	var wg sync.WaitGroup
 	for _, rank := range cc.cacheRanks {
 		wg.Add(1)
 		go func(r int) {
 			defer wg.Done()
 			addr := fmt.Sprintf("localhost:%d", cc.masterPort+2*r+KVCACHEOffset)
-			conn, err := grpc.Dial(addr, grpc.WithInsecure())
+			conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
-				fmt.Printf("[CacheCoordinator] Failed to connect KVCache %d: %v\n", r, err)
+				log.Printf("[CacheCoordinator] Failed to connect KVCache %d: %v\n", r, err)
 				return
 			}
 			defer conn.Close()
 			client := pb.NewKVCacheServiceClient(conn)
 			_, err = client.ShutDown(context.Background(), &pb.Empty{})
 			if err != nil {
-				fmt.Printf("[CacheCoordinator] Failed to terminate KVCache %d: %v\n", r, err)
+				log.Printf("[CacheCoordinator] Failed to terminate KVCache %d: %v\n", r, err)
+			}
+		}(rank)
+	}
+	log.Println("[CacheCoordinator] 发送终止信号给所有 Infer Worker")
+	for _, rank := range cc.inferRanks {
+		wg.Add(1)
+		go func(r int) {
+			defer wg.Done()
+			addr := fmt.Sprintf("localhost:%d", cc.masterPort+2*r+INFEROffset)
+			conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Printf("[CacheCoordinator] Failed to connect Infer Worker %d: %v\n", r, err)
+				return
+			}
+			defer conn.Close()
+			client := pb.NewInferWorkerServiceClient(conn)
+			_, err = client.ShutDown(context.Background(), &pb.Empty{})
+			if err != nil {
+				log.Printf("[CacheCoordinator] Failed to terminate Infer Worker %d: %v\n", r, err)
 			}
 		}(rank)
 	}
 	wg.Wait()
-	fmt.Println("[CacheCoordinator] 终止信号已发送")
+	log.Println("[CacheCoordinator] 终止信号已发送...停止Coordinator")
+	cc.server.Stop()
 }
 
 func setToList(set map[int32]struct{}) []int32 {
@@ -276,5 +299,6 @@ const (
 	SIGNAL_RECV   = int32(2)
 	CACHE_MISS    = int32(0)
 	CACHE_HIT     = int32(1)
-	KVCACHEOffset = 3 // 示例值，需根据您的配置调整
+	INFEROffset   = 2
+	KVCACHEOffset = 3
 )

@@ -20,7 +20,7 @@ import time
 
 
 class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
-    def __init__(self, rank, cache_size, page_size, master_port):
+    def __init__(self, rank, cache_size, page_size, master_port, server):
         self.rank = rank
         self.cache_index = int(rank/2) -1
         self.cache_size = cache_size
@@ -35,6 +35,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.recv_counter = 0
         self.send_counter = 0
         self.master_port = master_port
+        self.server = server
         if DEBUG:
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
@@ -425,3 +426,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         combined_task_info_pb.cache_pages_list.extend([TaskInfo_pb2.PageList(cache_pages_list=page_list) for page_list in task_info['cache_pages_list']])
         combined_task_info_pb.id_token_pair.extend([TaskInfo_pb2.IdTokenPair(id=id_token_pair[0], token_num=id_token_pair[1]) for id_token_pair in task_info['id_token_pair']])
         return combined_task_info_pb
+    
+    def ShutDown(self, request, context):
+        self.server.stop(0)
+        return TaskInfo_pb2.Empty()
