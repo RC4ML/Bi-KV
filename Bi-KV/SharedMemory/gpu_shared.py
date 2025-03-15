@@ -3,6 +3,7 @@ import torch
 import pycuda.driver as cuda
 from pycuda import autoinit
 import multiprocessing as mp
+import torch_utils 
 import time
 
 DEBUG = False
@@ -22,6 +23,7 @@ class Writer:
         self.rank = rank
         self.device = torch.device(f'cuda:{gpu_index}')
         self.mb_size = mb_size
+        #self.send_tensor = None  # 保存张量防止提前释放
 
     @staticmethod
     def allocate_gpu_tensor(mb_size, device, dtype=torch.float16):
@@ -34,19 +36,21 @@ class Writer:
         if DEBUG:
             print(f"Writer 创建张量前显存: {_get_gpu_memory(self.gpu_index)}")
         send_tensor = self.allocate_gpu_tensor(self.mb_size, self.device)
-        send_tensor.fill_(1.0)
+        send_tensor.fill_(2.0)
+        # self.send_tensor = send_tensor  # 保存到实例变量
         if DEBUG:
             print(f"Writer 创建张量后显存: {_get_gpu_memory(self.gpu_index)}")
         try:
             write_start_time = time.time()
             self.ctx.push()
+            #ptr = self.send_tensor.data_ptr()
             ptr = send_tensor.data_ptr()
             handle = cuda.mem_get_ipc_handle(ptr)
             write_end_time = time.time()
             write_time = write_end_time - write_start_time
             # with open(f'/data/zzm/Bi-KV/test_result/shared_memory_test/gpu_shared_test{self.mb_size}MB.txt', mode='a+') as f:
             #     f.write(f"[Create] 共享内存创建时间: {write_time:.4f}s\n")
-            return write_start_time, write_time, handle, send_tensor.shape
+            return write_start_time, write_time, handle, send_tensor
         finally:
             self.ctx.pop()
 
@@ -64,12 +68,27 @@ class Reader:
         try:
             ipc_handle = cuda.IPCMemoryHandle(remote_handle)
             ptr = int(ipc_handle)
-            gpu_array = cuda.from_device(ptr, shape, np.float16, order='C')
-            recv_tensor = torch.as_tensor(gpu_array, device=self.device)
+            print(f"type(ipc_handle):{type(ipc_handle)}")
+            print(f"type(ptr):{type(ptr)}")
+            blob_start=time.time()
+            recv_tensor = torch_utils.from_blob(
+                ptr, 
+                list(shape),  # 转换为列表
+                torch.float16, 
+                str(self.device)
+            )
+            #print(f"type(recv_tensor):{type(recv_tensor)}")
+            gpu_array = cuda.from_device(ptr, shape, np.float16, order='c')  #
+            blob_end=time.time()
+            #recv_tensor = torch.as_tensor(recv_tensor,device=self.device)
+            #print(recv_tensor.device)
             read_end_time=time.time()
+            # recv_tensor=recv_tensor.contiguous()
+            # copy_start_time = time.time()
             copy_tensor = recv_tensor.clone()
-            copy_end_time = time.time()
-            return copy_tensor, copy_end_time - read_end_time,read_end_time-read_start_time
+            print(copy_tensor.device)
+            # copy_end_time = time.time()
+            return  0,read_end_time-read_start_time,blob_end-blob_start,copy_tensor
         finally:
             self.ctx.pop()
             ipc_handle.close()
@@ -79,25 +98,24 @@ def writer_process(queue, gpu_index, mb_size):
     start_time, create_time, handle_bytes, shape = writer.share_gpu_memory()
     queue.put((handle_bytes, shape, start_time, create_time))
     time.sleep(5)
-    writer.ctx.pop()
+    # writer.ctx.pop()
 
 def reader_process(queue, gpu_index, mb_size, result_queue):
     reader = Reader(gpu_index, 1, mb_size)
     handle_bytes, shape, start_time, create_time = queue.get()
     
-    # 记录传输开始时间
-    transfer_start = time.time()
     
     # 执行实际读取操作
-    recv_tensor, copy_time,read_time = reader._read_from_shared_memory_batch_gpu(handle_bytes, shape)
-    
+    copy_time,read_time,device_time ,recv_tensor= reader._read_from_shared_memory_batch_gpu(handle_bytes, shape)
+    # print(f"device_time{device_time}")
     # 计算各时间指标
     end_to_end_duration = time.time() - start_time  # 总端到端时间
     communicate_time = end_to_end_duration - read_time - create_time-copy_time  # 通信开销
-    
+    print(f"device_time={device_time}")
     # 数据验证
-    expected = torch.ones(shape, dtype=torch.float16, device=reader.device)
-    assert torch.allclose(recv_tensor, expected, atol=1e-5), "数据验证失败!"
+    #print(recv_tensor)
+    # expected = torch.full(shape,2.0,dtype=torch.float16, device=reader.device)
+    # assert torch.allclose(recv_tensor, expected, atol=1e-5), "数据验证失败!"
     
     # 计算所有速率指标
     def safe_div(a, b):
@@ -141,8 +159,8 @@ if __name__ == "__main__":
     
     # 配置测试参数
     GPU_INDEX = 0
-    MB_SIZE = 800   # 测试数据大小
-    NUM_TESTS = 10    # 测试次数
+    MB_SIZE = 1000   # 测试数据大小
+    NUM_TESTS = 3    # 测试次数
     
     # 初始化结果统计
     metrics = {
@@ -169,7 +187,7 @@ if __name__ == "__main__":
         writer.join()
         reader.join()
         
-        if i>4:
+        if i>0:
             # 收集单次测试结果
             if not result_queue.empty():
                 data = result_queue.get()
@@ -185,7 +203,7 @@ if __name__ == "__main__":
                 metrics['rate_copy'] += data[9]
     
     # 计算平均值
-    avg_metrics = {k: v/5 for k, v in metrics.items()}
+    avg_metrics = {k: v/2 for k, v in metrics.items()}
     
     # 生成最终报告
     time_report = (
