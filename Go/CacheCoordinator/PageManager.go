@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -14,21 +15,20 @@ var (
 )
 
 // PageManager 单个页面管理器
-// TODO 验证用map模拟set是否顺序
 type PageManager struct {
 	pmID        int32
 	pageSize    int
 	numPages    int
-	freePages   map[int32]struct{} // 使用 map 模拟 set
+	freePages   []int32 // 有序空闲页列表
 	pageTable   map[int32]PageEntry
-	currentTime int64 // 用于 LRU 的时间戳
+	currentTime int64
 	mu          sync.Mutex
 }
 
 type PageEntry struct {
-	Pages        map[int32]struct{} // 分配的页面集合
-	LastAccessed int64              // 最近访问时间戳
-	Protected    int                // 保护计数
+	Pages        []int32 // 改为有序slice
+	LastAccessed int64
+	Protected    int
 }
 
 // NewPageManager 初始化 PageManager
@@ -38,26 +38,27 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 		pmID:        pmID,
 		pageSize:    pageSize,
 		numPages:    numPages,
-		freePages:   make(map[int32]struct{}),
+		freePages:   make([]int32, numPages),
 		pageTable:   make(map[int32]PageEntry),
 		currentTime: 0,
 	}
 	for i := range numPages {
-		pm.freePages[int32(i)] = struct{}{}
+		pm.freePages[i] = int32(i)
 	}
 	log.Printf("初始空闲页数: %d\n", len(pm.freePages))
 	return pm
 }
 
 // LoadItem 加载列表到缓存
-func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{}, []int32) {
+func (pm *PageManager) LoadItem(itemID int32, listLength int) ([]int32, []int32) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	// 如果已存在，直接返回
-	if _, ok := pm.pageTable[itemID]; ok {
-		pages := pm.AccessItem(itemID)
-		return pages, []int32{}
+	if entry, ok := pm.pageTable[itemID]; ok {
+		entry.LastAccessed = pm.currentTime
+		pm.pageTable[itemID] = entry
+		pm.currentTime++
+		return entry.Pages, nil
 	}
 
 	requiredPages := (listLength + pm.pageSize - 1) / pm.pageSize
@@ -83,17 +84,17 @@ func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{
 }
 
 // AccessItem 访问列表并更新时间戳
-func (pm *PageManager) AccessItem(itemID int32) map[int32]struct{} {
+func (pm *PageManager) AccessItem(itemID int32) []int32 {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-
-	if entry, ok := pm.pageTable[itemID]; ok {
-		entry.LastAccessed = pm.currentTime
-		pm.currentTime++
-		pm.pageTable[itemID] = entry
-		return entry.Pages
+	entry, ok := pm.pageTable[itemID]
+	if !ok {
+		panic(fmt.Sprintf("列表 %d 未加载", itemID))
 	}
-	panic(fmt.Sprintf("列表 %d 未加载", itemID))
+	entry.LastAccessed = pm.currentTime
+	pm.pageTable[itemID] = entry
+	pm.currentTime++
+	return entry.Pages
 }
 
 // performEviction 执行 LRU 换出
@@ -101,7 +102,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 	type entry struct {
 		id           int32
 		lastAccessed int64
-		pages        map[int32]struct{}
+		pages        []int32
 	}
 	var lruEntries []entry
 	for id, info := range pm.pageTable {
@@ -117,9 +118,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 			continue
 		}
 		delete(pm.pageTable, entry.id)
-		for page := range entry.pages {
-			pm.freePages[page] = struct{}{}
-		}
+		pm.returnPages(entry.pages)
 		freedIDs = append(freedIDs, entry.id)
 		if DEBUG {
 			log.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
@@ -134,6 +133,43 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 		panic(fmt.Sprintf("无法换出足够页面，当前空闲页数: %d，要求页数: %d", len(pm.freePages), requiredPages))
 	}
 	return freedIDs
+}
+
+// returnPages 将页面按顺序插入到freePages中
+func (pm *PageManager) returnPages(pages []int32) {
+	// 将释放的页面排序
+	slices.Sort(pages)
+	// 合并到freePages中保持有序
+	pm.freePages = mergeSortedSlices(pm.freePages, pages)
+}
+
+// 合并两个有序slice
+func mergeSortedSlices(a, b []int32) []int32 {
+	result := make([]int32, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i] < b[j] {
+			result = append(result, a[i])
+			i++
+		} else {
+			result = append(result, b[j])
+			j++
+		}
+	}
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
+	return result
+}
+
+// allocatePages 分配连续的页面
+func (pm *PageManager) allocatePages(n int) []int32 {
+	if len(pm.freePages) < n {
+		panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(pm.freePages), n))
+	}
+	allocated := make([]int32, n)
+	copy(allocated, pm.freePages[:n])
+	pm.freePages = pm.freePages[n:]
+	return allocated
 }
 
 // SetProtected 设置保护状态
@@ -164,22 +200,6 @@ func (pm *PageManager) RemoveProtected(itemID int32) {
 	} else {
 		panic(fmt.Sprintf("列表 %d 未加载", itemID))
 	}
-}
-
-// allocatePages 分配页面
-func (pm *PageManager) allocatePages(n int) map[int32]struct{} {
-	if len(pm.freePages) < n {
-		panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(pm.freePages), n))
-	}
-	allocated := make(map[int32]struct{})
-	for i := 0; i < n; i++ {
-		for page := range pm.freePages {
-			allocated[page] = struct{}{}
-			delete(pm.freePages, page)
-			break
-		}
-	}
-	return allocated
 }
 
 // GetLoadedLists 获取当前加载的列表 ID
@@ -222,7 +242,7 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager 
 }
 
 // LoadItem 加载列表到缓存
-func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, map[int32]struct{}) {
+func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, []int32) {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
 
@@ -268,7 +288,7 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, map[
 }
 
 // AccessItem 访问缓存中的列表
-func (mpm *MultiPageManager) AccessItem(itemID int32) (int32, map[int32]struct{}) {
+func (mpm *MultiPageManager) AccessItem(itemID int32) (int32, []int32) {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
 

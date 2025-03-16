@@ -36,7 +36,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 35000
+        self.buffer_size = 50000
         self.page_size = 50
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)

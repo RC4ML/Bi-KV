@@ -362,6 +362,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             else:
                 confirmation_msg[req_id] += 1
         # 初始状态下，第一轮是全空的任务
+        time0 = time.time()
         for task_infer_worker in combined_task_info:
             combined_task_list = combined_task_info[task_infer_worker]
             for task_info in combined_task_list.values():
@@ -397,6 +398,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
                     # print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     self.recv_counter += 1
+        time1 = time.time()
+        print(f"[KVCache {self.rank}] 传输开销:{time1-time0}s")
         return confirmation_msg
 
 

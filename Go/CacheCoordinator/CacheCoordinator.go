@@ -42,7 +42,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, ser
 		cacheRanks:           cacheRanks,
 		inferRanks:           inferRanks,
 		kvcacheNum:           int32(len(cacheRanks)),
-		requestQueue:         make(chan *pb.TaskInfo, 2000), // 无缓冲的channel作为queue
+		requestQueue:         make(chan *pb.TaskInfo, 2000), // 无缓冲区会阻塞
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
 		stopLimit:            10000,
@@ -128,8 +128,10 @@ func (cc *CacheCoordinator) processRequests() {
 	fmt.Println("[CacheCoordinator] 开始处理请求")
 	idleTimeCounter := 0
 	hasExecuted := false
+	var loadDuration time.Duration
 	for cc.processFlag {
 		executableRequests := make(map[int][]*pb.TaskInfo)
+		// var duration time.Duration
 		for {
 			select {
 			case taskInfo := <-cc.requestQueue:
@@ -137,6 +139,7 @@ func (cc *CacheCoordinator) processRequests() {
 				reqID := taskInfo.RequestId
 				cc.lock.Lock()
 				if taskInfo.TaskType == SIGNAL_CHECK {
+
 					if _, ok := cc.cacheMissDict[reqID]; !ok {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
@@ -151,16 +154,18 @@ func (cc *CacheCoordinator) processRequests() {
 					// }
 
 					// 测试用 全hit
+					start := time.Now()
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					loadDuration += time.Since(start)
 					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = setToList(pages)
+					taskInfo.CachePagesList = pages
 					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
 					taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
 					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = setToList(pages)
+					taskInfo.CachePagesList = pages
 				}
 
 				cacheWorker := int(taskInfo.CacheWorker)
@@ -171,6 +176,10 @@ func (cc *CacheCoordinator) processRequests() {
 				hasExecuted = true
 				cc.lock.Unlock()
 			default:
+				if loadDuration > 0 {
+					fmt.Printf("Batch LoadItem Cost: %v\n", loadDuration)
+				}
+				loadDuration = 0
 				goto process
 			}
 		}
@@ -179,7 +188,6 @@ func (cc *CacheCoordinator) processRequests() {
 		if len(executableRequests) == 0 && !hasExecuted {
 			continue
 		}
-
 		var wg sync.WaitGroup
 		for cacheWorker, tasks := range executableRequests {
 			wg.Add(1)
@@ -284,15 +292,14 @@ func (cc *CacheCoordinator) sendTerminateSignal() {
 	cc.server.Stop()
 }
 
-func setToList(set map[int32]struct{}) []int32 {
-	list := make([]int32, 0, len(set)) // 预分配切片容量以提高性能
-	for key := range set {
-		list = append(list, key)
-	}
-	return list
-}
+// func setToList(set map[int32]struct{}) []int32 {
+// 	list := make([]int32, 0, len(set)) // 预分配切片容量以提高性能
+// 	for key := range set {
+// 		list = append(list, key)
+// 	}
+// 	return list
+// }
 
-// 定义常量（需根据您的 Python 代码调整）
 const (
 	SIGNAL_CHECK  = int32(4)
 	SIGNAL_SEND   = int32(1)
