@@ -382,8 +382,8 @@ class Worker:
             gpu_array, 
             device=f'cuda:{self.gpu_index}'
         )
-        #if DEBUG:
-        print(f"[Worker][Rank {self.rank}] 创建张量后显存: {self._get_gpu_memory()}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 创建张量后显存: {self._get_gpu_memory()}")
         recv_tensor = recv_tensor.reshape((token_num,) + token_shape)
         #写入到buffer中
         start_pos = 0
@@ -404,15 +404,16 @@ class Worker:
                         = item_tensor[idx*self.page_size:]
                 else:
                     self.compute_buffer[page*self.page_size:(page+1)*self.page_size] = item_tensor[idx*self.page_size:(idx+1)*self.page_size]
-        
-        print(f"[Worker][RANK {self.rank}] GPU{self.gpu_index}加载SharedMemory,{recv_tensor.shape} ")
+        if DEBUG:
+            print(f"[Worker][RANK {self.rank}] GPU{self.gpu_index}加载SharedMemory,{recv_tensor.shape} ")
         del recv_tensor, gpu_array
         self.ctx.pop()
         ipc_handle.close()
         # 确保 CUDA 操作同步
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
-        print(f"[Worker][Rank {self.rank}] 清理后显存: {self._get_gpu_memory()}")
+        #torch.cuda.synchronize()
+        #torch.cuda.empty_cache()
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 清理后显存: {self._get_gpu_memory()}")
 
     def _get_gpu_memory(self):
         if torch.cuda.is_available():

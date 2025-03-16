@@ -258,7 +258,7 @@ class KVCache:
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
                 if task_type == SIGNAL_SEND:
-                    if infer_worker !=cache_worker:  # not same machine , use gloo
+                    if True:  # not same machine , use gloo
                         if DEBUG:
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
@@ -271,17 +271,18 @@ class KVCache:
                         time_send2=time.time()
                         if DEBUG:
                             print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] remote_send time ={time_send2-time_send1}")
-                        with open(f'kvcache_log_rank_{self.rank}.txt', 'a') as f:
-                                f.write(f"[KVCache:finish remote send][RANK {self.rank}] remote_send time ={time_send2-time_send1},token_num={token_num}\n")
+                        if infer_worker ==cache_worker:
+                            with open(f'kvcache_log_rank_{self.rank}.txt', 'a') as f:
+                                    f.write(f"[KVCache:finish remote send][RANK {self.rank}] remote_send time ={time_send2-time_send1},token_num={token_num}\n")
                         # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
-                        self.send_counter += 1
-                    elif infer_worker ==cache_worker:
+                        if infer_worker !=cache_worker:
+                            self.send_counter += 1
+                    if infer_worker ==cache_worker:
                         use_gpu_shared_memory=1
                         if use_gpu_shared_memory:
                             if DEBUG:
                                 print(f"[KVCache.GPU:move_to_shared_data][RANK {self.rank}]{task_info}")
-                            handle_bytes,shape=self.share_data_batch_gpu(task_info)
-                            time_share1=time.time()
+                            time_share1,handle_bytes,shape=self.share_data_batch_gpu(task_info)
                             remote_share=rpc.rpc_async(
                                 to=worker_ref_list[infer_worker].owner(), func=call_remote_method, 
                                 args=(Worker._read_from_shared_memory_batch_gpu, worker_ref_list[infer_worker], task_info,handle_bytes,shape))
@@ -292,7 +293,7 @@ class KVCache:
                             with open(f'kvcache_log_rank_{self.rank}.txt', 'a') as f:
                                 f.write(f"[KVCache:finish local move][RANK {self.rank}] local_shared time ={time_share2 - time_share1},token_num={token_num}\n")
                             self.ctx.pop()
-                            torch.cuda.empty_cache()
+                            # torch.cuda.empty_cache()
                             self.send_counter += 1
                         else:    
                             if DEBUG:
@@ -304,7 +305,10 @@ class KVCache:
                                 args=(Worker._read_from_shared_memory_batch, worker_ref_list[infer_worker], task_info))
                             remote_share.wait()
                             time_share2=time.time()
-                            print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
+                            if DEBUG:
+                                print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] local_shared time ={time_share2-time_share1}")
+                            with open(f'kvcache_log_rank_{self.rank}.txt', 'a') as f:
+                                f.write(f"[KVCache:finish local move][RANK {self.rank}] local_shared time ={time_share2 - time_share1},token_num={token_num}\n")
                             self.send_counter += 1
 
                 elif task_type == SIGNAL_RECV:
@@ -430,7 +434,8 @@ class KVCache:
             'shm': shm,
             'create_time': time.time()
         }
-        print(f"[KVCache][Rank {self.rank}] 已将 tensor 存储到共享内存中，tensor 形状：{send_tensor.shape}")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 已将 tensor 存储到共享内存中，tensor 形状：{send_tensor.shape}")
         time1 = time.time()
         # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
@@ -475,18 +480,22 @@ class KVCache:
                     send_tensor[page_idx*self.page_size:(page_idx+1)*self.page_size] = self.cache_data[page*self.page_size:(page+1)*self.page_size]
             assert send_tensor.size(0) == item_token_num
             send_tensor_list.append(send_tensor)
-        print(f"[Worker][Rank {self.rank}] 创建张量前显存: {self._get_gpu_memory()}")
+        if DEBUG: 
+            print(f"[Worker][Rank {self.rank}] 创建张量前显存: {self._get_gpu_memory()}")
         send_tensor = torch.cat(send_tensor_list, dim=0)
         send_tensor = send_tensor.to(self.device).contiguous()
-        print(f"[Worker][Rank {self.rank}] 创建张量后显存: {self._get_gpu_memory()}")
+        if DEBUG:
+            print(f"[Worker][Rank {self.rank}] 创建张量后显存: {self._get_gpu_memory()}")
         shape=send_tensor.shape
+        time_share1=time.time()
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] device:{self.device}share_tensor shape: {send_tensor.size()} ")
          #开始构建共享内存
         try:
                 #ctx=cuda.Device(self.gpu_index).make_context()
                 self.ctx.push()
-                print(f"[KVCache][Rank {self.rank}] make_context")
+                if DEBUG:
+                    print(f"[KVCache][Rank {self.rank}] make_context")
                 ptr = send_tensor.data_ptr()
                 handle = cuda.mem_get_ipc_handle(ptr)
                 if DEBUG:
@@ -494,7 +503,7 @@ class KVCache:
                     print(f"[KVCache][Rank {self.rank}] Handle value: {handle}")
                     print(f"[KVCache][Rank {self.rank}] IPC Handle: {handle}")
                     print(f"[KVCache][Rank {self.rank}] 完成共享数据建立gpu{self.device}")
-                return handle, shape
+                return time_share1,handle, shape
         except Exception as e:
             print(f"[KVCache][Rank {self.rank}] Error generating IPC handle: {e}")
             raise RuntimeError("Failed to generate IPC handle")
