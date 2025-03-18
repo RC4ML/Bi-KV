@@ -398,25 +398,26 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
 
     def preprare_send_data_grpc(self, task_info_list):
-        # 这里的task_info同样有着一样的req_id
         send_task_list = []
+        hit_counter = 0
+        length_counter = 0
         for task_info in task_info_list:
             item_id = task_info.id
             request_id = task_info.request_id
             cache_miss_dict = self.cache_miss_dict.get(str(request_id),{})
-            # 这里能保证item_id在cache_miss_dict中吗？
+            hit_counter += sum(cache_miss_dict.values())
+            length_counter += len(cache_miss_dict)
             if cache_miss_dict.get(str(item_id)) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info.task_type = SIGNAL_RECV
                 send_task_list.append(task_info)
             else:
-                # 为什么会提前解除保护？
                 if item_id in self.page_manager.get_loaded_lists():
                     self.page_manager.remove_protected(item_id)
         # TODO 适配
-        hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
-        if hit_rate > 0.7 and DEBUG:
-            print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
+        hit_rate = hit_counter/length_counter
+        # if hit_rate > 0.7 and DEBUG:
+        print(f"[Worker {self.rank}]Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
