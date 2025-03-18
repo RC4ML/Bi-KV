@@ -1,0 +1,31 @@
+# config.yml
+general:
+  model_code: "llm"  # 模型代码
+  llm_retrieved_path: "/data/testmodel/LlamaRec/experiments/lru/games"  # 模型路径
+  dataset_code: "games"  # 数据集代码
+  log_level: "INFO"  # 日志级别
+  log_file: "distributed_system.log"  # 日志文件名
+
+process_types:
+  LLMScheduler: 1  # LLMScheduler 进程数量
+  CacheCoordinator: 1  # CacheCoordinator 进程数量
+  Worker: 4  # Worker 进程数量
+  KVCache: 4  # KVCache 进程数量
+
+grpc:
+  master_addr: "127.0.0.1"  # 分布式主地址
+  master_port: 50500  # 默认主端口
+
+distributed:
+  master_addr: "127.0.0.1"  # 分布式主地址
+  master_port: "29503"
+
+kv_cache:
+  max_workers: 10  # KVCache 的最大线程池大小
+  cache_size: 5000  # 缓存大小
+  page_size: 50  # 缓存维度
+
+worker:
+  max_workers: 10  # KVCache 的最大线程池大小
+  cache_size: 50000  # 缓存大小
+  page_size: 50  # 缓存维度

@@ -1,26 +1,45 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 
 	coordinator "github.com/RC4ML/Bi-KV/CacheCoordinator"
+	cfg "github.com/RC4ML/Bi-KV/config"
 	pb "github.com/RC4ML/Bi-KV/protos"
 
 	"google.golang.org/grpc"
 )
 
 func main() {
-	rank := 1           // 示例 rank
-	masterPort := 50500 // 示例端口
-	cacheRanks := []int{0, 1, 2, 3}
-	inferRanks := []int{0, 1, 2, 3}
+
+	// 处理命令行参数
+	configPath := flag.String("config", "../config.yml", "path to config file")
+	flag.Parse()
+
+	// 读取配置
+	config, err := cfg.ReadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to read config: %v", err)
+	}
+	rank := 1                            // 示例 rank
+	masterPort := config.Grpc.MasterPort // 示例端口
+	cacheRanks := make([]int, config.ProcessTypes.KVCache)
+	for i := range cacheRanks {
+		cacheRanks[i] = i
+	}
+
+	inferRanks := make([]int, config.ProcessTypes.Worker)
+	for i := range inferRanks {
+		inferRanks[i] = i
+	}
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	s := grpc.NewServer()
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, s)
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s)
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)

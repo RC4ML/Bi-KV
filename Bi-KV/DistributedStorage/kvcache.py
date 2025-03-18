@@ -402,17 +402,17 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
 
     def ReceiveTasksFromCoordinator(self, request, context):
         print(f"[KVCache {self.rank}]收到Coordinator请求 长度为{len(request.tasks)}")
-        # confirmation_msg = self.receive_task_info_batch_gprc(request.tasks)
+        confirmation_msg = self.receive_task_info_batch_gprc(request.tasks)
         # 纯控制测试用
-        confirmation_msg = {}
-        for task_info in request.tasks:
-            req_id = task_info.request_id
-            if task_info.id==-1:
-                continue
-            if confirmation_msg.get(req_id) == None:
-                confirmation_msg[req_id] = 1
-            else:
-                confirmation_msg[req_id] += 1
+        # confirmation_msg = {}
+        # for task_info in request.tasks:
+        #     req_id = task_info.request_id
+        #     if task_info.id==-1:
+        #         continue
+        #     if confirmation_msg.get(req_id) == None:
+        #         confirmation_msg[req_id] = 1
+        #     else:
+        #         confirmation_msg[req_id] += 1
         # confirmation_msg是dict，需要转成字符串后传输
         comfirmation_data = json.dumps(confirmation_msg)
         return TaskInfo_pb2.ComfirmationMessage(msg = comfirmation_data)

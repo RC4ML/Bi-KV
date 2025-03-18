@@ -27,7 +27,7 @@ from vllm.config import CacheConfig
 import time
 
 class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
-    def __init__(self, rank,master_port:int, coordinator_rank = None, server=None):
+    def __init__(self, rank,master_port:int,cache_size,page_size, coordinator_rank = None, server=None):
         self.rank = rank
         self.worker_index=int(rank/2) -1
         self.coordinator_rank = coordinator_rank
@@ -36,8 +36,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 35000
-        self.page_size = 50
+        self.buffer_size = cache_size
+        self.page_size = page_size
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
         self.compute_buffer = torch.full(
@@ -413,6 +413,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                 # 为什么会提前解除保护？
                 if item_id in self.page_manager.get_loaded_lists():
                     self.page_manager.remove_protected(item_id)
+        # TODO 适配
         hit_rate = sum(cache_miss_dict.values())/len(cache_miss_dict)
         if hit_rate > 0.7 and DEBUG:
             print(f"[Worker][RANK {self.rank}] Request {request_id} Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 

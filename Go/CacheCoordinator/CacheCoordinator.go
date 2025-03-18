@@ -35,7 +35,7 @@ type CacheCoordinator struct {
 }
 
 // NewCacheCoordinator 初始化调度器
-func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, server *grpc.Server) *CacheCoordinator {
+func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cacheSize int, pageSize int, server *grpc.Server) *CacheCoordinator {
 	cc := &CacheCoordinator{
 		rank:                 rank,
 		masterPort:           masterPort,
@@ -46,8 +46,8 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, ser
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
 		stopLimit:            10000,
-		cacheSize:            5000,
-		pageSize:             50,
+		cacheSize:            cacheSize,
+		pageSize:             pageSize,
 		pageManager:          NewMultiPageManager(5000, 50, len(cacheRanks)), // 初始化 PageManager
 		cacheMissDict:        make(map[int32]map[int32]int32),
 		server:               server,
@@ -140,22 +140,22 @@ func (cc *CacheCoordinator) processRequests() {
 					if _, ok := cc.cacheMissDict[reqID]; !ok {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
-					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
-					// if cacheWorker == -1 {
-					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
-					// } else {
-					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					// 	taskInfo.TaskType = SIGNAL_SEND
-					// 	taskInfo.CacheWorker = cacheWorker
-					// 	taskInfo.CachePagesList = setToList(pages)
-					// }
+					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+					if cacheWorker == -1 {
+						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
+					} else {
+						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+						taskInfo.TaskType = SIGNAL_SEND
+						taskInfo.CacheWorker = cacheWorker
+						taskInfo.CachePagesList = setToList(pages)
+					}
 
 					// 测试用 全hit
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
-					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = setToList(pages)
-					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					taskInfo.TaskType = SIGNAL_SEND
+					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					// taskInfo.CacheWorker = cacheWorker
+					// taskInfo.CachePagesList = setToList(pages)
+					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					// taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
@@ -171,6 +171,12 @@ func (cc *CacheCoordinator) processRequests() {
 				hasExecuted = true
 				cc.lock.Unlock()
 			default:
+				if cc.pageManager.loadDuration > 0 {
+					fmt.Printf("load duration:%v evt:%v all:%v\n", cc.pageManager.loadDuration, cc.pageManager.evtDuration, cc.pageManager.allDuration)
+					cc.pageManager.loadDuration = 0
+					cc.pageManager.allDuration = 0
+					cc.pageManager.evtDuration = 0
+				}
 				goto process
 			}
 		}
