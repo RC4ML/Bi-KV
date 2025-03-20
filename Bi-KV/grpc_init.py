@@ -98,6 +98,7 @@ def init_process(rank, world_size,yaml_config):
         pass
 
     if process_type == 'Worker':
+        time.sleep(5) # wait shared memory
         port = master_port + rank
         cache_size = yaml_config['worker']['cache_size']
         page_size = yaml_config['worker']['page_size']

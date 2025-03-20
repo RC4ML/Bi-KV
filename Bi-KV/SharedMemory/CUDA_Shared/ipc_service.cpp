@@ -42,6 +42,7 @@ void producer_init(int device_id, const char* shm_name, size_t buffer_size) {
     gethostname(producer_ctrl->hostname, sizeof(producer_ctrl->hostname));
     producer_ctrl->current_offset = 0;
     producer_ctrl->last_valid_offset = 0;
+    producer_ctrl->device_id = device_id; // 新增字段保存设备ID
     cudaError_t status = cudaMalloc(&producer_shared_mem, buffer_size);
     if (status != cudaSuccess) {
         munmap(producer_ctrl, sizeof(SharedControl));
@@ -66,7 +67,7 @@ void producer_init(int device_id, const char* shm_name, size_t buffer_size) {
 void producer_send(torch::Tensor tensor) {
     TORCH_CHECK(tensor.device().is_cuda(), "Tensor must be on CUDA");
     TORCH_CHECK(tensor.is_contiguous(), "Tensor must be contiguous");
-
+    TORCH_CHECK(tensor.dtype() == torch::kFloat16, "Tensor must be float16");
     size_t data_size = tensor.nbytes();
     // 获取当前写入位置
     void* write_ptr = static_cast<char*>(producer_shared_mem) + producer_ctrl->current_offset;
@@ -76,6 +77,7 @@ void producer_send(torch::Tensor tensor) {
     producer_ctrl->tensor_dim = tensor.dim();
     producer_ctrl->last_valid_offset = producer_ctrl->current_offset;  // 记录有效数据起始位置
     producer_ctrl->current_offset += data_size;  // 移动偏移量
+    
 
     sem_post(&producer_ctrl->sem_start);
     sem_wait(&producer_ctrl->sem_complete);
@@ -131,14 +133,14 @@ void consumer_init(int device_id, const char* shm_name) {
 
 torch::Tensor consumer_receive() {
     sem_wait(&consumer_ctrl->sem_start);
-    int device_id =0 ;
+    int device_id=consumer_ctrl->device_id ; // 新增字段保存设备ID ;
      // 计算数据读取位置
     void* read_ptr = static_cast<char*>(consumer_mapped_mem) + consumer_ctrl->last_valid_offset;
     auto options = torch::TensorOptions()
-        .dtype(torch::kFloat32)
+        .dtype(torch::kFloat16)
         .device(torch::kCUDA, device_id)
         .requires_grad(false);
-    std::vector<int64_t> shape(consumer_ctrl->tensor_dim, consumer_ctrl->data_size / sizeof(float));
+    std::vector<int64_t> shape(consumer_ctrl->tensor_dim, consumer_ctrl->data_size / sizeof(torch::Half));
     torch::Tensor result = torch::from_blob(read_ptr, shape, options).clone();
 
     sem_post(&consumer_ctrl->sem_complete);

@@ -3,10 +3,10 @@ import json
 from typing import Dict, Tuple
 from datetime import datetime
 import random
-
+import ipc_service
 from protos import TaskInfo_pb2, TaskInfo_pb2_grpc
 import grpc
-from SharedMemory.CUDA_Shared import ipc_service 
+#from SharedMemory.CUDA_Shared import ipc_service 
 import uuid
 import torch
 import torch.distributed as dist
@@ -41,7 +41,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
         # for shared memory
-        self.shm_name = f"/kv_cache_{self.rank}_{uuid.uuid4().hex}"  # 唯一共享内存名称
+        self.shm_name = f"/kv_cache_{self.cache_index}"  # 唯一共享内存名称
         self._init_shared_memory()
     def _init_shared_memory(self):
         """初始化CUDA共享内存区域"""
@@ -51,9 +51,9 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             ipc_service.producer_cleanup()  
         except:
             pass
-        
+        buffer_size = self.cache_data.element_size() * self.cache_data.nelement()
         # 初始化生产者端共享内存
-        ipc_service.producer_init(device_id, self.shm_name.encode(), self.buffer_size)
+        ipc_service.producer_init(device_id, self.shm_name.encode(), buffer_size)
         
     def send_data(self,task_info:Dict):
         dst_rank = 2*task_info['infer_worker'] + 2
@@ -224,14 +224,12 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     offset += self.page_size
 
         send_tensor[:] = self.cache_data[indices]
-        if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
+        print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
         ipc_service.producer_send(send_tensor)
         time1 = time.time()
-        # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
-        if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        print(f"[KVCache]共享内存[Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def terminate(self):
         if DEBUG:

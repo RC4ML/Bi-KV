@@ -16,7 +16,7 @@ def producer_process(device_id, shm_name, buffer_size, num_transfers, data_size)
         transfer_times = []
         for _ in range(num_transfers):
             src = torch.ones((data_size,), 
-                            dtype=torch.float32,
+                            dtype=torch.float16,
                             device=f'cuda:{device_id}')
             
             # 仅测量发送操作时间
@@ -60,7 +60,7 @@ def consumer_process(device_id, shm_name, num_transfers, expected_size):
             
             # 数据验证
             assert result.shape[0] == expected_size, "Tensor size mismatch"
-            assert torch.allclose(result, torch.ones_like(result)), "Data validation failed"
+            assert torch.allclose(result, torch.ones_like(result), atol=1e-3), "Data validation failed"
 
         # 计算统计指标
         total_transfer_time = sum(transfer_times)
@@ -84,8 +84,8 @@ if __name__ == "__main__":
     config = {
         "device_id": 0,
         "shm_name": "/cuda_ipc_test",
-        "buffer_size": 2*1024 * 1024 * 1024,  # 1GB
-        "data_size": 50 * 1024 * 1024,       # 100MB as floats (25M elements)
+        "buffer_size": 1024 * 1024 * 1024,  # 1GB
+        "data_size": 25 * 1024 * 1024,       # 50MB as half floats (20M elements)
         "num_transfers": 10
     }
 

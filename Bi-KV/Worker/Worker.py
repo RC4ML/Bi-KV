@@ -2,7 +2,7 @@ from ast import Dict, List
 import json
 import time
 
-
+from rpc_def import KVCACHE_NUM ,WORKER_NUM
 from protos import TaskInfo_pb2,TaskInfo_pb2_grpc
 import grpc
 
@@ -15,7 +15,7 @@ from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 from Utils.utils import now_time
-
+import ipc_service
 
 
 import torch
@@ -71,6 +71,12 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                                         num_key_value_heads = model_params['num_kv_heads'])
         torch.set_default_dtype(torch.float16)
         self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
+        # 初始化消费者端共享内存
+        self.shm_name = f"/kv_cache_{self.worker_index}"
+        try:
+            ipc_service.consumer_init(self.gpu_index, self.shm_name.encode())
+        except Exception as e:
+            print(f"Worker {self.rank} shared mem init failed: {e}")
         print(f"[Worker][RANK {self.rank}] Init Worker")
 
     def forward(self, task_info_list:List):
@@ -199,7 +205,15 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
-        dist.recv(tensor=recv_tensor, src=src_rank)
+        if self.worker_index == cache_worker:
+            print(f"[Worker][RANK {self.rank}] start get shared memory")
+            # 从共享内存接收CUDA张量
+            cuda_tensor = ipc_service.consumer_receive()
+            
+            # 将张量复制到CPU
+            recv_tensor = cuda_tensor.cpu()
+        else: 
+            dist.recv(tensor=recv_tensor, src=src_rank)
         # 计算总大小并预分配索引 tensor
         total_size = sum(id_pair.token_num for id_pair in combined_task_info.id_token_pair)
         indices = torch.empty(total_size, dtype=torch.long)
