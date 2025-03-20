@@ -8,6 +8,7 @@
 #include <cstring>
 
 #define CUDA_IPC_HANDLE_SIZE 64
+#define MAX_DIM 5
 
 struct SharedControl {
     sem_t sem_start;
@@ -21,7 +22,6 @@ struct SharedControl {
     size_t current_offset;       // 新增：当前写入偏移量
     size_t last_valid_offset;   // 新增：最后有效数据起始位置
     unsigned char cuda_handle[CUDA_IPC_HANDLE_SIZE];
-    int tensor_dim;
     int64_t tensor_shape[MAX_DIM]; // 新增形状数组
 };
 

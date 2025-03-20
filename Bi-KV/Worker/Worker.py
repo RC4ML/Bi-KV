@@ -212,6 +212,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             
             # 将张量复制到CPU
             recv_tensor = cuda_tensor.cpu()
+            del cuda_tensor
         else: 
             dist.recv(tensor=recv_tensor, src=src_rank)
         # 计算总大小并预分配索引 tensor

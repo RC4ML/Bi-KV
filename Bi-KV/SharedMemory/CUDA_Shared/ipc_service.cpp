@@ -77,6 +77,11 @@ void producer_send(torch::Tensor tensor) {
     producer_ctrl->tensor_dim = tensor.dim();
     producer_ctrl->last_valid_offset = producer_ctrl->current_offset;  // 记录有效数据起始位置
     producer_ctrl->current_offset += data_size;  // 移动偏移量
+    // 记录形状信息
+    producer_ctrl->tensor_dim = tensor.dim();
+    for(int i=0; i<tensor.dim(); ++i){
+        producer_ctrl->tensor_shape[i] = tensor.size(i);
+    }
     
 
     sem_post(&producer_ctrl->sem_start);
@@ -136,13 +141,22 @@ torch::Tensor consumer_receive() {
     int device_id=consumer_ctrl->device_id ; // 新增字段保存设备ID ;
      // 计算数据读取位置
     void* read_ptr = static_cast<char*>(consumer_mapped_mem) + consumer_ctrl->last_valid_offset;
+    // 构建形状数组
+    std::vector<int64_t> shape;
+    for(int i=0; i<consumer_ctrl->tensor_dim; ++i){
+        shape.push_back(consumer_ctrl->tensor_shape[i]);
+    }
     auto options = torch::TensorOptions()
         .dtype(torch::kFloat16)
         .device(torch::kCUDA, device_id)
         .requires_grad(false);
-    std::vector<int64_t> shape(consumer_ctrl->tensor_dim, consumer_ctrl->data_size / sizeof(torch::Half));
-    torch::Tensor result = torch::from_blob(read_ptr, shape, options).clone();
-
+    //std::vector<int64_t> shape(consumer_ctrl->tensor_dim, consumer_ctrl->data_size / sizeof(torch::Half));
+    // 创建张量视图并克隆
+    torch::Tensor result = torch::from_blob(
+        read_ptr, 
+        shape,  // 使用正确形状
+        options
+    ).clone();
     sem_post(&consumer_ctrl->sem_complete);
     return result;
 }

@@ -205,7 +205,10 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             dtype=torch.float16,
             device='cuda'
         )
-
+         # 添加形状校验
+        expected_numel = total_token_num * np.prod(token_shape)
+        assert send_tensor.numel() == expected_numel, \
+            f"形状不匹配: {send_tensor.shape} vs 预期{token_shape}"
         indices = torch.empty(total_token_num, dtype=torch.long)
         offset = 0
         circle_counter = 0
