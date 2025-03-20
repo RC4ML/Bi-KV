@@ -5,8 +5,9 @@ from datetime import datetime
 import random
 
 from protos import TaskInfo_pb2, TaskInfo_pb2_grpc
-
 import grpc
+from SharedMemory.CUDA_Shared import ipc_service 
+import uuid
 import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
@@ -39,6 +40,21 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         if DEBUG:
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
+        # for shared memory
+        self.shm_name = f"/kv_cache_{self.rank}_{uuid.uuid4().hex}"  # 唯一共享内存名称
+        self._init_shared_memory()
+    def _init_shared_memory(self):
+        """初始化CUDA共享内存区域"""
+        device_id = self.cache_index
+        try:
+            # 先尝试清理可能存在的残留共享内存
+            ipc_service.producer_cleanup()  
+        except:
+            pass
+        
+        # 初始化生产者端共享内存
+        ipc_service.producer_init(device_id, self.shm_name.encode(), self.buffer_size)
+        
     def send_data(self,task_info:Dict):
         dst_rank = 2*task_info['infer_worker'] + 2
         request_id = task_info['request_id']
@@ -172,11 +188,50 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
 
         # 第二步：一次性写入 cache
         self.cache_data[cache_indices] = recv_tensor[recv_indices]
-
-    def send_confirmation(self, confirmation_msg):
+    def shared_data_batch(self, combined_task_info: Dict):
+        """使用CUDA共享内存传输数据"""
+        dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        cache_pages_list = combined_task_info['cache_pages_list']
         if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 发送确认消息到调度器: 请求ID={confirmation_msg}")
-        return confirmation_msg
+            print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
+        # 计算总 token 数
+        total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
+
+        # 一次性分配大 tensor
+        send_tensor = torch.empty(
+            (total_token_num,) + token_shape,
+            dtype=torch.float16,
+            device='cuda'
+        )
+
+        indices = torch.empty(total_token_num, dtype=torch.long)
+        offset = 0
+        circle_counter = 0
+        for idx, page_list in enumerate(cache_pages_list):
+            id_token_pair = id_token_pair_list[idx]
+            item_token_num = id_token_pair[1]
+            for page_idx, page in enumerate(page_list):
+                start = page * self.page_size
+                circle_counter += 1
+                if page_idx == len(page_list) - 1:
+                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+                    indices[offset:offset + size] = torch.arange(start, start + size)
+                    offset += size
+                else:
+                    indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
+                    offset += self.page_size
+
+        send_tensor[:] = self.cache_data[indices]
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
+        time0 = time.time()
+        ipc_service.producer_send(send_tensor)
+        time1 = time.time()
+        # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def terminate(self):
         if DEBUG:
@@ -377,7 +432,10 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
-                        self.send_data_batch(task_info)
+                        if cache_worker== infer_worker: # on the same device,use CUDA shared Memory
+                            self.shared_data_batch(task_info)
+                        else:
+                            self.send_data_batch(task_info)
                         remote_recv.result()
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
