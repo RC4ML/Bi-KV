@@ -75,3 +75,18 @@ def generate_rank_map(world_size):
     return rank_map
 
 
+def set_rank_to_ip(rank_to_ip):  
+    hostfile_path = os.path.join(os.path.dirname(__file__), 'hostfile')
+    with open(hostfile_path, 'r') as f:
+        lines = f.readlines()
+    
+    rank = 0
+    for line in lines:
+        if line.strip() and not line.startswith('#'):
+            parts = line.split()
+            ip = parts[0]
+            slots = int(parts[1].split('=')[1])
+            for _ in range(slots):
+                rank_to_ip[rank] = ip
+                rank += 1
+                

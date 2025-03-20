@@ -7,7 +7,7 @@ from google.protobuf.json_format import ParseDict
 
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
-from rpc_def import PROCESS_TYPES, WORKER_NUM, KVCACHE_NUM, get_process_info, KVCACHE_offset,WORKER_offset
+from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
 from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
@@ -23,7 +23,8 @@ model_params = {
 }
 
 class LLMScheduler:
-    def __init__(self, world_size:int, master_port:int):
+    def __init__(self, world_size:int, master_port:int, rank_to_ip:dict):
+        self.rank_to_ip = rank_to_ip
         self.world_size = world_size
         self.master_port = master_port
         self.num_workers = WORKER_NUM
@@ -39,21 +40,6 @@ class LLMScheduler:
 
     def add_prompt_list(self, prompt_list):
         self.prompt_list.extend(prompt_list)
-
-    def process_prompt(self):
-        future_list = []
-        cnt = 0
-        for prompt in self.prompt_list:
-            # self._send_prompt(prompt)
-            future_list.append(self._send_prompt(prompt))
-            cnt += 1
-            if cnt % (self.num_workers * self.batchsize) == 0:
-                for future in future_list:
-                    future.wait()
-                future_list = []
-        if len(future_list) > 0:    
-            for future in future_list:
-                future.wait()
                 
     def process_prompt_batch(self):
         cnt = 0
@@ -71,86 +57,6 @@ class LLMScheduler:
         if remaining > 0:  # 检查是否有剩余
             self._send_prompt_batch(self.prompt_list[-remaining:])
                         
-    def _send_prompt(self, prompt:InputPrompt):
-        prompt_order = PromptOrder(prompt)
-        # 历史优先，调度用户历史kvcache
-        if prompt_order == "User History First":
-            task_info_list_dict = {}
-            infer_worker = self.strategy(prompt.user_id)
-            token_num = prompt.user_history_tokens
-            data_length = self.calculate_data_len(token_num) 
-            self._id_counter += 1
-            # print(f"[LLMScheduler] Schedule a user history request to worker {infer_worker}, request id {self._id_counter}")
-            task_info = {"request_id":self._id_counter,
-                         "id":prompt.user_id, 
-                         "infer_worker":infer_worker, 
-                         "token_num":token_num,
-                         'data_length':data_length,
-                         'task_type': SIGNAL_CHECK,
-                         'index': 0,
-                         'type': 'user cache'
-                         }
-            task_info_list_dict[infer_worker]=[task_info]
-            ## append recomputing tokens
-            recomputing_tokens = 0
-            for ind,i in enumerate(prompt.items):
-                recomputing_tokens = i.token_count
-            task_info = {"request_id":self._id_counter,
-                            "id":-1, 
-                            "infer_worker":infer_worker, 
-                            "token_num":recomputing_tokens,
-                            "data_length":-1,
-                            'index':-1,
-                            'task_type': SIGNAL_SKIP,
-                            'type':'compute'}                                            
-            task_info_list_dict[infer_worker].append(task_info)
-            infer_worker_ref = self.worker_ref[infer_worker]
-            owner_worker_ref = infer_worker_ref.owner()
-            return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                         args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
-        # 商品优先，调度*一组*商品kvcache
-        elif prompt_order == "Item First":
-            task_info_list_dict = {}
-            self._id_counter += 1
-            infer_worker = self.strategy(prompt.user_id)
-            # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
-            for ind,i in enumerate(prompt.items):
-                token_num = i.token_count
-                data_length = self.calculate_data_len(token_num) 
-                task_info = {"request_id":self._id_counter,
-                             "id":i.item_id, 
-                             "infer_worker":infer_worker, 
-                             "token_num":token_num,
-                             "data_length":data_length,
-                             'index':ind,
-                             'task_type': SIGNAL_CHECK,
-                             'type':'item cache'}
-                if task_info_list_dict.get(infer_worker):
-                    task_info_list_dict[infer_worker].append(task_info)
-                else:
-                    task_info_list_dict[infer_worker]=[task_info]
-            ## append recomputing tokens
-            task_info = {"request_id":self._id_counter,
-                "id":-1, 
-                "infer_worker":infer_worker, 
-                "token_num":prompt.user_history_tokens,
-                "data_length":-1,
-                'index':-1,
-                'task_type': SIGNAL_SKIP,
-                'type':'compute'}
-            task_info_list_dict[infer_worker].append(task_info)
-            # TODO 还需要解决cache是否miss的问题
-            for infer_worker in task_info_list_dict:
-                # infer_worker_ref = self.worker_ref[infer_worker]
-                # owner_worker_ref = infer_worker_ref.owner() 
-                # return rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                #             args=(Worker.receive_task_info, infer_worker_ref, task_info_list_dict[infer_worker]))
-                infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
-                task_info_list = task_info_list_dict[infer_worker]
-                with grpc.insecure_channel(f"localhost:{infer_worker_port}") as channel:
-                    stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
-                    stub.ReceiveTaskFromScheduler(task_info_list)
-
     def _send_prompt_batch(self, prompt_list:List[InputPrompt]):
         future_list = []
         task_info_list_dict = {}
@@ -230,7 +136,7 @@ class LLMScheduler:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
-            channel = grpc.insecure_channel(f"localhost:{infer_worker_port}")
+            channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.ReceiveTasksFromScheduler.future(task_info_list)
             future_list.append((future,channel))  

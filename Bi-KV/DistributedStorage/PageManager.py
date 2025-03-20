@@ -15,7 +15,7 @@ class PageManager:
         self.free_pages = set(range(self.num_pages))
         self.page_table = {}  # 键为item ID，值为{'pages': set, 'last_accessed': int}
         self.current_time = 0  # 模拟时间戳，用于LRU
-        print(f"初始空闲页数:{len(self.free_pages)}")
+        # print(f"初始空闲页数:{len(self.free_pages)}")
 
     def load_item(self, item_id, list_length):
         # 如果id已经存在则直接返回

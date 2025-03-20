@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ var (
 )
 
 // PageManager 单个页面管理器
+// TODO 验证用map模拟set是否顺序
 type PageManager struct {
 	pmID        int32
 	pageSize    int
@@ -43,32 +45,36 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 	for i := range numPages {
 		pm.freePages[int32(i)] = struct{}{}
 	}
-	fmt.Printf("初始空闲页数: %d\n", len(pm.freePages))
+	log.Printf("初始空闲页数: %d\n", len(pm.freePages))
 	return pm
 }
 
 // LoadItem 加载列表到缓存
-func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{}, []int32) {
+func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{}, []int32, time.Duration, time.Duration) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
 	// 如果已存在，直接返回
 	if _, ok := pm.pageTable[itemID]; ok {
 		pages := pm.AccessItem(itemID)
-		return pages, []int32{}
+		return pages, []int32{}, 0, 0
 	}
 
 	requiredPages := (listLength + pm.pageSize - 1) / pm.pageSize
 	if requiredPages > pm.numPages {
 		panic(fmt.Sprintf("列表过大，无法存入缓冲区: %d > %d", requiredPages, pm.numPages))
 	}
-
+	var evtCost time.Duration
 	var freedIDs []int32
 	evictionLock.Lock()
 	if len(pm.freePages) < requiredPages {
+		start := time.Now()
 		freedIDs = pm.performEviction(requiredPages)
+		evtCost = time.Since(start)
 	}
+	start := time.Now()
 	allocatedPages := pm.allocatePages(requiredPages)
+	allCost := time.Since(start)
 	evictionLock.Unlock()
 
 	pm.pageTable[itemID] = PageEntry{
@@ -77,7 +83,7 @@ func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{
 		Protected:    0,
 	}
 	pm.currentTime++
-	return allocatedPages, freedIDs
+	return allocatedPages, freedIDs, evtCost, allCost
 }
 
 // AccessItem 访问列表并更新时间戳
@@ -120,7 +126,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 		}
 		freedIDs = append(freedIDs, entry.id)
 		if DEBUG {
-			fmt.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
+			log.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
 				time.Now().Unix(), entry.id, len(entry.pages), len(pm.freePages))
 		}
 		if len(pm.freePages) >= requiredPages {
@@ -142,7 +148,7 @@ func (pm *PageManager) SetProtected(itemID int32) {
 		entry.Protected++
 		pm.pageTable[itemID] = entry
 		if DEBUG {
-			fmt.Printf("[[%d]] 保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
+			log.Printf("[[%d]] 保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
 		}
 	} else {
 		panic(fmt.Sprintf("列表 %d 未加载", itemID))
@@ -157,7 +163,7 @@ func (pm *PageManager) RemoveProtected(itemID int32) {
 		entry.Protected--
 		pm.pageTable[itemID] = entry
 		if DEBUG {
-			fmt.Printf("[[%d]] 取消保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
+			log.Printf("[[%d]] 取消保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
 		}
 	} else {
 		panic(fmt.Sprintf("列表 %d 未加载", itemID))
@@ -170,7 +176,7 @@ func (pm *PageManager) allocatePages(n int) map[int32]struct{} {
 		panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(pm.freePages), n))
 	}
 	allocated := make(map[int32]struct{})
-	for i := 0; i < n; i++ {
+	for range n {
 		for page := range pm.freePages {
 			allocated[page] = struct{}{}
 			delete(pm.freePages, page)
@@ -199,6 +205,9 @@ type MultiPageManager struct {
 	pageSize     int
 	numPages     int
 	cachedIDs    []map[int32]struct{} // 每个 PM 的缓存 ID 集合
+	loadDuration time.Duration
+	evtDuration  time.Duration
+	allDuration  time.Duration
 	mu           sync.Mutex
 }
 
@@ -211,6 +220,9 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager 
 		pageSize:     pageSize,
 		numPages:     cacheSize / pageSize,
 		cachedIDs:    make([]map[int32]struct{}, kvcacheNum),
+		loadDuration: 0,
+		evtDuration:  0,
+		allDuration:  0,
 	}
 	for i := range kvcacheNum {
 		mpm.pageManagers[i] = NewPageManager(cacheSize, pageSize, int32(i))
@@ -257,7 +269,11 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, map[
 	}
 
 	targetPMID := targetPM.pmID
-	allocatedPages, freedIDs := targetPM.LoadItem(itemID, listLength)
+	start := time.Now()
+	allocatedPages, freedIDs, evtCost, allCost := targetPM.LoadItem(itemID, listLength)
+	mpm.loadDuration += time.Since(start)
+	mpm.evtDuration += evtCost
+	mpm.allDuration += allCost
 	mpm.cachedIDs[targetPMID][itemID] = struct{}{}
 	for _, freedID := range freedIDs {
 		delete(mpm.cachedIDs[targetPMID], freedID)

@@ -74,7 +74,7 @@ def main():
     WORLD_SIZE = int(os.environ['WORLD_SIZE'])
     # WORLD_RANK = int(os.environ['RANK'])
     WORLD_RANK = int(os.environ.get('RANK', os.environ.get('OMPI_COMM_WORLD_RANK', -1)))
-    os.system("ulimit -n unimited")  
+    os.system("ulimit -n unlimited")  
     logging.info("[Main] 启动分布式系统")
 
     rank = WORLD_RANK

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package example;
+
+service RDMACommService {
+  rpc TriggerSend (TriggerRequest) returns (TriggerResponse);
+}
+
+message TriggerRequest {
+  int32 rank = 1;
+  int32 buffer_size = 2;
+}
+
+message TriggerResponse {
+  bool success = 1;
+  string message = 2;
+}

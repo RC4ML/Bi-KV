@@ -22,11 +22,21 @@ def run_client(ip, port, rank):
         print("Failed to register memory!")
         return
     
-    # 发布接收请求
-    client.post_receive()
-    
-    # 等待服务器发送数据
-    client.poll_completion()
+    start_time = time.time()
+
+    for _ in range(100):
+        # 发布接收请求
+        client.post_receive()
+        
+        # 等待服务器发送数据
+        client.poll_completion()
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    throughput = buffer_size * 100 / elapsed_time / (1024 * 1024)  # MB/s
+
+    print(f"Elapsed time: {elapsed_time:.6f} seconds")
+    print(f"Throughput: {throughput:.2f} MB/s")
     
     # 读取接收的 RDMA 缓冲区数据
     buffer_tensor = client.get_buffer_tensor()
