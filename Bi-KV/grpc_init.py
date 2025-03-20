@@ -30,6 +30,8 @@ args.model_code = 'llm'
 # args.llm_retrieved_path =  "/share/nfs/sunjie/games"
 args.llm_retrieved_path = "/data/testmodel/LlamaRec/experiments/lru/games"
 args.dataset_code = "games"
+args.llm_base_model = "/data/models/models--meta-llama--Llama-2-7b-hf/snapshots/01c7f73d771dfac7d292323805ebc428287df4f9"
+args.llm_base_tokenizer = "/data/models/models--meta-llama--Llama-2-7b-hf/snapshots/01c7f73d771dfac7d292323805ebc428287df4f9"
 
 def load_config(file_path):
     with open(file_path, 'r') as file:

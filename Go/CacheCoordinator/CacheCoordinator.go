@@ -147,7 +147,7 @@ func (cc *CacheCoordinator) processRequests() {
 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
 						taskInfo.TaskType = SIGNAL_SEND
 						taskInfo.CacheWorker = cacheWorker
-						taskInfo.CachePagesList = setToList(pages)
+						taskInfo.CachePagesList = pages
 					}
 
 					// 测试用 全hit
@@ -160,7 +160,7 @@ func (cc *CacheCoordinator) processRequests() {
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
 					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = setToList(pages)
+					taskInfo.CachePagesList = pages
 				}
 
 				cacheWorker := int(taskInfo.CacheWorker)
