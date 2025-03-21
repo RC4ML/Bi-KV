@@ -206,7 +206,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             dtype=torch.float16
         )
         if self.worker_index == cache_worker:
-            print(f"[Worker][RANK {self.rank}] start get shared memory")
+            # print(f"[Worker][RANK {self.rank}] start get shared memory")
             # 从共享内存接收CUDA张量
             cuda_tensor = ipc_service.consumer_receive()
             

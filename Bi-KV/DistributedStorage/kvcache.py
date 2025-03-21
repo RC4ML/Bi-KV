@@ -106,7 +106,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         time0 = time.time()
         dist.send(tensor=send_tensor, dst=dst_rank)
         time1 = time.time()
-        # print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        if DEBUG:
+            print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
@@ -227,12 +228,15 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     offset += self.page_size
 
         send_tensor[:] = self.cache_data[indices]
-        print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
+        if DEBUG:
+            print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
         ipc_service.producer_send(send_tensor)
         time1 = time.time()
-        print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
-        print(f"[KVCache]共享内存[Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+        if DEBUG:
+            print(f"shared once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        if DEBUG:
+            print(f"[KVCache]共享内存[Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
     def terminate(self):
         if DEBUG:
@@ -434,10 +438,26 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
                         if cache_worker== infer_worker: # on the same device,use CUDA shared Memory
+                            time_share1=time.time()
                             self.shared_data_batch(task_info)
+                            remote_recv.result()
+                            time_share2=time.time()
+                            with open(f'kvcache_log_rank_{self.rank}.txt', 'a+') as f:
+                                f.write(f"shared once time: {time_share2-time_share1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_share2-time_share1)/(1e9))} GB/s\n")
+                            print(f"shared once time: {time_share2-time_share1}s, throughput: {((token_num*8*28*128)/(time_share2-time_share1)/(1e9))} GB/s")
+                            # time_send1=time.time()
+                            # self.send_data_batch(task_info)
+                            # remote_recv.result()
+                            # time_send2=time.time()
+                            # with open(f'kvcache_log_rank_send{self.rank}.txt', 'a') as f:
+                            #     f.write(f"send once time: {time_send2-time_send1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s\n")
+                            # # print(f"send once time: {time_send2-time_send1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s")
                         else:
+                            time_send1=time.time()
                             self.send_data_batch(task_info)
-                        remote_recv.result()
+                            remote_recv.result()
+                            time_send2=time.time()
+                            #print(f"send once time: {time_send2-time_send1}s, throughput: {((token_num*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s")
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
 
