@@ -65,7 +65,7 @@ def consumer_process(device_id, shm_name, num_transfers, expected_size):
         # 计算统计指标
         total_transfer_time = sum(transfer_times)
         total_time = init_time + total_transfer_time
-        total_data = (expected_size * 4 * num_transfers) / (1024**2)  # MB
+        total_data = (expected_size * 2 * num_transfers) / (1024**2)  # MB
         print(f"\n[Consumer {device_id} Statistics]")
         print(f"[Consumer]total:{total_data}MB \n")
         print(f" [Consumer] Init Time:         {init_time * 1000:.2f}ms")
@@ -84,10 +84,10 @@ if __name__ == "__main__":
     config = {
         "device_id": 0,
         "shm_name": "/cuda_ipc_test",
-        "buffer_size": 200*1024 * 1024,  # 1GB
-        "data_size": 50 * 1024 * 1024,       # 50MB as half floats (20M elements)
-        "num_transfers": 10
-    }
+        "buffer_size": 100*1024 * 1024,  # 100MB
+        "data_size": 50 * 1024 * 1024,       # 10MB as half floats (5M elements)
+        "num_transfers": 1             # total 100MB
+    } 
 
     # 系统级计时
     system_start = time.perf_counter()

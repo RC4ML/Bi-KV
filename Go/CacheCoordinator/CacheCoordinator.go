@@ -140,22 +140,22 @@ func (cc *CacheCoordinator) processRequests() {
 					if _, ok := cc.cacheMissDict[reqID]; !ok {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
-					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
-					if cacheWorker == -1 {
-						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
-					} else {
-						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-						taskInfo.TaskType = SIGNAL_SEND
-						taskInfo.CacheWorker = cacheWorker
-						taskInfo.CachePagesList = setToList(pages)
-					}
+					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+					// if cacheWorker == -1 {
+					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
+					// } else {
+					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					// 	taskInfo.TaskType = SIGNAL_SEND
+					// 	taskInfo.CacheWorker = cacheWorker
+					// 	taskInfo.CachePagesList = setToList(pages)
+					// }
 
-					// 测试用 全hit
-					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
-					// taskInfo.CacheWorker = cacheWorker
-					// taskInfo.CachePagesList = setToList(pages)
-					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					// taskInfo.TaskType = SIGNAL_SEND
+					//测试用 全hit
+					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					taskInfo.CacheWorker = cacheWorker
+					taskInfo.CachePagesList = setToList(pages)
+					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))

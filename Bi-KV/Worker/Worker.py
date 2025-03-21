@@ -51,26 +51,26 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.server = server
         
         ## initialize model and parameters for inference
-        intermediate_size = 8960
-        head_dim = 128
-        kv_cache_block_size = 16
-        max_kv_cache_blocks = 10240        
-        self.local_kv_cache_block_size = kv_cache_block_size
-        self.local_max_kv_cache_blocks = max_kv_cache_blocks
-        self.local_kvcache = [
-            torch.randn(
-            self.local_max_kv_cache_blocks * self.local_kv_cache_block_size, 2, model_params['num_kv_heads'], head_dim, dtype=torch.float16, device=self.device
-            ) for _ in range(model_params['num_layers'])
-        ]
-        print(self.local_kvcache[0].shape)
-        self.cache_config = CacheConfig(kv_cache_block_size, 1.0, 1, "auto")
-        self.model_config = Qwen2Config(hidden_size = model_params['num_q_heads']*head_dim,
-                                        intermediate_size = intermediate_size,
-                                        num_hidden_layers = model_params['num_layers'],
-                                        num_attention_heads = model_params['num_q_heads'],
-                                        num_key_value_heads = model_params['num_kv_heads'])
-        torch.set_default_dtype(torch.float16)
-        self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
+        # intermediate_size = 8960
+        # head_dim = 128
+        # kv_cache_block_size = 16
+        # max_kv_cache_blocks = 10240        
+        # self.local_kv_cache_block_size = kv_cache_block_size
+        # self.local_max_kv_cache_blocks = max_kv_cache_blocks
+        # self.local_kvcache = [
+        #     torch.randn(
+        #     self.local_max_kv_cache_blocks * self.local_kv_cache_block_size, 2, model_params['num_kv_heads'], head_dim, dtype=torch.float16, device=self.device
+        #     ) for _ in range(model_params['num_layers'])
+        # ]
+        # print(self.local_kvcache[0].shape)
+        # self.cache_config = CacheConfig(kv_cache_block_size, 1.0, 1, "auto")
+        # self.model_config = Qwen2Config(hidden_size = model_params['num_q_heads']*head_dim,
+        #                                 intermediate_size = intermediate_size,
+        #                                 num_hidden_layers = model_params['num_layers'],
+        #                                 num_attention_heads = model_params['num_q_heads'],
+        #                                 num_key_value_heads = model_params['num_kv_heads'])
+        # torch.set_default_dtype(torch.float16)
+        # self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
         # 初始化消费者端共享内存
         self.shm_name = f"/kv_cache_{self.worker_index}"
         try:
@@ -208,16 +208,35 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         if self.worker_index == cache_worker:
             # print(f"[Worker][RANK {self.rank}] start get shared memory")
             # 从共享内存接收CUDA张量
+            start_read=time.time()
             cuda_tensor = ipc_service.consumer_receive()
+            end_read=time.time()
             
             # 将张量复制到CPU
             recv_tensor = cuda_tensor.cpu()
+            # print(f"shared{recv_tensor.size()}")
             # del cuda_tensor
             # 显式释放显存
             del cuda_tensor
             torch.cuda.empty_cache()  # 可选但建议添加
+           # 计算总数据量（字节）
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_read - start_read
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            
+            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                f"throughput: {throughput} GB/s\n")
         else: 
+            start_recv=time.time()
             dist.recv(tensor=recv_tensor, src=src_rank)
+            end_recv=time.time()
+            #计算总数据量（字节）
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_recv - start_recv
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                f"throughput: {throughput} GB/s\n")
+            # print(f"send{recv_tensor.size()}")
         # 计算总大小并预分配索引 tensor
         total_size = sum(id_pair.token_num for id_pair in combined_task_info.id_token_pair)
         indices = torch.empty(total_size, dtype=torch.long)

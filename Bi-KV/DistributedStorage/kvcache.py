@@ -52,6 +52,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         except:
             pass
         buffer_size = self.cache_data.element_size() * self.cache_data.nelement()
+        print(f"buffer_size:{buffer_size/(1024**2)}MB")
         # 初始化生产者端共享内存
         ipc_service.producer_init(device_id, self.shm_name.encode(), buffer_size)
         
@@ -107,7 +108,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         dist.send(tensor=send_tensor, dst=dst_rank)
         time1 = time.time()
         if DEBUG:
-            print(f"send once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+            print(f"send once time: {time1-time0}s,total_token_num: {total_token_num}, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
@@ -234,7 +235,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         ipc_service.producer_send(send_tensor)
         time1 = time.time()
         if DEBUG:
-            print(f"shared once time: {time1-time0}s, throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+            print(f"内部shared once time: {time1-time0}s, total_token_num: {total_token_num},throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
             print(f"[KVCache]共享内存[Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
@@ -427,6 +428,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             for task_info in combined_task_list.values():
                 task_type = task_info['task_type']
                 infer_worker = task_info['infer_worker']
+                TokenNum=task_info['token_num']
                 infer_worker_port = 2*infer_worker + WORKER_offset
                 infer_worker_addr = f"localhost:{self.master_port+infer_worker_port}"
                 if task_type == SIGNAL_SEND:
@@ -442,16 +444,16 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                             self.shared_data_batch(task_info)
                             remote_recv.result()
                             time_share2=time.time()
-                            with open(f'kvcache_log_rank_{self.rank}.txt', 'a+') as f:
-                                f.write(f"shared once time: {time_share2-time_share1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_share2-time_share1)/(1e9))} GB/s\n")
-                            print(f"shared once time: {time_share2-time_share1}s, throughput: {((token_num*8*28*128)/(time_share2-time_share1)/(1e9))} GB/s")
+                            # with open(f'kvcache_log_rank_shared{self.rank}.txt', 'a+') as f:
+                            #     f.write(f"shared once time: {time_share2-time_share1}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_share2-time_share1)/(1e9))} GB/s\n")
+                            #print(f"shared once time: {time_share2-time_share1}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_share2-time_share1)/(1e9))} GB/s")
                             # time_send1=time.time()
                             # self.send_data_batch(task_info)
                             # remote_recv.result()
                             # time_send2=time.time()
                             # with open(f'kvcache_log_rank_send{self.rank}.txt', 'a') as f:
-                            #     f.write(f"send once time: {time_send2-time_send1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s\n")
-                            # # print(f"send once time: {time_send2-time_send1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s")
+                            #     f.write(f"send once time: {time_send2-time_send1}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s\n")
+                            # print(f"send once time: {time_send2-time_send1}s,token_num:{token_num}, throughput: {((token_num*8*28*128)/(time_send2-time_send1)/(1e9))} GB/s")
                         else:
                             time_send1=time.time()
                             self.send_data_batch(task_info)

@@ -32,7 +32,7 @@ class LLMScheduler:
         self.prompt_list = []
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
-        self.batchsize = 32
+        self.batchsize = 64
         
         time.sleep(1)
         print("[LLMScheduler] finish init all class")

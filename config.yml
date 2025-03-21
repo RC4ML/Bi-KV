@@ -22,7 +22,7 @@ distributed:
 
 kv_cache:
   max_workers: 10  # KVCache 的最大线程池大小
-  cache_size: 5000  # 缓存大小
+  cache_size: 40000  # 缓存大小
   page_size: 50  # 缓存维度
 
 worker:
