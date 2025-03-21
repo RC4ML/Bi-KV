@@ -15,9 +15,11 @@ static char producer_shm_name[256];
 static int consumer_fd = -1;
 static SharedControl* consumer_ctrl = nullptr;
 static void* consumer_mapped_mem = nullptr;
+static size_t BUFFER_SIZE=0;
 
 void producer_init(int device_id, const char* shm_name, size_t buffer_size) {
     shm_unlink(shm_name);  // 新增代码
+    BUFFER_SIZE=buffer_size;
     cudaSetDevice(device_id);
     strncpy(producer_shm_name, shm_name, sizeof(producer_shm_name) - 1);
     producer_shm_name[sizeof(producer_shm_name) - 1] = '\0';
@@ -70,9 +72,12 @@ void producer_send(torch::Tensor tensor) {
     TORCH_CHECK(tensor.dtype() == torch::kFloat16, "Tensor must be float16");
     size_t data_size = tensor.nbytes();
     // 获取当前写入位置
+    if (producer_ctrl->current_offset + data_size > BUFFER_SIZE) {
+        producer_ctrl->current_offset = 0;  // 重置偏移量或抛出异常
+    }
     void* write_ptr = static_cast<char*>(producer_shared_mem) + producer_ctrl->current_offset;
     cudaMemcpy(write_ptr, tensor.data_ptr(), data_size, cudaMemcpyDeviceToDevice);
-
+    cudaDeviceSynchronize();  // 确保拷贝完成
     producer_ctrl->data_size = data_size;
     producer_ctrl->tensor_dim = tensor.dim();
     producer_ctrl->last_valid_offset = producer_ctrl->current_offset;  // 记录有效数据起始位置

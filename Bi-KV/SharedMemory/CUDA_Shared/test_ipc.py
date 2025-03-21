@@ -84,8 +84,8 @@ if __name__ == "__main__":
     config = {
         "device_id": 0,
         "shm_name": "/cuda_ipc_test",
-        "buffer_size": 1024 * 1024 * 1024,  # 1GB
-        "data_size": 25 * 1024 * 1024,       # 50MB as half floats (20M elements)
+        "buffer_size": 200*1024 * 1024,  # 1GB
+        "data_size": 50 * 1024 * 1024,       # 50MB as half floats (20M elements)
         "num_transfers": 10
     }
 
