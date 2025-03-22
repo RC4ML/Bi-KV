@@ -232,8 +232,6 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         if DEBUG:
             print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
-        #print(send_tensor.device)
-        send_tensor=send_tensor.contiguous()
         ipc_service.producer_send(send_tensor)
         time1 = time.time()
         if DEBUG:
@@ -438,12 +436,14 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                         print(f"[KVCache {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
+                    if cache_worker== infer_worker:
+                        self.shared_data_batch(task_info)
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
                         if cache_worker== infer_worker: # on the same device,use CUDA shared Memory
                             time_share1=time.time()
-                            self.shared_data_batch(task_info)
+                            # self.shared_data_batch(task_info)
                             remote_recv.result()
                             time_share2=time.time()
                             # with open(f'kvcache_log_rank_shared{self.rank}.txt', 'a+') as f:

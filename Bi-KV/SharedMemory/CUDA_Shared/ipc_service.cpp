@@ -66,6 +66,33 @@ void producer_init(int device_id, const char* shm_name, size_t buffer_size) {
     memcpy(producer_ctrl->cuda_handle, &handle, sizeof(handle));
 }
 
+// void producer_write(torch::Tensor tensor) {
+//     TORCH_CHECK(tensor.device().is_cuda(), "Tensor must be on CUDA");
+//     TORCH_CHECK(tensor.is_contiguous(), "Tensor must be contiguous");
+//     TORCH_CHECK(tensor.dtype() == torch::kFloat16, "Tensor must be float16");
+//     size_t data_size = tensor.nbytes();
+//     // 获取当前写入位置
+//     if (producer_ctrl->current_offset + data_size > BUFFER_SIZE) {
+//         producer_ctrl->current_offset = 0;  // 重置偏移量或抛出异常
+//     }
+//     void* write_ptr = static_cast<char*>(producer_shared_mem) + producer_ctrl->current_offset;
+//     cudaMemcpy(write_ptr, tensor.data_ptr(), data_size, cudaMemcpyDeviceToDevice);
+//     cudaDeviceSynchronize();  // 确保拷贝完成
+//     producer_ctrl->data_size = data_size;
+//     producer_ctrl->tensor_dim = tensor.dim();
+//     producer_ctrl->last_valid_offset = producer_ctrl->current_offset;  // 记录有效数据起始位置
+//     producer_ctrl->current_offset += data_size;  // 移动偏移量
+//     // 记录形状信息
+//     producer_ctrl->tensor_dim = tensor.dim();
+//     for(int i=0; i<tensor.dim(); ++i){
+//         producer_ctrl->tensor_shape[i] = tensor.size(i);
+//     }
+    
+
+//     sem_post(&producer_ctrl->sem_start);
+//     sem_wait(&producer_ctrl->sem_complete);
+// }
+
 void producer_send(torch::Tensor tensor) {
     TORCH_CHECK(tensor.device().is_cuda(), "Tensor must be on CUDA");
     TORCH_CHECK(tensor.is_contiguous(), "Tensor must be contiguous");
@@ -90,7 +117,7 @@ void producer_send(torch::Tensor tensor) {
     
 
     sem_post(&producer_ctrl->sem_start);
-    sem_wait(&producer_ctrl->sem_complete);
+    //sem_wait(&producer_ctrl->sem_complete);
 }
 
 void producer_cleanup() {
@@ -146,13 +173,13 @@ void consumer_init(int device_id, const char* shm_name) {
 
 torch::Tensor consumer_receive() {
     // 获取开始时间
-    auto start_time = std::chrono::high_resolution_clock::now();
+    //auto start_time = std::chrono::high_resolution_clock::now();
 
     // 等待信号量
     sem_wait(&consumer_ctrl->sem_start);
 
     // 获取 sem_wait 结束的时间
-    auto sem_wait_end_time = std::chrono::high_resolution_clock::now();
+    //auto sem_wait_end_time = std::chrono::high_resolution_clock::now();
 
     // 计算从函数开始到 sem_wait 结束的时间
     auto time_before_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(sem_wait_end_time - start_time).count();
@@ -182,14 +209,14 @@ torch::Tensor consumer_receive() {
     ).clone();
 
     // 获取函数结束的时间
-    auto end_time = std::chrono::high_resolution_clock::now();
+    //auto end_time = std::chrono::high_resolution_clock::now();
 
     // 计算从 sem_wait 结束到函数结束的时间
-    auto time_after_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(end_time - sem_wait_end_time).count();
-    std::cout << "Time from function start to sem_wait end: " << time_before_sem_wait << " microseconds" << std::endl;
-    std::cout << "Time from sem_wait end to function end: " << time_after_sem_wait << " microseconds" << std::endl;
+    //auto time_after_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(end_time - sem_wait_end_time).count();
+    //std::cout << "Time from function start to sem_wait end: " << time_before_sem_wait << " microseconds" << std::endl;
+    //std::cout << "Time from sem_wait end to function end: " << time_after_sem_wait << " microseconds" << std::endl;
 
-    sem_post(&consumer_ctrl->sem_complete);
+    //sem_post(&consumer_ctrl->sem_complete);
     return result;
 }
 

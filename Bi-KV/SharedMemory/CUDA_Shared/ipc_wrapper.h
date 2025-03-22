@@ -30,6 +30,7 @@ static_assert(sizeof(cudaIpcMemHandle_t) <= CUDA_IPC_HANDLE_SIZE,
 
 void producer_init(int device_id, const char* shm_name, size_t buffer_size);
 void producer_send(torch::Tensor tensor);
+//void producer_write(torch::Tensor tensor);
 void producer_cleanup();
 
 void consumer_init(int device_id, const char* shm_name);
