@@ -217,8 +217,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             # print(f"shared{recv_tensor.size()}")
             # del cuda_tensor
             # 显式释放显存
-            del cuda_tensor
-            torch.cuda.empty_cache()  # 可选但建议添加
+            # del cuda_tensor
+            # torch.cuda.empty_cache()  # 可选但建议添加
            # 计算总数据量（字节）
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             time_diff = end_read - start_read

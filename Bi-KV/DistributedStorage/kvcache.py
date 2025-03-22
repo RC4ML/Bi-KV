@@ -232,6 +232,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         if DEBUG:
             print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
+        #print(send_tensor.device)
+        send_tensor=send_tensor.contiguous()
         ipc_service.producer_send(send_tensor)
         time1 = time.time()
         if DEBUG:

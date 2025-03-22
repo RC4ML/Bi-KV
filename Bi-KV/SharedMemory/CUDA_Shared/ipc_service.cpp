@@ -2,8 +2,8 @@
 #include <pybind11/pybind11.h>
 #include <chrono>
 #include <string>
+#include <iostream>
 
-using namespace std::chrono;
 
 // Producer static variables
 static int producer_fd = -1;
@@ -141,27 +141,54 @@ void consumer_init(int device_id, const char* shm_name) {
     }
 }
 
+#include <chrono>
+#include <iostream>
+
 torch::Tensor consumer_receive() {
+    // 获取开始时间
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // 等待信号量
     sem_wait(&consumer_ctrl->sem_start);
-    int device_id=consumer_ctrl->device_id ; // 新增字段保存设备ID ;
-     // 计算数据读取位置
+
+    // 获取 sem_wait 结束的时间
+    auto sem_wait_end_time = std::chrono::high_resolution_clock::now();
+
+    // 计算从函数开始到 sem_wait 结束的时间
+    auto time_before_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(sem_wait_end_time - start_time).count();
+    std::cout << "Time from function start to sem_wait end: " << time_before_sem_wait << " microseconds" << std::endl;
+
+    int device_id = consumer_ctrl->device_id; // 新增字段保存设备ID
+
+    // 计算数据读取位置
     void* read_ptr = static_cast<char*>(consumer_mapped_mem) + consumer_ctrl->last_valid_offset;
+
     // 构建形状数组
     std::vector<int64_t> shape;
-    for(int i=0; i<consumer_ctrl->tensor_dim; ++i){
+    for (int i = 0; i < consumer_ctrl->tensor_dim; ++i) {
         shape.push_back(consumer_ctrl->tensor_shape[i]);
     }
+
     auto options = torch::TensorOptions()
         .dtype(torch::kFloat16)
         .device(torch::kCUDA, device_id)
         .requires_grad(false);
-    //std::vector<int64_t> shape(consumer_ctrl->tensor_dim, consumer_ctrl->data_size / sizeof(torch::Half));
+
     // 创建张量视图并克隆
     torch::Tensor result = torch::from_blob(
-        read_ptr, 
+        read_ptr,
         shape,  // 使用正确形状
         options
     ).clone();
+
+    // 获取函数结束的时间
+    auto end_time = std::chrono::high_resolution_clock::now();
+
+    // 计算从 sem_wait 结束到函数结束的时间
+    auto time_after_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(end_time - sem_wait_end_time).count();
+    std::cout << "Time from function start to sem_wait end: " << time_before_sem_wait << " microseconds" << std::endl;
+    std::cout << "Time from sem_wait end to function end: " << time_after_sem_wait << " microseconds" << std::endl;
+
     sem_post(&consumer_ctrl->sem_complete);
     return result;
 }
