@@ -68,6 +68,8 @@ def init_process(rank, world_size,yaml_config):
     
     if process_type == 'LLMScheduler':
         logging.info(f"[init_process][Rank {rank}] 初始化 LLMScheduler")
+        iter_round = yaml_config['scheduler']['iter_round']
+        batch_size = yaml_config['scheduler']['batch_size']
         scheduler = LLMScheduler(world_size=world_size,master_port=master_port)
         # scheduler.test_write_cache()
         input_generator = LLMInput(20,5,args)
@@ -80,9 +82,9 @@ def init_process(rank, world_size,yaml_config):
             # stub.StartProcess(TaskInfo_pb2.StartRequest(msg='start'))
         logging.info("开始测试")
         time1 = time.time()
-        scheduler.start(10,256)
+        scheduler.start(iter_round,batch_size)
         time2 = time.time()
-        print(f"Test Time cost: {time2-time1}")
+        print(f"Test Time cost: {time2-time1} Iter round: {iter_round} Batch size: {batch_size}")
         fut.result()
         channel.close()
 
@@ -134,6 +136,9 @@ def init_process(rank, world_size,yaml_config):
 
 def main():
     yaml_config = load_config("../config.yml")
+    cache_size = yaml_config['kv_cache']['cache_size']
+    page_size = yaml_config['kv_cache']['page_size']
+    print(f"KVCache Size:{cache_size} Page Size:{page_size}")
     logging.info("[Main] 启动分布式系统")
     world_size = sum(count for _, count in yaml_config['process_types'].items())
     logging.info(f"[Main] world_size = {world_size}，进程类型分布: {PROCESS_TYPES}")
