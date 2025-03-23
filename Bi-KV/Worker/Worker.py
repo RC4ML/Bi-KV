@@ -72,12 +72,21 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # torch.set_default_dtype(torch.float16)
         # self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
         # 初始化消费者端共享内存
-        self.shm_name = f"/kv_cache_{self.worker_index}"
+        self.shm_name = f"/worker_buffer_{self.worker_index}"
+        self._init_shared_memory()
+
+    def _init_shared_memory(self):
+        """初始化CUDA共享内存区域"""
+        device_id = self.worker_index
         try:
-            ipc_service.consumer_init(self.gpu_index, self.shm_name.encode())
-        except Exception as e:
-            print(f"Worker {self.rank} shared mem init failed: {e}")
-        print(f"[Worker][RANK {self.rank}] Init Worker")
+            # 先尝试清理可能存在的残留共享内存
+            ipc_service.consumer_cleanup()  
+        except:
+            pass
+        buffer_size = self.compute_buffer.element_size() * self.compute_buffer.nelement()
+        print(f"buffer_size:{buffer_size/(1024**2)}MB")
+        # 初始化生产者端共享内存
+        ipc_service.consumer_init(device_id, self.shm_name.encode(), buffer_size)
 
     def forward(self, task_info_list:List):
         coordinator_owner = self.coordinator_rank.owner()

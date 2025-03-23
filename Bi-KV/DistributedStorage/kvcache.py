@@ -41,20 +41,12 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
 
         # for shared memory
-        self.shm_name = f"/kv_cache_{self.cache_index}"  # 唯一共享内存名称
-        self._init_shared_memory()
-    def _init_shared_memory(self):
-        """初始化CUDA共享内存区域"""
-        device_id = self.cache_index
+        self.shm_name = f"worker_buffer_{self.cache_index}"  # 唯一共享内存名称
         try:
-            # 先尝试清理可能存在的残留共享内存
-            ipc_service.producer_cleanup()  
-        except:
-            pass
-        buffer_size = self.cache_data.element_size() * self.cache_data.nelement()
-        print(f"buffer_size:{buffer_size/(1024**2)}MB")
-        # 初始化生产者端共享内存
-        ipc_service.producer_init(device_id, self.shm_name.encode(), buffer_size)
+            ipc_service.producer_init(self.cache_index, self.shm_name.encode())
+        except Exception as e:
+            print(f"KVcache {self.rank} shared mem init failed: {e}")
+        print(f"[KVcach][RANK {self.rank}] Init finish")
         
     def send_data(self,task_info:Dict):
         dst_rank = 2*task_info['infer_worker'] + 2
@@ -102,6 +94,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     offset += self.page_size
 
         send_tensor[:] = self.cache_data[indices]
+        # print(send_tensor)
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
@@ -437,7 +430,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         print(f"[KVCache {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
                     if cache_worker== infer_worker:
-                        self.shared_data_batch(task_info)
+                        self.shared_data_batch(task_info)  # 先写入CUDA共享内存，再call RPC,避免worker等待cache写入共享内存
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
