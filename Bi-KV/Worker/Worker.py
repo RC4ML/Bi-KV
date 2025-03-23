@@ -210,84 +210,85 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         cache_worker = combined_task_info.cache_worker
         src_rank = 2*cache_worker + KVCACHE_offset
         token_num = combined_task_info.token_num
-        recv_tensor = torch.empty(
-            (token_num,) + token_shape, 
-            dtype=torch.float16
-        )
         if self.worker_index == cache_worker:
             # print(f"[Worker][RANK {self.rank}] start get shared memory")
             # 从共享内存接收CUDA张量
-            start_read=time.time()
-            cuda_tensor = ipc_service.consumer_receive()
-            end_read=time.time()
+            #start_read=time.time()
+            ipc_service.consumer_receive()
+            #end_read=time.time()
             
             # 将张量复制到CPU
-            recv_tensor = cuda_tensor.cpu()
+            # recv_tensor = cuda_tensor.cpu()
             # print(f"shared{recv_tensor.size()}")
             # del cuda_tensor
             # 显式释放显存
             # del cuda_tensor
             # torch.cuda.empty_cache()  # 可选但建议添加
            # 计算总数据量（字节）
-            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
-            time_diff = end_read - start_read
-            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
-            
-            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
-                f"throughput: {throughput} GB/s\n")
+            # total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            # time_diff = end_read - start_read
+            # throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            # with open(f'shared_log_rank{self.rank}.txt', 'a+') as f:
+            #     f.write(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+            #         f"throughput: {throughput} GB/s\n")
         else: 
-            start_recv=time.time()
+            #start_recv=time.time()
+            recv_tensor = torch.empty(
+            (token_num,) + token_shape, 
+            dtype=torch.float16
+            )
             dist.recv(tensor=recv_tensor, src=src_rank)
-            end_recv=time.time()
-            #计算总数据量（字节）
-            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
-            time_diff = end_recv - start_recv
-            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
-            print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
-                f"throughput: {throughput} GB/s\n")
+            #end_recv=time.time()
+            # #计算总数据量（字节）
+            # total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            # time_diff = end_recv - start_recv
+            # throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            # with open(f'send_log_rank{self.rank}.txt', 'a+') as f:
+            #     f.write(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+            #     f"throughput: {throughput} GB/s\n")
             # print(f"send{recv_tensor.size()}")
-        # 计算总大小并预分配索引 tensor
-        total_size = sum(id_pair.token_num for id_pair in combined_task_info.id_token_pair)
-        indices = torch.empty(total_size, dtype=torch.long)
-        buffer_indices = torch.empty(total_size, dtype=torch.long)
+        # # 计算总大小并预分配索引 tensor
+        # total_size = sum(id_pair.token_num for id_pair in combined_task_info.id_token_pair)
+        # indices = torch.empty(total_size, dtype=torch.long)
+        # buffer_indices = torch.empty(total_size, dtype=torch.long)
 
-        # 第一步：收集索引
-        start_pos = 0
-        buffer_pos = 0
-        for id_pair in combined_task_info.id_token_pair:
-            item_id = id_pair.id
-            offset = id_pair.token_num
+        # # 第一步：收集索引
+        # start_pos = 0
+        # buffer_pos = 0
+        # for id_pair in combined_task_info.id_token_pair:
+        #     item_id = id_pair.id
+        #     offset = id_pair.token_num
             
-            # 管理 page
-            if item_id not in self.page_manager.get_loaded_lists():
-                page_set, _ = self.page_manager.load_item(item_id, offset)
-            else:
-                page_set = self.page_manager.access_item(item_id)
+        #     # 管理 page
+        #     if item_id not in self.page_manager.get_loaded_lists():
+        #         page_set, _ = self.page_manager.load_item(item_id, offset)
+        #     else:
+        #         page_set = self.page_manager.access_item(item_id)
             
-            # 生成索引
-            item_size = offset
-            indices[start_pos:start_pos + item_size] = torch.arange(start_pos, start_pos + item_size)
+        #     # 生成索引
+        #     item_size = offset
+        #     indices[start_pos:start_pos + item_size] = torch.arange(start_pos, start_pos + item_size)
             
-            # 生成 buffer 对应的索引
-            for idx, page in enumerate(page_set):
-                if idx == len(page_set) - 1:
-                    size = offset % self.page_size if offset % self.page_size != 0 else self.page_size
-                    buffer_indices[buffer_pos:buffer_pos + size] = torch.arange(
-                        page * self.page_size, 
-                        page * self.page_size + size
-                    )
-                    buffer_pos += size
-                else:
-                    buffer_indices[buffer_pos:buffer_pos + self.page_size] = torch.arange(
-                        page * self.page_size, 
-                        (page + 1) * self.page_size
-                    )
-                    buffer_pos += self.page_size
+        #     # 生成 buffer 对应的索引
+        #     for idx, page in enumerate(page_set):
+        #         if idx == len(page_set) - 1:
+        #             size = offset % self.page_size if offset % self.page_size != 0 else self.page_size
+        #             buffer_indices[buffer_pos:buffer_pos + size] = torch.arange(
+        #                 page * self.page_size, 
+        #                 page * self.page_size + size
+        #             )
+        #             buffer_pos += size
+        #         else:
+        #             buffer_indices[buffer_pos:buffer_pos + self.page_size] = torch.arange(
+        #                 page * self.page_size, 
+        #                 (page + 1) * self.page_size
+        #             )
+        #             buffer_pos += self.page_size
             
-            start_pos += offset
+        #     start_pos += offset
 
-        # 第二步：一次性提取数据并写入 buffer
-        self.compute_buffer[buffer_indices] = recv_tensor[indices]
+        # # 第二步：一次性提取数据并写入 buffer
+        # self.compute_buffer[buffer_indices] = recv_tensor[indices]
 
     def send_kvcache_data(self, task_info):
         dst_rank = 2*task_info.cache_worker + 3

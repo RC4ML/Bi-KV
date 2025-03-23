@@ -1,0 +1,50 @@
+shared once time: 0.03880476951599121s,token_num:3479, throughput: 2.5705574145697137 GB/s
+shared once time: 0.035736799240112305s,token_num:3547, throughput: 2.845794423744828 GB/s
+shared once time: 0.03593635559082031s,token_num:2752, throughput: 2.1956968841925586 GB/s
+shared once time: 0.04767274856567383s,token_num:3205, throughput: 1.9275951726048992 GB/s
+shared once time: 0.03624677658081055s,token_num:2983, throughput: 2.359618814912215 GB/s
+shared once time: 0.03564620018005371s,token_num:2660, throughput: 2.13956942436396 GB/s
+shared once time: 0.04181814193725586s,token_num:3071, throughput: 2.1055864254349994 GB/s
+shared once time: 0.04064059257507324s,token_num:2685, throughput: 1.8942715920736366 GB/s
+shared once time: 0.051247358322143555s,token_num:3304, throughput: 1.8485301701700978 GB/s
+shared once time: 0.04700589179992676s,token_num:3398, throughput: 2.07266477178403 GB/s
+shared once time: 0.03570699691772461s,token_num:3330, throughput: 2.673922991059653 GB/s
+shared once time: 0.03364300727844238s,token_num:3156, throughput: 2.689677270853936 GB/s
+shared once time: 0.04063153266906738s,token_num:3638, throughput: 2.567186841056818 GB/s
+shared once time: 0.05882072448730469s,token_num:2937, throughput: 1.431632553559843 GB/s
+shared once time: 0.04999995231628418s,token_num:3117, throughput: 1.7874141846110005 GB/s
+shared once time: 0.0422515869140625s,token_num:3206, throughput: 2.1755971482672445 GB/s
+shared once time: 0.04865670204162598s,token_num:3628, throughput: 2.1378764206215375 GB/s
+shared once time: 0.05215859413146973s,token_num:3733, throughput: 2.052060217156471 GB/s
+shared once time: 0.04427027702331543s,token_num:2981, throughput: 1.9306685601941374 GB/s
+shared once time: 0.041419267654418945s,token_num:3094, throughput: 2.1417850441046022 GB/s
+e2e shared once time: 0.03547477722167969s,token_num:2910, throughput: 2.351967412751223 GB/s
+e2e shared once time: 0.026276350021362305s,token_num:2666, throughput: 2.9090627860359493 GB/s
+e2e shared once time: 0.034455060958862305s,token_num:3404, throughput: 2.8326604360540566 GB/s
+e2e shared once time: 0.051787376403808594s,token_num:3248, throughput: 1.798250123231792 GB/s
+e2e shared once time: 0.04194211959838867s,token_num:2875, throughput: 1.9653751596084539 GB/s
+e2e shared once time: 0.04353523254394531s,token_num:3158, throughput: 2.079836737029047 GB/s
+e2e shared once time: 0.04204726219177246s,token_num:3071, throughput: 2.094112848499073 GB/s
+e2e shared once time: 0.039014577865600586s,token_num:2708, throughput: 1.9901221606823802 GB/s
+e2e shared once time: 0.04309964179992676s,token_num:2907, throughput: 1.933879274146117 GB/s
+e2e shared once time: 0.060256004333496094s,token_num:3171, throughput: 1.5088772149045155 GB/s
+e2e shared once time: 0.06869959831237793s,token_num:3516, throughput: 1.4674139947894929 GB/s
+e2e shared once time: 0.03425240516662598s,token_num:2588, throughput: 2.166362789387422 GB/s
+e2e shared once time: 0.04072117805480957s,token_num:3355, throughput: 2.362273504723385 GB/s
+e2e shared once time: 0.041083335876464844s,token_num:2788, throughput: 1.9457411209344693 GB/s
+e2e shared once time: 0.06077384948730469s,token_num:3246, throughput: 1.5314039308871106 GB/s
+e2e shared once time: 0.057549476623535156s,token_num:3433, throughput: 1.7103713495762036 GB/s
+e2e shared once time: 0.041666507720947266s,token_num:3139, throughput: 2.160042031906433 GB/s
+e2e shared once time: 0.057962894439697266s,token_num:2908, throughput: 1.4384750245132079 GB/s
+e2e shared once time: 0.05104875564575195s,token_num:3298, throughput: 1.8523518311825664 GB/s
+e2e shared once time: 0.048484086990356445s,token_num:2835, throughput: 1.6765319313152731 GB/s
+e2e shared once time: 0.07106566429138184s,token_num:3475, throughput: 1.4020160226952638 GB/s
+e2e shared once time: 0.03476357460021973s,token_num:2802, throughput: 2.3110092941792066 GB/s
+e2e shared once time: 0.02572774887084961s,token_num:2566, throughput: 2.8596498033825224 GB/s
+e2e shared once time: 0.0441286563873291s,token_num:2964, throughput: 1.9258190699049216 GB/s
+e2e shared once time: 0.0446927547454834s,token_num:3236, throughput: 2.0760096916911683 GB/s
+e2e shared once time: 0.0430145263671875s,token_num:2782, throughput: 1.8543852678765518 GB/s
+e2e shared once time: 0.05915212631225586s,token_num:3101, throughput: 1.503105256616585 GB/s
+e2e shared once time: 0.05528545379638672s,token_num:2813, throughput: 1.458870832408204 GB/s
+e2e shared once time: 0.04614901542663574s,token_num:2858, throughput: 1.7756516632574613 GB/s
+e2e shared once time: 0.04282522201538086s,token_num:3248, throughput: 2.1745749728174943 GB/s

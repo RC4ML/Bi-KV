@@ -1,5 +1,0 @@
-send once time: 0.31270861625671387s,token_num:7833, throughput: 0.7182014320181946 GB/s
-send once time: 0.6942727565765381s,token_num:9152, throughput: 0.37795829018831995 GB/s
-send once time: 0.9157674312591553s,token_num:7481, throughput: 0.2342245691191211 GB/s
-send once time: 0.5325148105621338s,token_num:9286, throughput: 0.49998269854493405 GB/s
-send once time: 0.4378831386566162s,token_num:7968, throughput: 0.5217339418477928 GB/s

@@ -1,0 +1,10 @@
+[ipc_service.consumer_receive]shared once time: 0.0001442432403564453s, torch.sizetorch.Size([4061, 128, 2, 28, 2]),total_bytes:111.04296875MB, throughput: 807.2266798240794 GB/s
+[ipc_service.consumer_receive]shared once time: 6.437301635742188e-05s, torch.sizetorch.Size([4308, 128, 2, 28, 2]),total_bytes:117.796875MB, throughput: 1918.8005004174222 GB/s
+[ipc_service.consumer_receive]shared once time: 0.0001862049102783203s, torch.sizetorch.Size([3522, 128, 2, 28, 2]),total_bytes:96.3046875MB, throughput: 542.3207360593291 GB/s
+[ipc_service.consumer_receive]shared once time: 5.459785461425781e-05s, torch.sizetorch.Size([4416, 128, 2, 28, 2]),total_bytes:120.75MB, throughput: 2319.0572760515633 GB/s
+[ipc_service.consumer_receive]shared once time: 6.556510925292969e-05s, torch.sizetorch.Size([3803, 128, 2, 28, 2]),total_bytes:103.98828125MB, throughput: 1663.073809262778 GB/s
+[ipc_service.consumer_receive]shared once time: 7.390975952148438e-05s, torch.sizetorch.Size([3562, 128, 2, 28, 2]),total_bytes:97.3984375MB, throughput: 1381.8156717221161 GB/s
+[ipc_service.consumer_receive]shared once time: 6.0558319091796875e-05s, torch.sizetorch.Size([3815, 128, 2, 28, 2]),total_bytes:104.31640625MB, throughput: 1806.2535691288188 GB/s
+[ipc_service.consumer_receive]shared once time: 7.748603820800781e-05s, torch.sizetorch.Size([4350, 128, 2, 28, 2]),total_bytes:118.9453125MB, throughput: 1609.621589700923 GB/s
+[ipc_service.consumer_receive]shared once time: 4.935264587402344e-05s, torch.sizetorch.Size([3193, 128, 2, 28, 2]),total_bytes:87.30859375MB, throughput: 1855.0108991863963 GB/s
+[ipc_service.consumer_receive]shared once time: 0.000179290771484375s, torch.sizetorch.Size([4163, 128, 2, 28, 2]),total_bytes:113.83203125MB, throughput: 665.7427764507233 GB/s
