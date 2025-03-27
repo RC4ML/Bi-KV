@@ -20,7 +20,7 @@ type CacheCoordinator struct {
 	masterPort           int
 	cacheRanks           []int
 	inferRanks           []int
-	rankToIP			 map[int]string
+	rankToIP             map[int]string
 	kvcacheNum           int32
 	requestQueue         chan *pb.TaskInfo // 使用 channel 替代 Python 的 Queue
 	finishedCounterTable map[int32]int32
@@ -42,12 +42,12 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cac
 		masterPort:           masterPort,
 		cacheRanks:           cacheRanks,
 		inferRanks:           inferRanks,
-		rankToIP:			  rankToIP,
+		rankToIP:             rankToIP,
 		kvcacheNum:           int32(len(cacheRanks)),
 		requestQueue:         make(chan *pb.TaskInfo, 2000), // 无缓冲的channel作为queue
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
-		stopLimit:            10000,
+		stopLimit:            50000,
 		cacheSize:            cacheSize,
 		pageSize:             pageSize,
 		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks)), // 初始化 PageManager

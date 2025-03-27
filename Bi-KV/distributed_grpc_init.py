@@ -25,6 +25,8 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 args.model_code = 'llm'
 args.llm_retrieved_path = "/share/nfs/sunjie/games"
 args.dataset_code = "games"
+args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
+args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 
 logging.basicConfig(
     level=logging.INFO,
