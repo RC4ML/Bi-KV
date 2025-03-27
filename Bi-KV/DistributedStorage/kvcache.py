@@ -223,10 +223,13 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                 else:
                     indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
                     offset += self.page_size
-
+        time1 = time.time()
+        print(f"get index{time1-time0}")
+        time0 = time.time()
         send_tensor[:] = self.cache_data[indices]
         time1 = time.time()
-        print(f"提取pages{time1-time0}")
+        # time1 = time.time()
+        print(f"copy pages{time1-time0}")
         if DEBUG:
             print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()
