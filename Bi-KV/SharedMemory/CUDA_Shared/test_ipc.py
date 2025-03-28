@@ -13,7 +13,7 @@ def producer_process(device_id, shm_name ,num_transfers):
         init_time = init_end - init_start
 
         # 首轮预热（不计入统计）
-        src = torch.ones([3530, 128, 2, 28, 2], device='cuda', dtype=torch.float16)
+        src = torch.ones([7530, 128, 2, 28, 2], device='cuda', dtype=torch.float16)
         ipc_service.producer_send(src)  # 第一轮仅预热
         
         # 正式测试循环

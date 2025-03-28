@@ -31,6 +31,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             device='cpu',
             dtype=torch.float16
         )
+        self.device=torch.device(f"cuda:{self.cache_index}" if torch.cuda.is_available() else "cpu")
         self.start_pos = 0
         self.page_size = page_size
         self.recv_counter = 0
@@ -207,35 +208,90 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         expected_numel = total_token_num * np.prod(token_shape)
         assert send_tensor.numel() == expected_numel, \
             f"形状不匹配: {send_tensor.shape} vs 预期{token_shape}"
-        indices = torch.empty(total_token_num, dtype=torch.long)
-        offset = 0
-        circle_counter = 0
-        for idx, page_list in enumerate(cache_pages_list):
-            id_token_pair = id_token_pair_list[idx]
-            item_token_num = id_token_pair[1]
+         # === 页信息预处理 ===
+        pages_info = []
+        current_dest_offset = 0  # 在目标缓冲区中的当前偏移
+        
+        for batch_idx, (page_list, (req_id, req_token_num)) in enumerate(zip(cache_pages_list, id_token_pair_list)):
+            # 遍历每个请求的缓存页
             for page_idx, page in enumerate(page_list):
-                start = page * self.page_size
-                circle_counter += 1
+                src_start = page * self.page_size  # 源缓存中的起始位置
+                
+                # 计算实际需要复制的元素数量
                 if page_idx == len(page_list) - 1:
-                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
-                    indices[offset:offset + size] = torch.arange(start, start + size)
-                    offset += size
+                    # 最后一页可能不满
+                    copy_size = req_token_num % self.page_size
+                    if copy_size == 0:
+                        copy_size = self.page_size  # 正好整页
                 else:
-                    indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
-                    offset += self.page_size
+                    copy_size = self.page_size
+                    
+                pages_info.append({
+                    'src_start': src_start,
+                    'dest_start': current_dest_offset,
+                    'size': copy_size
+                })
+                
+                current_dest_offset += copy_size
+
+        # === 转换为CUDA张量 ===
         time1 = time.time()
-        print(f"get index{time1-time0}")
-        time0 = time.time()
-        send_tensor[:] = self.cache_data[indices]
-        time1 = time.time()
-        # time1 = time.time()
-        print(f"copy pages{time1-time0}")
-        if DEBUG:
-            print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
-        time0 = time.time()
-        ipc_service.producer_send(send_tensor)
-        time1 = time.time()
-        print(f"ipc_service.producer_send{time1-time0}")
+        
+        # 源起始位置张量 [num_pages,]
+        src_starts = torch.tensor(
+            [info['src_start'] for info in pages_info],
+            dtype=torch.int64,
+            device=self.device
+        )
+        
+        # 目标偏移张量 [num_pages,]
+        dest_starts = torch.tensor(
+            [info['dest_start'] for info in pages_info],
+            dtype=torch.int64,
+            device=self.device
+        )
+        
+        # 页大小张量 [num_pages,]
+        page_sizes = torch.tensor(
+            [info['size'] for info in pages_info],
+            dtype=torch.int64,
+            device=self.device
+        )
+        
+        num_pages = len(pages_info)
+        print(f"页预处理耗时: {time.time()-time1:.4f}s 总页数={num_pages}")
+
+        # === CUDA内核调用 ===
+        time2 = time.time()
+        
+        # 获取连续内存视图
+        cuda_cache_data = self.cache_data.to(self.device)
+        # send_tensor_contiguous = send_tensor.contiguous()
+        
+        # 调用内核接口
+        try:
+            ipc_service.producer_copy_pages(
+                cache_data=cuda_cache_data,
+                src_offsets=src_starts,
+                dest_offsets=dest_starts,
+                page_sizes=page_sizes,
+                page_size=self.page_size,
+            )
+        except RuntimeError as e:
+            raise RuntimeError(f"CUDA内核执行失败: {str(e)}") from e
+
+        torch.cuda.synchronize()  # 确保计时准确
+        print(f"内核执行耗时: {time.time()-time2:.4f}s")
+
+        # # === 更新控制信息 ===
+        # time3 = time.time()
+        
+        # # 计算总数据量
+        # total_bytes = page_sizes.sum().item() * torch.tensor([], dtype=send_tensor.dtype).element_size()
+        
+        # # 更新写入位置（环形缓冲区处理）
+        # self.current_offset = (self.current_offset + total_bytes) % self.buffer_capacity
+        # self.last_valid_offset = self.current_offset - total_bytes  # 记录有效数据起始
         if DEBUG:
             print(f"内部shared once time: {time1-time0}s, total_token_num: {total_token_num},throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:

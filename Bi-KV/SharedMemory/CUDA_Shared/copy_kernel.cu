@@ -41,6 +41,13 @@ void cuda_producer_copy_pages(
 
     //size_t current_pos = producer_ctrl->current_offset;
     const int num_pages = src_offsets.size(0);
+    const int data_size = num_pages * page_size;
+    // 检查缓冲区溢出
+    if (producer_ctrl->current_offset + data_size > producer_ctrl->buffer_size) {
+        producer_ctrl->current_offset = 0;
+    }
+    // 数据拷贝到共享内存
+    void* write_ptr = static_cast<void*>(producer_shared_mem) + producer_ctrl->current_offset;
     dim3 grid(num_pages);
     dim3 block(page_size);
 
@@ -48,7 +55,7 @@ void cuda_producer_copy_pages(
         cache_data.scalar_type(),
         "direct_copy",
         [&] {
-            auto* shared_ptr = static_cast<scalar_t*>(producer_shared_mem);
+            auto* shared_ptr = static_cast<scalar_t*>(write_ptr);
             //const size_t buffer_capacity = producer_ctrl->buffer_size / sizeof(scalar_t);
             
             direct_copy_kernel<scalar_t><<<grid, block>>>(
@@ -60,8 +67,16 @@ void cuda_producer_copy_pages(
                 num_pages,
                 page_size
             );
+            cudaDeviceSynchronize();  // 等待核函数完成
         }
     );
+    // 更新控制变量
+    producer_ctrl->last_valid_offset = producer_ctrl->current_offset;
+    producer_ctrl->current_offset += data_size;
+    // 新增：设置张量维度信息（假设数据是1D张量）
+    producer_ctrl->tensor_dim = 1;  // 1维张量
+    producer_ctrl->tensor_shape[0] = num_pages * page_size;  // 总元素数
+    producer_ctrl->data_size = data_size;  // 数据字节数
 
     sem_post(&producer_ctrl->sem_start);
 }

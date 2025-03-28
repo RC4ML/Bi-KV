@@ -213,9 +213,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         if self.worker_index == cache_worker:
             # print(f"[Worker][RANK {self.rank}] start get shared memory")
             # 从共享内存接收CUDA张量
-            #start_read=time.time()
+            start_read=time.time()
             ipc_service.consumer_receive()
-            #end_read=time.time()
+            end_read=time.time()
             
             # 将张量复制到CPU
             # recv_tensor = cuda_tensor.cpu()
@@ -225,9 +225,11 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             # del cuda_tensor
             # torch.cuda.empty_cache()  # 可选但建议添加
            # 计算总数据量（字节）
-            # total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
-            # time_diff = end_read - start_read
-            # throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_read - start_read
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                     f"throughput: {throughput} GB/s\n")
             # with open(f'shared_log_rank{self.rank}.txt', 'a+') as f:
             #     f.write(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
             #         f"throughput: {throughput} GB/s\n")

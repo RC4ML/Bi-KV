@@ -208,3 +208,8 @@ e2e send once time: 0.15304279327392578s,token_num:3530, throughput: 0.661332414
 e2e send once time: 0.13356256484985352s,token_num:3216, throughput: 0.6903817106511723 GB/s
 e2e send once time: 0.171295166015625s,token_num:4505, throughput: 0.7540630772278639 GB/s
 e2e send once time: 0.22625064849853516s,token_num:4248, throughput: 0.538335058079573 GB/s
+e2e send once time: 0.21834540367126465s,token_num:4278, throughput: 0.5617650472032469 GB/s
+e2e send once time: 0.10303950309753418s,token_num:3300, throughput: 0.9182652978289088 GB/s
+e2e send once time: 0.12332582473754883s,token_num:3602, throughput: 0.8374283668467983 GB/s
+e2e send once time: 0.23374319076538086s,token_num:3418, throughput: 0.41926738348655535 GB/s
+e2e send once time: 0.1662604808807373s,token_num:3953, throughput: 0.681703886573634 GB/s
