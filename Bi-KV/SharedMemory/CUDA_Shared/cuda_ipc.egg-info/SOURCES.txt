@@ -1,3 +1,4 @@
+copy_kernel.cu
 ipc_service.cpp
 setup.py
 cuda_ipc.egg-info/PKG-INFO

@@ -1,3 +1,4 @@
+//ipc_wrapper.h
 #pragma once
 #include <torch/extension.h>
 #include <semaphore.h>
@@ -36,3 +37,32 @@ void producer_cleanup();
 void consumer_init(int device_id, const char* shm_name, size_t buffer_size);
 torch::Tensor consumer_receive();
 void consumer_cleanup();
+
+// 新增核心函数声明
+void producer_copy_pages(
+    torch::Tensor cache_data,
+    torch::Tensor src_offsets,
+    torch::Tensor dest_offsets,
+    torch::Tensor page_sizes,
+    // SharedControl* producer_ctrl,
+    // void* producer_shared_mem,
+    int page_size
+);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void cuda_producer_copy_pages(
+    torch::Tensor cache_data,
+    torch::Tensor src_offsets,
+    torch::Tensor dest_offsets,
+    torch::Tensor page_sizes,
+    SharedControl* producer_ctrl,
+    void* producer_shared_mem,
+    int page_size
+);
+
+#ifdef __cplusplus
+}
+#endif

@@ -14,7 +14,7 @@ process_types:
 
 grpc:
   master_addr: "127.0.0.1"  # 分布式主地址
-  master_port: 50500  # 默认主端口
+  master_port: 50502  # 默认主端口
 
 distributed:
   master_addr: "127.0.0.1"  # 分布式主地址

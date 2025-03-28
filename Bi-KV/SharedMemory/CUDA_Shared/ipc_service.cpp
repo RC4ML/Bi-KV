@@ -1,3 +1,4 @@
+//ipc_service.cpp
 #include "ipc_wrapper.h"
 #include <pybind11/pybind11.h>
 #include <chrono>
@@ -148,7 +149,7 @@ torch::Tensor consumer_receive() {
     // 构造张量
     void* read_ptr = static_cast<char*>(consumer_shared_mem) + consumer_ctrl->last_valid_offset;
     std::vector<int64_t> shape;
-    for (int i = 0; i < consumer_ctrl->tensor_dim; ++i) {
+    for (size_t i = 0; i < consumer_ctrl->tensor_dim; ++i) {
         shape.push_back(consumer_ctrl->tensor_shape[i]);
     }
 
@@ -200,6 +201,17 @@ void consumer_cleanup() {
     }
 }
 
+// 新增：直接页面复制函数
+void producer_copy_pages(
+    torch::Tensor cache_data,
+    torch::Tensor src_offsets,
+    torch::Tensor dest_offsets,
+    torch::Tensor page_sizes,
+    int page_size
+) {
+    cuda_producer_copy_pages(cache_data,src_offsets,dest_offsets,page_sizes,producer_ctrl,producer_shared_mem,page_size);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("producer_init", &producer_init, "Init producer");
     m.def("producer_send", &producer_send, "Send data");
@@ -207,4 +219,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("consumer_init", &consumer_init, "Init consumer");
     m.def("consumer_receive", &consumer_receive, "Receive data");
     m.def("consumer_cleanup", &consumer_cleanup, "Cleanup consumer");
+    m.def("producer_copy_pages", &producer_copy_pages, "Direct page copy to shared memory");
+    m.def("cuda_producer_copy_pages", &cuda_producer_copy_pages, "cuda Direct page copy to shared memory");
 }
