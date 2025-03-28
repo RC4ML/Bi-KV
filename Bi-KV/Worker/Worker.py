@@ -15,6 +15,7 @@ from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 from Utils.utils import now_time
 from rdma_transport import RDMAEndpoint
+import ipc_service
 
 import torch
 from config import *
@@ -47,6 +48,17 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                                 4:'10.0.0.4',
                                 5:'10.0.0.4'
                                 }#
+        # self.rank_to_ip_rdma =  {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.2',
+        #                         3:'10.0.0.2',
+        #                         4:'10.0.0.1',
+        #                         5:'10.0.0.1',
+        #                         6:'10.0.0.3',
+        #                         7:'10.0.0.3',
+        #                         8:'10.0.0.4',
+        #                         9:'10.0.0.4'
+        #                         }#
         self.cache_coordinator_address = f"{master_addr}:{master_port+coordinator_rank}"
         self.gpu_index = 0 # self.worker_index # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
@@ -86,6 +98,14 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                                         num_key_value_heads = model_params['num_kv_heads'])
         torch.set_default_dtype(torch.float16)
         self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
+
+        # 初始化消费者端共享内存
+        self.shm_name = f"/kv_cache_{self.worker_index}"
+        try:
+            ipc_service.consumer_init(self.gpu_index, self.shm_name.encode())
+        except Exception as e:
+            print(f"Worker {self.rank} shared mem init failed: {e}")
+
         logging.info(f"[Worker][RANK {self.rank}] worker initialized")
 
         
@@ -138,8 +158,39 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
-        self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
-        self.ep.poll_completion_by_rank(src_rank)
+        if self.worker_index == cache_worker:
+            # print(f"[Worker][RANK {self.rank}] start get shared memory")
+            # 从共享内存接收CUDA张量
+            start_read=time.time()
+            cuda_tensor = ipc_service.consumer_receive()
+            end_read=time.time()
+            
+            # 将张量复制到CPU
+            recv_tensor = cuda_tensor.cpu()
+            # print(f"shared{recv_tensor.size()}")
+            # del cuda_tensor
+            # 显式释放显存
+            # del cuda_tensor
+            # torch.cuda.empty_cache()  # 可选但建议添加
+           # 计算总数据量（字节）
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_read - start_read
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            
+            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                f"throughput: {throughput} GB/s\n")
+        else: 
+            start_recv=time.time()
+            self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
+            self.ep.poll_completion_by_rank(src_rank)
+            end_recv=time.time()
+            #计算总数据量（字节）
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_recv - start_recv
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                f"throughput: {throughput} GB/s\n")
+        
         # dist.recv(tensor=recv_tensor, src=src_rank)
         # 计算总大小并预分配索引 tensor
         # total_size = sum(id_pair.token_num for id_pair in combined_task_info.id_token_pair)
