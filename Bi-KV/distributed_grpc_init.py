@@ -49,8 +49,8 @@ def init_backend(rank, world_size, process_type, type_index, timeout=120):
     logging.info(f"Process ID: {process_type} {type_index}, Rank: {rank}, IP: {local_ip}")
 
 def init_process(rank, world_size, yaml_config):
-    rank_to_ip = {}
-    set_rank_to_ip(rank_to_ip)
+    rank_to_ip_list = yaml_config['grpc']['rank_to_ip']
+    rank_to_ip = set_rank_to_ip(rank_to_ip_list)
     process_type, type_index = get_process_info(rank)
     rank_map = generate_rank_map(world_size)
     master_addr = os.environ['MASTER_ADDR']
@@ -89,8 +89,9 @@ def init_process(rank, world_size, yaml_config):
         cache_size = yaml_config['worker']['cache_size']
         page_size = yaml_config['worker']['page_size']
         max_workers = yaml_config['worker']['max_workers']
+        rank_to_ip_rdma = yaml_config['distributed']['rank_to_ip_rdma']
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-        worker = Worker(rank, master_port, rank_map['CacheCoordinator'][0], rank_to_ip, server)
+        worker = Worker(rank, master_port, rank_map['CacheCoordinator'][0], rank_to_ip, rank_to_ip_rdma, server)
         TaskInfo_pb2_grpc.add_InferWorkerServiceServicer_to_server(
             worker, server
         )
@@ -105,8 +106,9 @@ def init_process(rank, world_size, yaml_config):
         cache_size = yaml_config['kv_cache']['cache_size']
         page_size = yaml_config['kv_cache']['page_size']
         max_workers = yaml_config['kv_cache']['max_workers']
+        rank_to_ip_rdma = yaml_config['distributed']['rank_to_ip_rdma']
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-        cache = KVCache(rank, cache_size, page_size, master_port, rank_to_ip, server)
+        cache = KVCache(rank, cache_size, page_size, master_port, rank_to_ip,rank_to_ip_rdma, server)
         TaskInfo_pb2_grpc.add_KVCacheServiceServicer_to_server(
            cache, server
         )

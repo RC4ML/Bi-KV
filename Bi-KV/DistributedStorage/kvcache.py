@@ -26,7 +26,7 @@ torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 os.environ['LD_LIBRARY_PATH'] = f"{torch_lib_path}:{os.environ.get('LD_LIBRARY_PATH', '')}"
 
 class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
-    def __init__(self, rank, cache_size, page_size, master_port, rank_to_ip, server):
+    def __init__(self, rank, cache_size, page_size, master_port, rank_to_ip, rank_to_ip_rdma, server):
         self.rank = rank
         self.cache_index = int(rank/2) -1
         self.gpu_index = 0
@@ -44,13 +44,14 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.master_port = master_port
         self.server = server
         self.rank_to_ip_grpc = rank_to_ip
-        self.rank_to_ip_rdma =  {0:'10.0.0.2',
-                                1:'10.0.0.2',
-                                2:'10.0.0.3',
-                                3:'10.0.0.3',
-                                4:'10.0.0.4',
-                                5:'10.0.0.4'
-                                }#
+        self.rank_to_ip_rdma = rank_to_ip_rdma
+        # self.rank_to_ip_rdma =  {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.3',
+        #                         3:'10.0.0.3',
+        #                         4:'10.0.0.4',
+        #                         5:'10.0.0.4'
+        #                         }#
         # self.rank_to_ip_rdma =  {0:'10.0.0.2',
         #                         1:'10.0.0.2',
         #                         2:'10.0.0.2',

@@ -33,7 +33,7 @@ torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 os.environ['LD_LIBRARY_PATH'] = f"{torch_lib_path}:{os.environ.get('LD_LIBRARY_PATH', '')}"
 
 class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
-    def __init__(self, rank, master_port, coordinator_rank, rank_to_ip, server):
+    def __init__(self, rank, master_port, coordinator_rank, rank_to_ip, rank_to_ip_rdma, server):
         self.rank = rank
         self.master_port = master_port
         self.worker_index=int(rank/2) -1
@@ -41,13 +41,14 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         master_addr = rank_to_ip[1] # rank = 1 for coordinator
         self.server = server
         self.rank_to_ip_grpc = rank_to_ip
-        self.rank_to_ip_rdma = {0:'10.0.0.2',
-                                1:'10.0.0.2',
-                                2:'10.0.0.3',
-                                3:'10.0.0.3',
-                                4:'10.0.0.4',
-                                5:'10.0.0.4'
-                                }#
+        self.rank_to_ip_rdma = rank_to_ip_rdma
+        # self.rank_to_ip_rdma = {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.3',
+        #                         3:'10.0.0.3',
+        #                         4:'10.0.0.4',
+        #                         5:'10.0.0.4'
+        #                         }#
         # self.rank_to_ip_rdma =  {0:'10.0.0.2',
         #                         1:'10.0.0.2',
         #                         2:'10.0.0.2',
