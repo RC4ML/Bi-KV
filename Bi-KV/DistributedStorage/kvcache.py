@@ -372,33 +372,38 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
 
         # 一次性分配大 tensor
-        send_tensor = torch.empty(
+        # send_tensor = torch.empty(
+        #     (total_token_num,) + token_shape,
+        #     dtype=torch.float16,
+        #     device='cuda'
+        # )
+        send_tensor = torch.ones(
             (total_token_num,) + token_shape,
             dtype=torch.float16,
             device='cuda'
         )
          # 添加形状校验
-        expected_numel = total_token_num * np.prod(token_shape)
-        assert send_tensor.numel() == expected_numel, \
-            f"形状不匹配: {send_tensor.shape} vs 预期{token_shape}"
-        indices = torch.empty(total_token_num, dtype=torch.long)
-        offset = 0
-        circle_counter = 0
-        for idx, page_list in enumerate(cache_pages_list):
-            id_token_pair = id_token_pair_list[idx]
-            item_token_num = id_token_pair[1]
-            for page_idx, page in enumerate(page_list):
-                start = page * self.page_size
-                circle_counter += 1
-                if page_idx == len(page_list) - 1:
-                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
-                    indices[offset:offset + size] = torch.arange(start, start + size)
-                    offset += size
-                else:
-                    indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
-                    offset += self.page_size
+        # expected_numel = total_token_num * np.prod(token_shape)
+        # assert send_tensor.numel() == expected_numel, \
+        #     f"形状不匹配: {send_tensor.shape} vs 预期{token_shape}"
+        # indices = torch.empty(total_token_num, dtype=torch.long)
+        # offset = 0
+        # circle_counter = 0
+        # for idx, page_list in enumerate(cache_pages_list):
+        #     id_token_pair = id_token_pair_list[idx]
+        #     item_token_num = id_token_pair[1]
+        #     for page_idx, page in enumerate(page_list):
+        #         start = page * self.page_size
+        #         circle_counter += 1
+        #         if page_idx == len(page_list) - 1:
+        #             size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+        #             indices[offset:offset + size] = torch.arange(start, start + size)
+        #             offset += size
+        #         else:
+        #             indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
+        #             offset += self.page_size
 
-        send_tensor[:] = self.cache_data[indices]
+        # send_tensor[:] = self.cache_data[indices]
         if DEBUG:
             print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         time0 = time.time()

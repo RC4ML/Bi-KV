@@ -49,8 +49,8 @@ def init_backend(rank, world_size, process_type, type_index, timeout=120):
     logging.info(f"Process ID: {process_type} {type_index}, Rank: {rank}, IP: {local_ip}")
 
 def init_process(rank, world_size, yaml_config):
-    rank_to_ip_list = yaml_config['grpc']['rank_to_ip']
-    rank_to_ip = set_rank_to_ip(rank_to_ip_list)
+    slots = yaml_config['grpc']['slots']
+    rank_to_ip = set_rank_to_ip(slots)
     process_type, type_index = get_process_info(rank)
     rank_map = generate_rank_map(world_size)
     master_addr = os.environ['MASTER_ADDR']

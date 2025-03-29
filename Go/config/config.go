@@ -23,9 +23,9 @@ type Config struct {
 	} `yaml:"process_types"`
 
 	Grpc struct {
-		MasterAddr   string   `yaml:"master_addr"`
-		MasterPort   int      `yaml:"master_port"`
-		RankToIPGRPC []string `yaml:"rank_to_ip"`
+		MasterAddr string   `yaml:"master_addr"`
+		MasterPort int      `yaml:"master_port"`
+		Slots      []string `yaml:"slots"`
 	} `yaml:"grpc"`
 
 	Distributed struct {

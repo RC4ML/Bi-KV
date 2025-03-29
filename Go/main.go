@@ -102,7 +102,7 @@ func main() {
 
 	// hostfilePath := "../Bi-KV/hostfile"
 	// rankToIP, err := getRankToIPMapping(hostfilePath)
-	rankToIP, err := getRankToIP(config.Grpc.RankToIPGRPC)
+	rankToIP, err := getRankToIP(config.Grpc.Slots)
 	if err != nil {
 		log.Fatalf("Error getting rank to IP mapping: %v", err)
 	}

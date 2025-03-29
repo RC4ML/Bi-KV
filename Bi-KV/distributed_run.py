@@ -58,7 +58,7 @@ MASTER_ADDR = yaml_config['grpc']['master_addr']
 MASTER_PORT = yaml_config['grpc']['master_port']
 
 # 读取 hostfile（机器列表）
-hostfile = yaml_config['grpc']['rank_to_ip']
+hostfile = yaml_config['grpc']['slots']
 
 # 解析 hostfile
 hosts = []
