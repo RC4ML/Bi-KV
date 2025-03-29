@@ -33,7 +33,7 @@ torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 os.environ['LD_LIBRARY_PATH'] = f"{torch_lib_path}:{os.environ.get('LD_LIBRARY_PATH', '')}"
 
 class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
-    def __init__(self, rank, master_port, coordinator_rank, rank_to_ip, rank_to_ip_rdma, server):
+    def __init__(self, rank, master_port,cache_size,page_size, coordinator_rank, rank_to_ip, rank_to_ip_rdma, server):
         self.rank = rank
         self.master_port = master_port
         self.worker_index=int(rank/2) -1
@@ -65,8 +65,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 350000
-        self.page_size = 50
+        self.buffer_size = cache_size
+        self.page_size = page_size
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
         self.compute_buffer = torch.full(
@@ -77,6 +77,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         )
         self.start_pos = 0
         self.cache_miss_dict = {}
+        self.server = server
         
         # initialize model and parameters for inference
         intermediate_size = 8960
@@ -338,7 +339,6 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         logging.info(f"worker {self.worker_index}, read kv cache time {time3-time1}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
     
     def preprare_send_data_grpc(self, task_info_list):
-        # 这里的task_info同样有着一样的req_id
         send_task_list = []
         hit_counter = 0
         length_counter = 0

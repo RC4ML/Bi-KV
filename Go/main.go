@@ -99,7 +99,7 @@ func main() {
 	}
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-
+	s := grpc.NewServer()
 	// hostfilePath := "../Bi-KV/hostfile"
 	// rankToIP, err := getRankToIPMapping(hostfilePath)
 	rankToIP, err := getRankToIP(config.Grpc.Slots)
@@ -108,14 +108,14 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, rankToIP, s)
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, rankToIP, s, config.KvCache.CacheSize, config.KvCache.PageSize, s)
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", rankToIP[rank], masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)
 		return
 	}
 	pb.RegisterCacheCoordinatorServiceServer(s, cc)
-	fmt.Println("[Main] Starting gRPC server")
+	log.Printf("[Main] Starting gRPC server, listen in port %d\n", masterPort+rank)
 	if err := s.Serve(lis); err != nil {
 		fmt.Printf("Failed to serve: %v\n", err)
 	}

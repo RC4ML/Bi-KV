@@ -26,9 +26,9 @@ type PageManager struct {
 }
 
 type PageEntry struct {
-	Pages        map[int32]struct{} // 分配的页面集合
-	LastAccessed int64              // 最近访问时间戳
-	Protected    int                // 保护计数
+	Pages        []int32 // 分配的页面集合，使用slice固定顺序
+	LastAccessed int64   // 最近访问时间戳
+	Protected    int     // 保护计数
 }
 
 // NewPageManager 初始化 PageManager
@@ -50,7 +50,7 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 }
 
 // LoadItem 加载列表到缓存
-func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{}, []int32, time.Duration, time.Duration) {
+func (pm *PageManager) LoadItem(itemID int32, listLength int) ([]int32, []int32, time.Duration, time.Duration) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -87,7 +87,7 @@ func (pm *PageManager) LoadItem(itemID int32, listLength int) (map[int32]struct{
 }
 
 // AccessItem 访问列表并更新时间戳
-func (pm *PageManager) AccessItem(itemID int32) map[int32]struct{} {
+func (pm *PageManager) AccessItem(itemID int32) []int32 {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -105,7 +105,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 	type entry struct {
 		id           int32
 		lastAccessed int64
-		pages        map[int32]struct{}
+		pages        []int32
 	}
 	var lruEntries []entry
 	for id, info := range pm.pageTable {
@@ -121,7 +121,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 			continue
 		}
 		delete(pm.pageTable, entry.id)
-		for page := range entry.pages {
+		for _, page := range entry.pages {
 			pm.freePages[page] = struct{}{}
 		}
 		freedIDs = append(freedIDs, entry.id)
@@ -171,7 +171,7 @@ func (pm *PageManager) RemoveProtected(itemID int32) {
 }
 
 // allocatePages 分配页面
-func (pm *PageManager) allocatePages(n int) map[int32]struct{} {
+func (pm *PageManager) allocatePages(n int) []int32 {
 	if len(pm.freePages) < n {
 		panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(pm.freePages), n))
 	}
@@ -183,7 +183,7 @@ func (pm *PageManager) allocatePages(n int) map[int32]struct{} {
 			break
 		}
 	}
-	return allocated
+	return setToList(allocated)
 }
 
 // GetLoadedLists 获取当前加载的列表 ID
@@ -232,7 +232,7 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager 
 }
 
 // LoadItem 加载列表到缓存
-func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, map[int32]struct{}) {
+func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, []int32) {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
 
@@ -282,7 +282,7 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, map[
 }
 
 // AccessItem 访问缓存中的列表
-func (mpm *MultiPageManager) AccessItem(itemID int32) (int32, map[int32]struct{}) {
+func (mpm *MultiPageManager) AccessItem(itemID int32) (int32, []int32) {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
 
