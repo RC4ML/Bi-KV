@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 # 可通过环境变量指定，若未设置则使用默认值
 KVCACHE_NUM = int(os.environ.get("KVCACHE_NUM", "4"))
@@ -54,5 +55,51 @@ def get_process_info(rank):
         return 'Worker',int(rank/2)-1
     else:             # rank 3,5,7,9.... is kvcache
         return 'KVCache' , int(rank/2)-1
+    
+def generate_rank_map(world_size):
+    """
+    生成全局 rank 到进程类型和索引的映射。
+
+    Args:
+        world_size (int): 总进程数量。
+
+    Returns:
+        dict: 全局 rank 到进程类型和索引的映射。
+    """
+    rank_map = {}
+    for rank in range(world_size):
+        process_type, _ = get_process_info(rank)
+        if rank_map.get(process_type) is None:
+            rank_map[process_type] = [rank]
+        else:
+            rank_map[process_type].append(rank)
+    return rank_map
 
 
+def set_rank_to_ip_old(rank_to_ip):  
+    hostfile_path = os.path.join(os.path.dirname(__file__), 'hostfile')
+    with open(hostfile_path, 'r') as f:
+        lines = f.readlines()
+    
+    rank = 0
+    for line in lines:
+        if line.strip() and not line.startswith('#'):
+            parts = line.split()
+            ip = parts[0]
+            slots = int(parts[1].split('=')[1])
+            for _ in range(slots):
+                rank_to_ip[rank] = ip
+                rank += 1
+
+def set_rank_to_ip(lines:List):  
+    rank_to_ip = {}
+    rank = 0
+    for line in lines:
+        if line.strip() and not line.startswith('#'):
+            parts = line.split()
+            ip = parts[0]
+            slots = int(parts[1].split('=')[1])
+            for _ in range(slots):
+                rank_to_ip[rank] = ip
+                rank += 1
+    return rank_to_ip

@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+option go_package = "Bi-KV/taskinfo";
+
+// 信号和Signals.py中定义的不一样
+enum Signal{
+    SIGNAL_SEND = 0;      // 发送数据信号
+    SIGNAL_RECV = 1;      // 接收数据信号
+    SIGNAL_ACK = 2;       // 确认信号（未使用，可根据需要扩展）
+    SIGNAL_CHECK = 3;     // 查询Cache信号
+    SIGNAL_SKIP = 4;      // 跳过信号
+    SIGNAL_TERMINATE = 9; // 终止信号
+}
+
+message IdTokenPair{
+    int32 id = 1;
+    int32 token_num = 2;
+}
+
+message TaskInfo {
+    int32 request_id = 1;
+    int32 id = 2;
+    int32 infer_worker = 3;
+    int32 cache_worker = 4;
+    int32 token_num = 5;
+    int32 index = 6;
+    int32 task_type = 7;
+    string type = 8;
+    int32 task_num = 9;
+    repeated int32 cache_pages_list = 10;
+  }
+
+message CombindedTaskInfo {
+    int32 request_id = 1;
+    int32 id = 2;
+    int32 infer_worker = 3;
+    int32 cache_worker = 4;
+    int32 token_num = 5;
+    int32 index = 6;
+    int32 task_type = 7;
+    string type = 8;
+    int32 task_num = 9;
+    repeated PageList cache_pages_list = 10;
+    repeated IdTokenPair id_token_pair = 11;
+}
+
+message PageList {
+    repeated int32 cache_pages_list = 1;
+}
+
+message TaskInfoList {
+    repeated TaskInfo tasks = 1;
+}
+
+message ComfirmationMessage{
+    string msg = 1;
+}
+
+// 空响应消息
+// TODO 都要传空消息有点低效，需要优化
+message Empty {}
+
+message StartRequest {
+    string msg = 1;
+}
+
+// InferWorker 服务
+service InferWorkerService {
+    rpc ReceiveTasksFromScheduler(TaskInfoList) returns (Empty);
+    rpc SendKVCacheData(CombindedTaskInfo) returns (Empty);
+    rpc RecvKVCacheData(CombindedTaskInfo) returns (Empty);
+    rpc ShutDown(Empty) returns (Empty);  // 关闭 infer worker
+}
+
+// CacheCoordinator 服务
+service CacheCoordinatorService {
+    rpc ReceiveTasksFromInferWorker(TaskInfoList) returns (Empty);
+    rpc PollBatchFromInferWorker(TaskInfoList) returns (ComfirmationMessage);
+    rpc StartProcessRequest(StartRequest) returns (Empty);
+    rpc ShutDown(Empty) returns (Empty);  // 关闭 cache coordinator
+}
+
+// KVCache 服务
+service KVCacheService {
+    rpc ReceiveTasksFromCoordinator(TaskInfoList) returns (ComfirmationMessage);
+    rpc ShutDown(Empty) returns (Empty);  // 关闭 KVCache
+}

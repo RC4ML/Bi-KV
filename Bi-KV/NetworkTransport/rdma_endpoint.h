@@ -79,8 +79,8 @@ public:
             rank_to_id_[rank] = client_id;
             client_ids_.push_back(client_id);
             connected_clients++;
-            std::cout << "服务器接受了一个客户端连接，rank: " << rank 
-                      << "，总连接数: " << connected_clients << std::endl;
+            // std::cout << "服务器接受了一个客户端连接，rank: " << rank 
+            //           << "，总连接数: " << connected_clients << std::endl;
 
             // // 检查断开连接事件
             // if (get_cm_event(RDMA_CM_EVENT_DISCONNECTED, &event, true) == 0) {
@@ -90,11 +90,11 @@ public:
         }
 
         if (connected_clients == max_clients) {
-            std::cout << "服务器已接受指定数量的客户端: " 
-                      << max_clients << "，停止接受新连接。" << std::endl;
+            // std::cout << "服务器已接受指定数量的客户端: " 
+            //           << max_clients << "，停止接受新连接。" << std::endl;
             return 0;
         } else {
-            std::cerr << "服务器未接受足够的客户端连接。" << std::endl;
+            // std::cerr << "服务器未接受足够的客户端连接。" << std::endl;
             return -1;
         }
     }
@@ -110,8 +110,6 @@ public:
         sockaddr_in addr = create_addr();
         if (resolve_address(&addr) != 0) return -1;
         if (resolve_route() != 0) return -1;
-
-        std::cout << "Address and route resolved" << std::endl;
         if (create_resources(cm_id_) != 0) return -1;
         // std::cout << "Client created resources" << std::endl;
         if (rdma_connect(cm_id_, create_conn_param()) != 0) {
@@ -130,7 +128,7 @@ public:
             return -1;
         }
 
-        std::cout << "Client connection established, rank: " << rank << std::endl;
+        // std::cout << "Client connection established, rank: " << rank << std::endl;
         return 0;
     }
 
@@ -345,7 +343,7 @@ private:
             ec_ = nullptr;
         }
 
-        std::cout << "RDMAEndpoint cleanup completed." << std::endl;
+        std::cout << ip_ <<" "<< mode_ <<" RDMAEndpoint cleanup completed." << std::endl;
     }
 
     /** 处理客户端断开连接 */
@@ -512,7 +510,7 @@ private:
             perror("rdma_listen");
             return -1;
         }
-        std::cout << "Server listening on port " << port_ << std::endl;
+        // std::cout << "Server listening on port " << port_ << std::endl;
         return 0;
     }
 
@@ -528,8 +526,8 @@ private:
             }
         }
         if ((*event)->event != expected) {
-            std::cerr << "Expected " << expected << ", got " 
-                      << (*event)->event << std::endl;
+            // std::cerr << "Expected " << expected << ", got " 
+            //           << (*event)->event << std::endl;
             rdma_ack_cm_event(*event);
             return -1;
         }
@@ -577,7 +575,7 @@ private:
             perror("rdma_accept");
             return -1;
         }
-        std::cout << "Server accepted connection" << std::endl;
+        // std::cout << "Server accepted connection" << std::endl;
         return 0;
     }
 
@@ -601,7 +599,7 @@ private:
             return -1;
         }
         if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
-            std::cerr << "Expected ADDR_RESOLVED, got " << event->event << std::endl;
+            // std::cerr << "Expected ADDR_RESOLVED, got " << event->event << std::endl;
             rdma_ack_cm_event(event);
             return -1;
         }
@@ -620,7 +618,7 @@ private:
             return -1;
         }
         if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
-            std::cerr << "Expected ROUTE_RESOLVED, got " << event->event << std::endl;
+            // std::cerr << "Expected ROUTE_RESOLVED, got " << event->event << std::endl;
             rdma_ack_cm_event(event);
             return -1;
         }
@@ -648,7 +646,7 @@ private:
         client_buffers_[id] = buffer;
         client_buffer_sizes_[id] = size;
         client_mrs_[id] = mr;
-        std::cout << "Memory registered for client, size = " << size << " bytes." << std::endl;
+        // std::cout << "Memory registered for "<<mode_<<", size = " << size << " bytes." << std::endl;
         return 0;
     }
 
@@ -672,7 +670,7 @@ private:
         client_buffers_[id] = buffer;
         client_buffer_sizes_[id] = size;
         client_mrs_[id] = mr;
-        std::cout << "Memory registered for client using huge page, size = " << size << " bytes." << std::endl;
+        // std::cout << "Memory registered for client using huge page, size = " << size << " bytes." << std::endl;
         return 0;
     }
 
@@ -691,6 +689,7 @@ private:
         recv_wr.sg_list = &sge;
         recv_wr.num_sge = 1;
         ibv_recv_wr* bad_wr = nullptr;
+
         int ret = ibv_post_recv(qp, &recv_wr, &bad_wr);
         if (ret) perror("ibv_post_recv");
         return ret;
@@ -726,6 +725,7 @@ private:
         do {
             num = ibv_poll_cq(cq, 1, &wc);
         } while (num == 0);
+
         if (num < 0) {
             perror("ibv_poll_cq");
             return -1;

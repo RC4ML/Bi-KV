@@ -15,7 +15,7 @@ class PageManager:
         self.free_pages = set(range(self.num_pages))
         self.page_table = {}  # 键为item ID，值为{'pages': set, 'last_accessed': int}
         self.current_time = 0  # 模拟时间戳，用于LRU
-        print(f"初始空闲页数:{len(self.free_pages)}")
+        # print(f"初始空闲页数:{len(self.free_pages)}")
 
     def load_item(self, item_id, list_length):
         # 如果id已经存在则直接返回
@@ -48,7 +48,7 @@ class PageManager:
         self.current_time += 1
         return allocated_pages,freed_ids
 
-    def access_item(self, item_id) -> set:
+    def access_item(self, item_id):
         """访问列表，更新最近使用时间，返回页号"""
         if item_id not in self.page_table:
             raise KeyError(f"列表 {item_id} 未加载")
@@ -112,7 +112,7 @@ class PageManager:
             page = next(iter(self.free_pages))
             allocated.add(page)
             self.free_pages.remove(page)
-        return allocated
+        return list(allocated)
     
     def _page_to_location(self, page):
         """将页号转换为实际位置"""

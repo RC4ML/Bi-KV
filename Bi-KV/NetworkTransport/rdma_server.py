@@ -27,14 +27,22 @@ def run_server(ip, port, max_clients):
         buffer_tensor.fill_(rank+1)
         print(f"client {rank} will receive data: {buffer_tensor}")
     
-    # 向所有客户端发送数据
-    for rank in range(max_clients):
-        print(f"Server posting send request to rank {rank}...")
-        server.post_send_by_rank(rank, buffer_size)
+    start_time = time.time()
+    for _ in range(100):
+        # 向所有客户端发送数据
+        for rank in range(max_clients):
+            print(f"Server posting send request to rank {rank}...")
+            server.post_send_by_rank(rank, buffer_size)
+        
+        # 等待所有传输完成
+        for rank in range(max_clients):
+            server.poll_completion_by_rank(rank)
+    end_time = time.time()
     
-    # 等待所有传输完成
-    for rank in range(max_clients):
-        server.poll_completion_by_rank(rank)
+    total_time = end_time - start_time
+    throughput = (buffer_size * 100 * max_clients) / total_time / (1024 * 1024)  # MB/s
+    print(f"Total time taken: {total_time:.2f} seconds")
+    print(f"Throughput: {throughput:.2f} MB/s")
     
     print("Data sent to all clients!")
     time.sleep(2)  # 确保客户端有足够时间接收数据

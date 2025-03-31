@@ -3,4 +3,11 @@ data
 dataloader/__pycache__
 dataloader/datasets/__pycache__
 Bi-KV/DistributedStorage/__pycache__
+Bi-KV/NetworkTransport/__pycache__
+Bi-KV/NetworkTransport/build
+Bi-KV/NetworkTransport/dist
+Bi-KV/NetworkTransport/rdma_transport.egg-info
 *.log
+Bi-KV/SharedMemory/CUDA_Shared/build
+Bi-KV/SharedMemory/CUDA_Shared/cuda_ipc.egg-info
+Bi-KV/SharedMemory/CUDA_Shared/dist
