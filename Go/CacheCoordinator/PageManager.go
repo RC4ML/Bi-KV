@@ -3,10 +3,11 @@ package coordinator
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"sort"
 	"sync"
 	"time"
+
+	pb "github.com/RC4ML/Bi-KV/protos"
 )
 
 var (
@@ -232,41 +233,52 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager 
 }
 
 // LoadItem 加载列表到缓存
-func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, []int32) {
+func (mpm *MultiPageManager) LoadItem(taskInfo *pb.TaskInfo) (int32, []int32) {
+	// TODO 修改策略，每个cache只查他自己的
+	// 换句话说，就是先查自己的cache worker，有就直接调，再看其他的
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
-
-	// 检查是否已在缓存中
+	itemID := taskInfo.Id
+	listLength := int(taskInfo.TokenNum)
+	wokerId := taskInfo.InferWorker
+	// 检查是否在自己的cache worker
+	if _, ok := mpm.cachedIDs[wokerId][itemID]; ok {
+		pages := mpm.pageManagers[wokerId].AccessItem(itemID)
+		return int32(wokerId), pages
+	}
+	// 若不在，则检查其他worker
 	for idx, cached := range mpm.cachedIDs {
 		if _, ok := cached[itemID]; ok {
 			pages := mpm.pageManagers[idx].AccessItem(itemID)
 			return int32(idx), pages
 		}
 	}
+	// 若仍然没查到，则考虑存取
+	// 选择目标 PM，优先选择自身pm
+	targetPM := mpm.pageManagers[wokerId]
 
-	// 选择目标 PM
-	maxPageNum := 0
-	for _, pm := range mpm.pageManagers {
-		pm.mu.Lock()
-		if len(pm.freePages) > maxPageNum {
-			maxPageNum = len(pm.freePages)
-		}
-		pm.mu.Unlock()
-	}
+	// maxPageNum := 0
+	// for _, pm := range mpm.pageManagers {
+	// 	pm.mu.Lock()
+	// 	if len(pm.freePages) > maxPageNum {
+	// 		maxPageNum = len(pm.freePages)
+	// 	}
+	// 	pm.mu.Unlock()
+	// }
 
-	var targetPM *PageManager
-	if maxPageNum > mpm.numPages/10 {
-		targetPM = mpm.pageManagers[0] // 默认第一个，后面更新
-		for _, pm := range mpm.pageManagers {
-			pm.mu.Lock()
-			if len(pm.freePages) == maxPageNum {
-				targetPM = pm
-			}
-			pm.mu.Unlock()
-		}
-	} else {
-		targetPM = mpm.pageManagers[rand.Intn(mpm.kvcacheNum)] // 随机选择
-	}
+	// var targetPM *PageManager
+	// if maxPageNum > mpm.numPages/10 {
+	// 	targetPM = mpm.pageManagers[0] // 默认第一个，后面更新
+	// 	for _, pm := range mpm.pageManagers {
+	// 		pm.mu.Lock()
+	// 		if len(pm.freePages) == maxPageNum {
+	// 			targetPM = pm
+	// 		}
+	// 		pm.mu.Unlock()
+	// 	}
+	// } else {
+	// 	targetPM = mpm.pageManagers[rand.Intn(mpm.kvcacheNum)] // 随机选择
+	// }
 
 	targetPMID := targetPM.pmID
 	start := time.Now()
@@ -282,10 +294,16 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, []in
 }
 
 // AccessItem 访问缓存中的列表
-func (mpm *MultiPageManager) AccessItem(itemID int32) (int32, []int32) {
+func (mpm *MultiPageManager) AccessItem(taskInfo *pb.TaskInfo) (int32, []int32) {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
-
+	itemID := taskInfo.Id
+	wokerId := taskInfo.InferWorker
+	// 优先查自己的pm
+	if _, ok := mpm.cachedIDs[wokerId][itemID]; ok {
+		pages := mpm.pageManagers[wokerId].AccessItem(itemID)
+		return int32(wokerId), pages
+	}
 	for idx, cached := range mpm.cachedIDs {
 		if _, ok := cached[itemID]; ok {
 			pages := mpm.pageManagers[idx].AccessItem(itemID)

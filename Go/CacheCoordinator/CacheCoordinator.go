@@ -143,7 +143,7 @@ func (cc *CacheCoordinator) processRequests() {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
 					// 查cache
-					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo)
 					// if cacheWorker == -1 {
 					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
 					// } else {
@@ -155,14 +155,14 @@ func (cc *CacheCoordinator) processRequests() {
 					// }
 
 					// 测试用 全hit
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
 					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
 					taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo)
 					cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
