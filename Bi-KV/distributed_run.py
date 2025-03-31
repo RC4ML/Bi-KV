@@ -49,7 +49,7 @@ def cleanup_processes(processes, hosts):
 
 # 定义主节点 IP（相当于 MASTER_ADDR）
 MASTER_ADDR = "192.168.189.8"
-MASTER_PORT = "50051"
+MASTER_PORT = "50251"
 
 # 读取 hostfile（机器列表）
 hostfile = """
