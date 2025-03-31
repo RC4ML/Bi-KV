@@ -106,9 +106,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error getting rank to IP mapping: %v", err)
 	}
-
-	s := grpc.NewServer()
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, rankToIP, s, config.KvCache.CacheSize, config.KvCache.PageSize, s)
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s, rankToIP)
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", rankToIP[rank], masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)

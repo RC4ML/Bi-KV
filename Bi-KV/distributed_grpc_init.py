@@ -91,7 +91,7 @@ def init_process(rank, world_size, yaml_config):
         max_workers = yaml_config['worker']['max_workers']
         rank_to_ip_rdma = yaml_config['distributed']['rank_to_ip_rdma']
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-        worker = Worker(rank, master_port, rank_map['CacheCoordinator'][0], rank_to_ip, rank_to_ip_rdma, server)
+        worker = Worker(rank, master_port, cache_size, page_size, rank_map['CacheCoordinator'][0], rank_to_ip, rank_to_ip_rdma, server)
         TaskInfo_pb2_grpc.add_InferWorkerServiceServicer_to_server(
             worker, server
         )
