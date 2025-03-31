@@ -206,8 +206,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                 f"throughput: {throughput} GB/s\n")
         else: 
             start_recv=time.time()
-            self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
-            self.ep.poll_completion_by_rank(src_rank)
+            # self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
+            # self.ep.poll_completion_by_rank(src_rank)
             end_recv=time.time()
             #计算总数据量（字节）
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
