@@ -19,7 +19,8 @@ import time
 import os
 import logging
 
-from rdma_transport import RDMAEndpoint
+# from rdma_transport import RDMAEndpoint
+from rdma_onesided_transport import RDMAOneSidedEndpoint
 import ipc_service
 
 torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
@@ -79,43 +80,15 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         print(f"buffer_size:{buffer_size/(1024**2)}MB")
         # 初始化生产者端共享内存
         ipc_service.producer_init(device_id, self.shm_name.encode(), buffer_size)
+
+    def start_rdma(self):
+        self.ep = RDMAOneSidedEndpoint(self.rank_to_ip_rdma[self.rank], str(self.master_port+10), "server")
+        self.buffer_size = 1024*1024*1024 
+        if self.ep.run_server(max_clients=WORKER_NUM, local_cpu_size=self.buffer_size, local_gpu_size=0, hugepage=False) != 0:
+            logging.info("Server failed to accept clients.")
+            assert (0)
+        logging.info(f"RDMA server started at {self.rank_to_ip_rdma[self.rank]}:{str(self.master_port+10)}")
         
-                                
-    def start_rdma(self):        
-        self.ep = {}
-        max_retries = 100  # 最大重试次数
-        retry_delay = 0.5  # 每次重试的间隔时间（秒）
-        # print(f"Client {rank} start RDMA ep")
-        for wid in range(WORKER_NUM):
-            retries = 0
-            self.ep[wid*2+WORKER_offset] = RDMAEndpoint(self.rank_to_ip_rdma[wid*2+WORKER_offset], str(self.master_port+10), "client")
-
-            while retries < max_retries:
-                try:
-                    if self.ep[wid*2+WORKER_offset].connect_client(self.rank) == 0:
-                        # logging.info(f"Client {self.rank} connection {self.rank_to_ip_rdma[wid*2+WORKER_offset]}:{self.master_port+10} success!")
-                        break  # 连接成功，退出重试循环
-                    else:
-                        # logging.info(f"Client {self.rank} connection {self.rank_to_ip_rdma[wid*2+WORKER_offset]}:{self.master_port+10} attempt {retries + 1} failed! Retrying in {retry_delay} seconds...")
-                        retries += 1
-                        time.sleep(retry_delay)
-                except Exception as e:
-                    # logging.info(f"Client {self.rank} connection {self.rank_to_ip_rdma[wid*2+WORKER_offset]}:{self.master_port+10} attempt {retries + 1} failed with error: {e}. Retrying in {retry_delay} seconds...")
-                    retries += 1
-                    time.sleep(retry_delay)
-            
-            # 如果重试次数用尽仍未成功，则断言失败
-            if retries == max_retries:
-                logging.info(f"Client {self.rank} connection failed after {max_retries} attempts!")
-                assert 0
-
-        self.buffer_size = 1024*1024*1024
-        for wid in range(WORKER_NUM):
-            if self.ep[wid*2+WORKER_offset].register_memory_client(self.buffer_size) != 0:
-                logging.info("Failed to register memory!")
-                assert (0)
-        logging.info(f"RDMA client started at {self.rank_to_ip_rdma[self.rank]}!")
-
     def send_data_batch(self,combined_task_info:Dict):
         dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
         token_num = combined_task_info['token_num']
@@ -153,11 +126,10 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
         # time0 = time.time()
-        self.ep[dst_rank].post_receive()
-        self.ep[dst_rank].poll_completion()
+        self.ep.post_rdma_write(rank=dst_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
         # dist.send(tensor=send_tensor, dst=dst_rank)
         # time1 = time.time()
-        # print(f"{self.rank} send once time: {time1-time0}s, throughput: {(total_token_num*128*28*8/(time1-time0)/(1e9))} GB/s")
+        # logging.info(f"{self.rank} send once time: {time1-time0}s, throughput: {(total_token_num*128*28*8/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
 
@@ -175,8 +147,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             dtype=torch.float16
         )
         # dist.recv(tensor=recv_tensor, src=src_rank)
-        self.ep[src_rank].post_receive()
-        self.ep[src_rank].poll_completion()
+        self.ep.post_rdma_read(rank=src_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
         # if DEBUG:
         #     print(f"[KVCache][CPU {self.cache_index}] [rank{self.rank}] 完成接收数据从 Rank {infer_worker} [rank{src_rank}]")
         # # 计算总 token 数

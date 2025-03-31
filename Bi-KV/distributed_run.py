@@ -54,6 +54,7 @@ with open(config_path, 'r') as file:
     yaml_config = yaml.safe_load(file)
 
 # 定义主节点 IP（相当于 MASTER_ADDR）
+
 MASTER_ADDR = yaml_config['grpc']['master_addr']
 MASTER_PORT = yaml_config['grpc']['master_port']
 

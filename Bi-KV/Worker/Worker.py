@@ -14,7 +14,9 @@ from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 from Utils.utils import now_time
-from rdma_transport import RDMAEndpoint
+
+# from rdma_transport import RDMAEndpoint
+from rdma_onesided_transport import RDMAOneSidedEndpoint
 import ipc_service
 
 import torch
@@ -114,17 +116,37 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
     def __del__(self):
         print(f"Worker {self.rank} destroyed at {time.time()}") 
     
-    def start_rdma(self):
-        self.ep = RDMAEndpoint(self.rank_to_ip_rdma[self.rank], str(self.master_port+10), "server")
-        if self.ep.run_server(KVCACHE_NUM) != 0:
-            logging.info("Server failed to accept clients.")
-            assert (0)
-        self.buffer_size = 1024*1024*1024 
+    def start_rdma(self):        
+        self.ep = {}
+        max_retries = 100  # 最大重试次数
+        retry_delay = 0.5  # 每次重试的间隔时间（秒）
+        # print(f"Client {rank} start RDMA ep")
+        self.buffer_size = 1024*1024*1024
+
         for cid in range(KVCACHE_NUM):
-            if self.ep.register_memory(KVCACHE_offset + 2*cid, self.buffer_size) != 0:
-                logging.info(f"Failed to register memory for worker {cid}")
-                assert (0)    
-        logging.info(f"RDMA server started at {self.rank_to_ip_rdma[self.rank]}:{str(self.master_port+10)}")
+            retries = 0
+            self.ep[cid*2+WORKER_offset] = RDMAOneSidedEndpoint(self.rank_to_ip_rdma[cid*2+WORKER_offset], str(self.master_port+10), "client")
+
+            while retries < max_retries:
+                try:
+                    if self.ep[cid*2+WORKER_offset].connect_client(rank=self.rank, cpu_size=self.buffer_size, gpu_size=0, hugepage=False) == 0:
+                        # logging.info(f"Client {self.rank} connection {self.rank_to_ip_rdma[wid*2+WORKER_offset]}:{self.master_port+10} success!")
+                        break  # 连接成功，退出重试循环
+                    else:
+                        # logging.info(f"Client {self.rank} connection {self.rank_to_ip_rdma[wid*2+WORKER_offset]}:{self.master_port+10} attempt {retries + 1} failed! Retrying in {retry_delay} seconds...")
+                        retries += 1
+                        time.sleep(retry_delay)
+                except Exception as e:
+                    # logging.info(f"Client {self.rank} connection {self.rank_to_ip_rdma[wid*2+WORKER_offset]}:{self.master_port+10} attempt {retries + 1} failed with error: {e}. Retrying in {retry_delay} seconds...")
+                    retries += 1
+                    time.sleep(retry_delay)
+            
+            # 如果重试次数用尽仍未成功，则断言失败
+            if retries == max_retries:
+                logging.info(f"Client {self.rank} connection failed after {max_retries} attempts!")
+                assert 0
+
+        logging.info(f"RDMA client started at {self.rank_to_ip_rdma[self.rank]}!")
 
     def ReceiveTasksFromScheduler(self, request, context):
         if DEBUG:
@@ -298,8 +320,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         # dist.send(tensor=send_tensor, dst=dst_rank)
-        self.ep.post_send_by_rank(dst_rank, token_num * 128 * 8 * 28)
-        self.ep.poll_completion_by_rank(dst_rank)
+        # self.ep.post_send_by_rank(dst_rank, token_num * 128 * 8 * 28)
+        # self.ep.poll_completion_by_rank(dst_rank)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
             
