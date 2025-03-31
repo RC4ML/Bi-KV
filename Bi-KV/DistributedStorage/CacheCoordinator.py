@@ -88,6 +88,8 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                 idle_time_counter = 0
                 task_info = self.request_table.get_nowait()
                 req_id = task_info['request_id']
+                if task_info['id'] == -1:
+                    continue
                 if True: 
                     if task_info['task_type'] == SIGNAL_CHECK:
                         if self.page_miss_dict.get(req_id)==None:
@@ -96,6 +98,7 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                         if access_res[0] == None:
                             # if DEBUG:
                             # print(f"[CacheCoordinator] Cache Miss! id = {task_info['id']}")
+                            task_info['task_type'] = SIGNAL_SKIP
                             self.page_miss_dict[req_id][task_info['id']] = CACHE_MISS
                         else:
                             # cache hit
@@ -119,7 +122,9 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
                     if self.finished_counter_table.get(task_info['request_id']) == None:
                         self.finished_counter_table[task_info['request_id']] = 0
                     # 初始化finished_flag_table
-                    if executable_requests.get(cache_worker) == None:
+                    if task_info['task_type'] == SIGNAL_SKIP:
+                        self.finished_counter_table[task_info['request_id']] += 1
+                    elif executable_requests.get(cache_worker) == None:
                         executable_requests[cache_worker] = [task_info]
                     else:
                         executable_requests[cache_worker].append(task_info)

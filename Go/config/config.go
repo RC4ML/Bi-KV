@@ -23,13 +23,15 @@ type Config struct {
 	} `yaml:"process_types"`
 
 	Grpc struct {
-		MasterAddr string `yaml:"master_addr"`
-		MasterPort int    `yaml:"master_port"`
+		MasterAddr string   `yaml:"master_addr"`
+		MasterPort int      `yaml:"master_port"`
+		Slots      []string `yaml:"slots"`
 	} `yaml:"grpc"`
 
 	Distributed struct {
-		MasterAddr string `yaml:"master_addr"`
-		MasterPort string `yaml:"master_port"`
+		MasterAddr   string   `yaml:"master_addr"`
+		MasterPort   string   `yaml:"master_port"`
+		RankToIPRDMA []string `yaml:"rank_to_ip_rdma"`
 	} `yaml:"distributed"`
 
 	KvCache struct {

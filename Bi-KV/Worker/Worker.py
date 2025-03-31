@@ -14,8 +14,10 @@ from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 from Utils.utils import now_time
+
 # from rdma_transport import RDMAEndpoint
 from rdma_onesided_transport import RDMAOneSidedEndpoint
+import ipc_service
 
 import torch
 from config import *
@@ -33,7 +35,7 @@ torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 os.environ['LD_LIBRARY_PATH'] = f"{torch_lib_path}:{os.environ.get('LD_LIBRARY_PATH', '')}"
 
 class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
-    def __init__(self, rank, master_port, coordinator_rank, rank_to_ip, server):
+    def __init__(self, rank, master_port,cache_size,page_size, coordinator_rank, rank_to_ip, rank_to_ip_rdma, server):
         self.rank = rank
         self.master_port = master_port
         self.worker_index=int(rank/2) -1
@@ -41,20 +43,32 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         master_addr = rank_to_ip[1] # rank = 1 for coordinator
         self.server = server
         self.rank_to_ip_grpc = rank_to_ip
-        self.rank_to_ip_rdma = {0:'10.0.0.2',
-                                1:'10.0.0.2',
-                                2:'10.0.0.3',
-                                3:'10.0.0.3',
-                                4:'10.0.0.4',
-                                5:'10.0.0.4'
-                                }#
+        self.rank_to_ip_rdma = rank_to_ip_rdma
+        # self.rank_to_ip_rdma = {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.3',
+        #                         3:'10.0.0.3',
+        #                         4:'10.0.0.4',
+        #                         5:'10.0.0.4'
+        #                         }#
+        # self.rank_to_ip_rdma =  {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.2',
+        #                         3:'10.0.0.2',
+        #                         4:'10.0.0.1',
+        #                         5:'10.0.0.1',
+        #                         6:'10.0.0.3',
+        #                         7:'10.0.0.3',
+        #                         8:'10.0.0.4',
+        #                         9:'10.0.0.4'
+        #                         }#
         self.cache_coordinator_address = f"{master_addr}:{master_port+coordinator_rank}"
         self.gpu_index = 0 # self.worker_index # NOTE: set to rank in a single machine
         self.device = torch.device(f"cuda:{self.gpu_index}")
         # key item id value(start_pos,offset) req_id?
         # 多个req_id并发的情况？
-        self.buffer_size = 350000
-        self.page_size = 50
+        self.buffer_size = cache_size
+        self.page_size = page_size
         # PageManager会不会遇到并发？？？
         self.page_manager = PageManager(cache_size=self.buffer_size, page_size=self.page_size)
         self.compute_buffer = torch.full(
@@ -65,6 +79,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         )
         self.start_pos = 0
         self.cache_miss_dict = {}
+        self.server = server
         
         # initialize model and parameters for inference
         intermediate_size = 8960
@@ -87,6 +102,14 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                                         num_key_value_heads = model_params['num_kv_heads'])
         torch.set_default_dtype(torch.float16)
         self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
+
+        # 初始化消费者端共享内存
+        self.shm_name = f"/kv_cache_{self.worker_index}"
+        try:
+            ipc_service.consumer_init(self.gpu_index, self.shm_name.encode())
+        except Exception as e:
+            print(f"Worker {self.rank} shared mem init failed: {e}")
+
         logging.info(f"[Worker][RANK {self.rank}] worker initialized")
 
         
@@ -140,14 +163,15 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
 
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
-        task_info_dict = {}
-        for i in task_info_list:
-            req_id = i['request_id']
-            if req_id not in task_info_dict:
-                task_info_dict[req_id] = []
-            task_info_dict[req_id].append(i)
-        for i in task_info_dict.values():
-            self.receive_task_info(i)
+        self.receive_task_info(task_info_list)
+        # task_info_dict = {}
+        # for i in task_info_list:
+        #     req_id = i['request_id']
+        #     if req_id not in task_info_dict:
+        #         task_info_dict[req_id] = []
+        #     task_info_dict[req_id].append(i)
+        # for i in task_info_dict.values():
+        #     self.receive_task_info(i)
         if DEBUG:
             print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
 
@@ -159,8 +183,39 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             (token_num,) + token_shape, 
             dtype=torch.float16
         )
-        # self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
-        # self.ep.poll_completion_by_rank(src_rank)
+        if self.worker_index == cache_worker:
+            # print(f"[Worker][RANK {self.rank}] start get shared memory")
+            # 从共享内存接收CUDA张量
+            start_read=time.time()
+            cuda_tensor = ipc_service.consumer_receive()
+            end_read=time.time()
+            
+            # 将张量复制到CPU
+            recv_tensor = cuda_tensor.cpu()
+            # print(f"shared{recv_tensor.size()}")
+            # del cuda_tensor
+            # 显式释放显存
+            # del cuda_tensor
+            # torch.cuda.empty_cache()  # 可选但建议添加
+           # 计算总数据量（字节）
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_read - start_read
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            
+            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                f"throughput: {throughput} GB/s\n")
+        else: 
+            start_recv=time.time()
+            self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
+            self.ep.poll_completion_by_rank(src_rank)
+            end_recv=time.time()
+            #计算总数据量（字节）
+            total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
+            time_diff = end_recv - start_recv
+            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                f"throughput: {throughput} GB/s\n")
+        
         # dist.recv(tensor=recv_tensor, src=src_rank)
         # 计算总大小并预分配索引 tensor
         # total_size = sum(id_pair.token_num for id_pair in combined_task_info.id_token_pair)
@@ -307,7 +362,6 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         logging.info(f"worker {self.worker_index}, read kv cache time {time3-time1}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
     
     def preprare_send_data_grpc(self, task_info_list):
-        # 这里的task_info同样有着一样的req_id
         send_task_list = []
         hit_counter = 0
         length_counter = 0

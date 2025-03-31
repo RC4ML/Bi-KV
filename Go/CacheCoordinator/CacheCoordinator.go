@@ -20,7 +20,7 @@ type CacheCoordinator struct {
 	masterPort           int
 	cacheRanks           []int
 	inferRanks           []int
-	rankToIP			 map[int]string
+	rankToIP             map[int]string
 	kvcacheNum           int32
 	requestQueue         chan *pb.TaskInfo // 使用 channel 替代 Python 的 Queue
 	finishedCounterTable map[int32]int32
@@ -36,18 +36,18 @@ type CacheCoordinator struct {
 }
 
 // NewCacheCoordinator 初始化调度器
-func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cacheSize int, pageSize int, rankToIP map[int]string, server *grpc.Server) *CacheCoordinator {
+func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cacheSize int, pageSize int, server *grpc.Server, rankToIP map[int]string) *CacheCoordinator {
 	cc := &CacheCoordinator{
 		rank:                 rank,
 		masterPort:           masterPort,
 		cacheRanks:           cacheRanks,
 		inferRanks:           inferRanks,
-		rankToIP:			  rankToIP,
+		rankToIP:             rankToIP,
 		kvcacheNum:           int32(len(cacheRanks)),
 		requestQueue:         make(chan *pb.TaskInfo, 2000), // 无缓冲的channel作为queue
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
-		stopLimit:            10000,
+		stopLimit:            50000,
 		cacheSize:            cacheSize,
 		pageSize:             pageSize,
 		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks)), // 初始化 PageManager
@@ -58,7 +58,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cac
 	for i := range kvcacheNum {
 		cc.cpuStateTable[i] = map[string]string{"status": "idle"}
 	}
-	fmt.Println("[CacheCoordinator] 初始化完成")
+	log.Println("[CacheCoordinator] 初始化完成")
 	return cc
 }
 
@@ -142,27 +142,30 @@ func (cc *CacheCoordinator) processRequests() {
 					if _, ok := cc.cacheMissDict[reqID]; !ok {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
+					// 查cache
 					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
 					// if cacheWorker == -1 {
 					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
 					// } else {
 					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					// 	cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					// 	taskInfo.TaskType = SIGNAL_SEND
 					// 	taskInfo.CacheWorker = cacheWorker
-					// 	taskInfo.CachePagesList = setToList(pages)
+					// 	taskInfo.CachePagesList = pages
 					// }
 
 					// 测试用 全hit
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
 					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = setToList(pages)
+					taskInfo.CachePagesList = pages
 					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
 					taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = setToList(pages)
+					taskInfo.CachePagesList = pages
 				}
 
 				cacheWorker := int(taskInfo.CacheWorker)
@@ -207,7 +210,7 @@ func (cc *CacheCoordinator) processRequests() {
 
 		cc.lock.Lock()
 		if idleTimeCounter > cc.stopLimit && len(cc.requestQueue) == 0 {
-			fmt.Println("[CacheCoordinator] Empty request table. B R E A K")
+			log.Println("[CacheCoordinator] Empty request table. B R E A K")
 			cc.sendTerminateSignal()
 			cc.lock.Unlock()
 			break
@@ -219,16 +222,16 @@ func (cc *CacheCoordinator) processRequests() {
 			time.Sleep(500 * time.Microsecond)
 		}
 	}
-	fmt.Println("[CacheCoordinator] 所有请求处理完成")
+	log.Println("[CacheCoordinator] 所有请求处理完成")
 }
 
 // executeRequestBatch 执行批量请求
 func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.TaskInfo) {
 	cacheRank := 2*cacheWorker + KVCACHEOffset // 假设 KVCACHEOffset 已定义
 	addr := fmt.Sprintf("%s:%d", cc.rankToIP[cacheRank], cc.masterPort+cacheRank)
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		fmt.Printf("[CacheCoordinator] Failed to connect: %v\n", err)
+		log.Printf("[CacheCoordinator] Failed to connect: %v\n", err)
 		return
 	}
 	defer conn.Close()
@@ -237,12 +240,18 @@ func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.T
 	// fmt.Printf("[CacheCoordinator] Try to execute...len=%d\n", len(reqList))
 	resp, err := client.ReceiveTasksFromCoordinator(context.Background(), &pb.TaskInfoList{Tasks: reqList})
 	if err != nil {
-		fmt.Printf("[CacheCoordinator] Failed to send tasks: %v\n", err)
+		log.Printf("[CacheCoordinator] Failed to send tasks: %v\n", err)
 		return
+	}
+	// 解除保护
+	for _, i := range reqList {
+		if i.TaskType != SIGNAL_CHECK && i.Id != -1 {
+			cc.pageManager.pageManagers[cacheWorker].RemoveProtected(i.Id)
+		}
 	}
 	var confirmationMsg map[int32]int32
 	if err := json.Unmarshal([]byte(resp.Msg), &confirmationMsg); err != nil {
-		fmt.Printf("[CacheCoordinator] Failed to unmarshal: %v\n", err)
+		log.Printf("[CacheCoordinator] Failed to unmarshal: %v\n", err)
 		return
 	}
 

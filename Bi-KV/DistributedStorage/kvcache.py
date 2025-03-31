@@ -21,14 +21,16 @@ import logging
 
 # from rdma_transport import RDMAEndpoint
 from rdma_onesided_transport import RDMAOneSidedEndpoint
+import ipc_service
 
 torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 os.environ['LD_LIBRARY_PATH'] = f"{torch_lib_path}:{os.environ.get('LD_LIBRARY_PATH', '')}"
 
 class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
-    def __init__(self, rank, cache_size, page_size, master_port, rank_to_ip, server):
+    def __init__(self, rank, cache_size, page_size, master_port, rank_to_ip, rank_to_ip_rdma, server):
         self.rank = rank
         self.cache_index = int(rank/2) -1
+        self.gpu_index = 0
         self.cache_size = cache_size
         self.cache_data = torch.full(
             (self.cache_size,) + token_shape, 
@@ -43,25 +45,42 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.master_port = master_port
         self.server = server
         self.rank_to_ip_grpc = rank_to_ip
-        self.rank_to_ip_rdma =  {0:'10.0.0.2',
-                                1:'10.0.0.2',
-                                2:'10.0.0.3',
-                                3:'10.0.0.3',
-                                4:'10.0.0.4',
-                                5:'10.0.0.4'
-                                }#
-                                # {0:'10.0.0.2',
-                                # 1:'10.0.0.2',
-                                # 2:'10.0.0.2',
-                                # 3:'10.0.0.2',
-                                # 4:'10.0.0.1',
-                                # 5:'10.0.0.1',
-                                # 6:'10.0.0.3',
-                                # 7:'10.0.0.3',
-                                # 8:'10.0.0.4',
-                                # 9:'10.0.0.4'
-                                # }#
-    
+        self.rank_to_ip_rdma = rank_to_ip_rdma
+        # self.rank_to_ip_rdma =  {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.3',
+        #                         3:'10.0.0.3',
+        #                         4:'10.0.0.4',
+        #                         5:'10.0.0.4'
+        #                         }#
+        # self.rank_to_ip_rdma =  {0:'10.0.0.2',
+        #                         1:'10.0.0.2',
+        #                         2:'10.0.0.2',
+        #                         3:'10.0.0.2',
+        #                         4:'10.0.0.1',
+        #                         5:'10.0.0.1',
+        #                         6:'10.0.0.3',
+        #                         7:'10.0.0.3',
+        #                         8:'10.0.0.4',
+        #                         9:'10.0.0.4'
+        #                         }#
+        # for shared memory
+        self.shm_name = f"/kv_cache_{self.cache_index}"  # 唯一共享内存名称
+        self._init_shared_memory()
+
+    def _init_shared_memory(self):
+        """初始化CUDA共享内存区域"""
+        device_id = self.gpu_index 
+        try:
+            # 先尝试清理可能存在的残留共享内存
+            ipc_service.producer_cleanup()  
+        except:
+            pass
+        buffer_size = self.cache_data.element_size() * self.cache_data.nelement()
+        print(f"buffer_size:{buffer_size/(1024**2)}MB")
+        # 初始化生产者端共享内存
+        ipc_service.producer_init(device_id, self.shm_name.encode(), buffer_size)
+
     def start_rdma(self):
         self.ep = RDMAOneSidedEndpoint(self.rank_to_ip_rdma[self.rank], str(self.master_port+10), "server")
         self.buffer_size = 1024*1024*1024 
@@ -69,7 +88,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             logging.info("Server failed to accept clients.")
             assert (0)
         logging.info(f"RDMA server started at {self.rank_to_ip_rdma[self.rank]}:{str(self.master_port+10)}")
-                   
+        
     def send_data_batch(self,combined_task_info:Dict):
         dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
         token_num = combined_task_info['token_num']
@@ -250,10 +269,15 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         print(f"[KVCache {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
                     # run_grpc_client(self.rdma_client, '192.168.189.9', 50052, 0, 1024*1024*128)
+                    # if cache_worker== infer_worker:
+                    #     self.shared_data_batch(task_info)
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
-                        self.send_data_batch(task_info)
+                        if cache_worker == infer_worker:
+                            self.shared_data_batch(task_info)
+                        else:
+                            self.send_data_batch(task_info)
                         remote_recv.result()
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
@@ -306,3 +330,57 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
     def ShutDown(self, request, context):
         self.server.stop(0)
         return TaskInfo_pb2.Empty()
+
+    def shared_data_batch(self, combined_task_info: Dict):
+        """使用CUDA共享内存传输数据"""
+        dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        cache_pages_list = combined_task_info['cache_pages_list']
+        if DEBUG:
+            print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
+        # 计算总 token 数
+        total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
+
+        # 一次性分配大 tensor
+        # send_tensor = torch.empty(
+        #     (total_token_num,) + token_shape,
+        #     dtype=torch.float16,
+        #     device='cuda'
+        # )
+        send_tensor = torch.ones(
+            (total_token_num,) + token_shape,
+            dtype=torch.float16,
+            device='cuda'
+        )
+         # 添加形状校验
+        # expected_numel = total_token_num * np.prod(token_shape)
+        # assert send_tensor.numel() == expected_numel, \
+        #     f"形状不匹配: {send_tensor.shape} vs 预期{token_shape}"
+        # indices = torch.empty(total_token_num, dtype=torch.long)
+        # offset = 0
+        # circle_counter = 0
+        # for idx, page_list in enumerate(cache_pages_list):
+        #     id_token_pair = id_token_pair_list[idx]
+        #     item_token_num = id_token_pair[1]
+        #     for page_idx, page in enumerate(page_list):
+        #         start = page * self.page_size
+        #         circle_counter += 1
+        #         if page_idx == len(page_list) - 1:
+        #             size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+        #             indices[offset:offset + size] = torch.arange(start, start + size)
+        #             offset += size
+        #         else:
+        #             indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
+        #             offset += self.page_size
+
+        # send_tensor[:] = self.cache_data[indices]
+        if DEBUG:
+            print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
+        time0 = time.time()
+        ipc_service.producer_send(send_tensor)
+        time1 = time.time()
+        if DEBUG:
+            print(f"内部shared once time: {time1-time0}s, total_token_num: {total_token_num},throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
+        if DEBUG:
+            print(f"[KVCache]共享内存[Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
