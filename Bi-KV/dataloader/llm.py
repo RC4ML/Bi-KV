@@ -10,6 +10,7 @@ import pickle
 from transformers import AutoTokenizer
 from transformers.models.llama.tokenization_llama import DEFAULT_SYSTEM_PROMPT
 import random
+import logging
 
 def worker_init_fn(worker_id):
     random.seed(np.random.get_state()[1][0] + worker_id)                                                      
@@ -113,7 +114,7 @@ class LLMDataloader():
         self.prompter = Prompter()
         
         self.llm_retrieved_path = args.llm_retrieved_path
-        print('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
+        logging.info('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
         retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
                                                        'retrieved.pkl'), 'rb'))
         
@@ -126,7 +127,7 @@ class LLMDataloader():
         # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
         #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
 
-        print('[Dataloader] Constructing Test Subset...Please wait...')
+        logging.info('[Dataloader] Constructing Test Subset...Please wait...')
         self.test_probs = retrieved_file['test_probs']
         self.test_users = range(1,len(self.test_probs)+1)
         self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 

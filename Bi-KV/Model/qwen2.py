@@ -27,6 +27,7 @@ from typing import Iterable, List, Optional, Tuple
 import torch
 from torch import nn
 from transformers import Qwen2Config
+from protos import TaskInfo_pb2,TaskInfo_pb2_grpc
 
 # from vllm.attention import Attention
 from vllm.config import CacheConfig, LoRAConfig
@@ -45,6 +46,7 @@ from Model.utils import make_layers
 import flashinfer
 import time
 from collections import defaultdict
+import logging
 
 class AttentionMetadata():
     def __init__(self, nnz_qo, qo_indptr, kv_indptr, kv_indices, kv_last_page_len):
@@ -403,9 +405,9 @@ def process_task_info(task_info_list):
     request_stats = defaultdict(lambda: {"cached_tokens": 0, "recomputing_tokens": 0})
 
     for task_info in task_info_list:
-        request_id = task_info["request_id"]
-        token_num = task_info["token_num"]
-        task_type = task_info["type"]
+        request_id = task_info.request_id#["request_id"]
+        token_num = task_info.token_num#["token_num"]
+        task_type = task_info.type#["type"]
 
         if task_type == "user cache" or task_type == "item cache":
             if True:  # 假定的函数，用于判断 cache 是否命中
@@ -443,6 +445,7 @@ def prepare_attention_meta(
     qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     qo_indptr[1:] = torch.cumsum(torch.tensor(q_seq_lens, dtype=torch.int32, device=device), dim=0)
     nnz_qo = qo_indptr[-1]
+    logging.info(f"nnz_qo: {nnz_qo} comm cost: {total_communication_cost}")
     # Calculate paged_kv_indptr and paged_kv_last_page_len
     paged_kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     paged_kv_last_page_len = torch.zeros(batch_size, dtype=torch.int32, device=device)

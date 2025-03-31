@@ -22,7 +22,7 @@ def get_network_interface(ip_prefix="10.0.0."):
         match = re.search(rf"(\d+): (\S+):.*\n\s+inet {ip_prefix}\d+", output)
         if match:
             interface_name = match.group(2)
-            print(f"{local_ip} 找到网络接口: {interface_name}")
+            # print(f"{local_ip} 找到网络接口: {interface_name}")
             return interface_name
         else:
             print(f"未找到与前缀 {ip_prefix} 匹配的网络接口。")
@@ -36,7 +36,7 @@ def set_gloo_socket(ip_prefix="10.0.0."):
     if interface:
         os.environ["GLOO_SOCKET_IFNAME"] = interface
         os.environ["TP_SOCKET_IFNAME"] = interface
-        print(f"GLOO_SOCKET_IFNAME 已设置为 {interface}")
+        # print(f"GLOO_SOCKET_IFNAME 已设置为 {interface}")
     else:
         print("未找到匹配的网络接口，无法设置 GLOO_SOCKET_IFNAME。")
 

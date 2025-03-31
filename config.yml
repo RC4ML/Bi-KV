@@ -1,0 +1,60 @@
+# config.yml
+general:
+  model_code: "llm"  # 模型代码
+  llm_retrieved_path: "/data/testmodel/LlamaRec/experiments/lru/games"  # 模型路径
+  dataset_code: "games"  # 数据集代码
+  log_level: "INFO"  # 日志级别
+  log_file: "distributed_system.log"  # 日志文件名
+
+process_types:
+  LLMScheduler: 1  # LLMScheduler 进程数量
+  CacheCoordinator: 1  # CacheCoordinator 进程数量
+  Worker: 2  # Worker 进程数量
+  KVCache: 2  # KVCache 进程数量
+
+grpc:
+  master_addr: "192.168.189.8"  # Grpc主地址
+  master_port: 50051  # 默认主端口
+  slots: # 1G网控制，每个机器起几个进程
+  # 2机配置
+  - "192.168.189.8 slots=2"
+  - "192.168.189.9 slots=2"
+  - "192.168.189.10 slots=2"
+  # 4机的配置
+  # - "192.168.189.8 slots=4"
+  # - "192.168.189.7 slots=2"
+  # - "192.168.189.9 slots=2"
+  # - "192.168.189.10 slots=2"
+
+distributed:
+  master_addr: "127.0.0.1"  # RDMA主地址 没用到
+  master_port: "29503" # 好像也没用到
+  rank_to_ip_rdma: # 写死还是太麻烦了，以后改成从rank_to_ip生成
+  # 2机配置
+  - '10.0.0.2' # 0
+  - '10.0.0.2' # 1
+  - '10.0.0.3' # 2
+  - '10.0.0.3' # 3
+  - '10.0.0.4' # 4
+  - '10.0.0.4' # 5  
+  # 4机配置
+  # - '10.0.0.2' # 0
+  # - '10.0.0.2' # 1
+  # - '10.0.0.2' # 2
+  # - '10.0.0.2' # 3
+  # - '10.0.0.1' # 4
+  # - '10.0.0.1' # 5
+  # - '10.0.0.3' # 6
+  # - '10.0.0.3' # 7
+  # - '10.0.0.4' # 8
+  # - '10.0.0.4' # 9
+
+kv_cache:
+  max_workers: 10  # KVCache 的最大线程池大小
+  cache_size: 500000  # 缓存大小
+  page_size: 50  # 缓存维度
+
+worker:
+  max_workers: 10  # KVCache 的最大线程池大小
+  cache_size: 100000  # 缓存大小
+  page_size: 50  # 缓存维度
