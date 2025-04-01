@@ -240,8 +240,8 @@ func (mpm *MultiPageManager) LoadItem(taskInfo *pb.TaskInfo) (int32, []int32) {
 	defer mpm.mu.Unlock()
 	itemID := taskInfo.Id
 	listLength := int(taskInfo.TokenNum)
-	wokerId := taskInfo.InferWorker
 	// 检查是否在自己的cache worker
+	wokerId := taskInfo.InferWorker
 	if _, ok := mpm.cachedIDs[wokerId][itemID]; ok {
 		pages := mpm.pageManagers[wokerId].AccessItem(itemID)
 		return int32(wokerId), pages
@@ -298,8 +298,8 @@ func (mpm *MultiPageManager) AccessItem(taskInfo *pb.TaskInfo) (int32, []int32) 
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
 	itemID := taskInfo.Id
-	wokerId := taskInfo.InferWorker
 	// 优先查自己的pm
+	wokerId := taskInfo.InferWorker
 	if _, ok := mpm.cachedIDs[wokerId][itemID]; ok {
 		pages := mpm.pageManagers[wokerId].AccessItem(itemID)
 		return int32(wokerId), pages

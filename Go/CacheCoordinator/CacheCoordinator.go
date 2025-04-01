@@ -143,23 +143,23 @@ func (cc *CacheCoordinator) processRequests() {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
 					// 查cache
-					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo)
-					// if cacheWorker == -1 {
-					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
-					// } else {
-					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					// 	cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
-					// 	taskInfo.TaskType = SIGNAL_SEND
-					// 	taskInfo.CacheWorker = cacheWorker
-					// 	taskInfo.CachePagesList = pages
-					// }
+					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo)
+					if cacheWorker == -1 {
+						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
+					} else {
+						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+						cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+						taskInfo.TaskType = SIGNAL_SEND
+						taskInfo.CacheWorker = cacheWorker
+						taskInfo.CachePagesList = pages
+					}
 
 					// 测试用 全hit
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo)
-					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = pages
-					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					taskInfo.TaskType = SIGNAL_SEND
+					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo)
+					// taskInfo.CacheWorker = cacheWorker
+					// taskInfo.CachePagesList = pages
+					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					// taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo)
