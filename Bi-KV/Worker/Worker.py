@@ -104,7 +104,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.model = Qwen2ForCausalLM(self.device, self.model_config, self.cache_config).to(self.device)
 
         # 初始化消费者端共享内存
-        self.shm_name = f"/kv_cache_{self.worker_index}"
+        self.shm_name = f"/sj_kv_cache_{self.worker_index}"
         try:
             ipc_service.consumer_init(self.gpu_index, self.shm_name.encode())
         except Exception as e:
@@ -120,7 +120,6 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.ep = {}
         max_retries = 100  # 最大重试次数
         retry_delay = 0.5  # 每次重试的间隔时间（秒）
-        # print(f"Client {rank} start RDMA ep")
         self.buffer_size = 1024*1024*1024
 
         for cid in range(KVCACHE_NUM):
@@ -172,8 +171,6 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         #     task_info_dict[req_id].append(i)
         # for i in task_info_dict.values():
         #     self.receive_task_info(i)
-        if DEBUG:
-            print(f"[Worker][RANK {self.rank}]finish receive_task_info_batch")
 
     def receive_kvcache_data_batch(self, combined_task_info):
         cache_worker = combined_task_info.cache_worker
@@ -191,7 +188,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             end_read=time.time()
             
             # 将张量复制到CPU
-            recv_tensor = cuda_tensor.cpu()
+            # recv_tensor = cuda_tensor.cpu()
             # print(f"shared{recv_tensor.size()}")
             # del cuda_tensor
             # 显式释放显存
@@ -202,8 +199,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             time_diff = end_read - start_read
             throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
             
-            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
-                f"throughput: {throughput} GB/s\n")
+            # print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+            #     f"throughput: {throughput} GB/s\n")
         else: 
             start_recv=time.time()
             # self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
@@ -213,8 +210,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             time_diff = end_recv - start_recv
             throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
-            print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
-                f"throughput: {throughput} GB/s\n")
+            # print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+            #     f"throughput: {throughput} GB/s\n")
         
         # dist.recv(tensor=recv_tensor, src=src_rank)
         # 计算总大小并预分配索引 tensor
@@ -359,7 +356,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # print(f"shape {input_ids.shape} {cached_tokens}")
         output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
-        logging.info(f"worker {self.worker_index}, read kv cache time {time3-time1}s, compute time: {time5-time3}s, 100Gbps network time: {(cached_tokens*model_params['num_kv_heads']*model_params['head_size']*model_params['num_layers']*2*2)/(12*1000*1000*1000)}s")
+        logging.info(f"worker {self.worker_index}, read kv cache time {time3-time1}s, compute time: {time5-time3}s")
     
     def preprare_send_data_grpc(self, task_info_list):
         send_task_list = []

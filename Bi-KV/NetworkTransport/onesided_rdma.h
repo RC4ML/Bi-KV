@@ -40,6 +40,11 @@ struct RemoteMemoryInfo {
     bool allocated;   // Whether this memory is allocated
 };
 
+enum class ConnectionState {
+    WAITING_ESTABLISHED,
+    // 可以添加其他状态如WAITING_METADATA等
+};
+
 /**
  * @brief RDMAOneSidedEndpoint
  * Encapsulates RDMA connection setup, one-sided read/write operations, and metadata exchange.
@@ -76,70 +81,178 @@ public:
         cleanup();
     }
 
+    // int run_server(int max_clients, size_t local_cpu_size, size_t local_gpu_size, bool hugepage = false) {
+    //     // 创建事件通道和 cm_id
+    //     if (create_event_channel() != 0) return -1;
+    //     if (create_id() != 0) return -1;
+
+    //     // 绑定地址并监听
+    //     sockaddr_in addr = create_addr(INADDR_ANY);
+    //     if (bind_and_listen(&addr) != 0) return -1;
+
+    //     // 接受客户端连接
+    //     int clients = 0;
+    //     // local_cpu_buffer_size_ = local_cpu_size;
+    //     // local_gpu_buffer_size_ = local_gpu_size;
+    //     while (clients < max_clients) {
+    //         rdma_cm_event* event;
+    //         if (get_cm_event(RDMA_CM_EVENT_CONNECT_REQUEST, &event) != 0) {
+    //             std::cerr << "[Server] get_cm_event() failed.\n";
+    //             break;
+    //         }
+
+    //         rdma_cm_id* client_id = event->id;
+    //         rdma_ack_cm_event(event);
+
+    //         if (setup_connection(client_id) != 0) {
+    //             std::cerr << "[Server] setup_connection() failed.\n";
+    //             rdma_destroy_id(client_id);
+    //             continue;
+    //         }
+    //         if (accept_connection(client_id) != 0) {
+    //             rdma_destroy_id(client_id);
+    //             continue;
+    //         }
+    //         // 等待连接建立完成
+    //         if (get_cm_event(RDMA_CM_EVENT_ESTABLISHED, &event) != 0) {
+    //             rdma_destroy_id(client_id);
+    //             continue;
+    //         }
+    //         rdma_ack_cm_event(event);
+    //         // std::cout << "[Server] Client connected" << std::endl;
+    //         // 为每个客户端分配独立的本地 CPU 和 GPU 内存
+    //         if (local_cpu_size > 0 && allocate_client_local_cpu_memory(client_id, local_cpu_size, hugepage) != 0) {
+    //             std::cerr << "[Server] allocate_client_local_cpu_memory() failed.\n";
+    //             rdma_destroy_id(client_id);
+    //             continue;
+    //         }
+    //         if (local_gpu_size > 0 && allocate_client_local_gpu_memory(client_id, local_gpu_size) != 0) {
+    //             std::cerr << "[Server] allocate_client_local_gpu_memory() failed.\n";
+    //             rdma_destroy_id(client_id);
+    //             continue;
+    //         }
+
+    //         // 交换元数据
+    //         if (exchange_metadata_tcp(client_id) != 0) {
+    //             std::cerr << "[Server] exchange_metadata() failed.\n";
+    //             rdma_destroy_id(client_id);
+    //             continue;
+    //         }
+
+    //         client_connections_.push_back(client_id);
+    //         clients++;
+    //     }
+    //     return (clients == max_clients) ? 0 : -1;
+    // }
     int run_server(int max_clients, size_t local_cpu_size, size_t local_gpu_size, bool hugepage = false) {
         // 创建事件通道和 cm_id
         if (create_event_channel() != 0) return -1;
         if (create_id() != 0) return -1;
-
+    
         // 绑定地址并监听
         sockaddr_in addr = create_addr(INADDR_ANY);
         if (bind_and_listen(&addr) != 0) return -1;
-
-        // 接受客户端连接
+    
+        // 使用map跟踪正在建立的连接
+        std::unordered_map<rdma_cm_id*, ConnectionState> pending_connections;
         int clients = 0;
-        // local_cpu_buffer_size_ = local_cpu_size;
-        // local_gpu_buffer_size_ = local_gpu_size;
+    
         while (clients < max_clients) {
             rdma_cm_event* event;
-            if (get_cm_event(RDMA_CM_EVENT_CONNECT_REQUEST, &event) != 0) {
-                std::cerr << "[Server] get_cm_event() failed.\n";
+            // 获取任何类型的事件
+            if (rdma_get_cm_event(ec_, &event) != 0) {
+                std::cerr << "[Server] rdma_get_cm_event() failed: " << strerror(errno) << "\n";
                 break;
             }
-
-            rdma_cm_id* client_id = event->id;
+    
+            // 根据事件类型处理
+            switch (event->event) {
+                case RDMA_CM_EVENT_CONNECT_REQUEST: {
+                    rdma_cm_id* client_id = event->id;
+                    
+                    // 设置连接
+                    if (setup_connection(client_id) != 0) {
+                        std::cerr << "[Server] setup_connection() failed.\n";
+                        rdma_destroy_id(client_id);
+                        break;
+                    }
+                    
+                    // 接受连接
+                    if (accept_connection(client_id) != 0) {
+                        rdma_destroy_id(client_id);
+                        break;
+                    }
+                    
+                    // 将连接加入等待建立的列表
+                    pending_connections[client_id] = ConnectionState::WAITING_ESTABLISHED;
+                    break;
+                }
+                
+                case RDMA_CM_EVENT_ESTABLISHED: {
+                    auto it = pending_connections.find(event->id);
+                    if (it == pending_connections.end()) {
+                        std::cerr << "[Server] Unexpected ESTABLISHED event for unknown connection\n";
+                        rdma_destroy_id(event->id);
+                        break;
+                    }
+                    
+                    rdma_cm_id* client_id = event->id;
+                    
+                    // 分配CPU内存
+                    if (local_cpu_size > 0 && 
+                        allocate_client_local_cpu_memory(client_id, local_cpu_size, hugepage) != 0) {
+                        std::cerr << "[Server] allocate_client_local_cpu_memory() failed.\n";
+                        rdma_destroy_id(client_id);
+                        pending_connections.erase(it);
+                        break;
+                    }
+                    
+                    // 分配GPU内存
+                    if (local_gpu_size > 0 && 
+                        allocate_client_local_gpu_memory(client_id, local_gpu_size) != 0) {
+                        std::cerr << "[Server] allocate_client_local_gpu_memory() failed.\n";
+                        rdma_destroy_id(client_id);
+                        pending_connections.erase(it);
+                        break;
+                    }
+                    
+                    // 交换元数据
+                    if (exchange_metadata_tcp(client_id) != 0) {
+                        std::cerr << "[Server] exchange_metadata() failed.\n";
+                        rdma_destroy_id(client_id);
+                        pending_connections.erase(it);
+                        break;
+                    }
+                    
+                    // 连接完全建立
+                    client_connections_.push_back(client_id);
+                    pending_connections.erase(it);
+                    clients++;
+                    break;
+                }
+                
+                // case RDMA_CM_EVENT_DISCONNECTED: {
+                //     // 清理连接资源
+                //     auto it = pending_connections.find(event->id);
+                //     if (it != pending_connections.end()) {
+                //         pending_connections.erase(it);
+                //     }
+                //     rdma_destroy_id(event->id);
+                //     break;
+                // }
+                
+                default: {
+                    std::cerr << "[Server] Unexpected event: " << rdma_event_str(event->event) << "\n";
+                    break;
+                }
+            }
+            
             rdma_ack_cm_event(event);
-
-            if (setup_connection(client_id) != 0) {
-                std::cerr << "[Server] setup_connection() failed.\n";
-                rdma_destroy_id(client_id);
-                continue;
-            }
-            if (accept_connection(client_id) != 0) {
-                rdma_destroy_id(client_id);
-                continue;
-            }
-            // 等待连接建立完成
-            if (get_cm_event(RDMA_CM_EVENT_ESTABLISHED, &event) != 0) {
-                rdma_destroy_id(client_id);
-                continue;
-            }
-            rdma_ack_cm_event(event);
-            // std::cout << "[Server] Client connected" << std::endl;
-            // 为每个客户端分配独立的本地 CPU 和 GPU 内存
-            if (local_cpu_size > 0 && allocate_client_local_cpu_memory(client_id, local_cpu_size, hugepage) != 0) {
-                std::cerr << "[Server] allocate_client_local_cpu_memory() failed.\n";
-                rdma_destroy_id(client_id);
-                continue;
-            }
-            if (local_gpu_size > 0 && allocate_client_local_gpu_memory(client_id, local_gpu_size) != 0) {
-                std::cerr << "[Server] allocate_client_local_gpu_memory() failed.\n";
-                rdma_destroy_id(client_id);
-                continue;
-            }
-
-            // 交换元数据
-            if (exchange_metadata_tcp(client_id) != 0) {
-                std::cerr << "[Server] exchange_metadata() failed.\n";
-                rdma_destroy_id(client_id);
-                continue;
-            }
-
-            client_connections_.push_back(client_id);
-            clients++;
         }
+        
         return (clients == max_clients) ? 0 : -1;
     }
-
+    
     int connect_client(int rank_id, size_t cpu_size, size_t gpu_size, bool hugepage = false) {
         // Create event channel and cm_id
         if (create_event_channel() != 0) return -1;
@@ -432,8 +545,8 @@ public:
                     client_meta[0].size, std::string(client_meta[0].type, 3),
                     true
                 };
-                std::cout << "[Meta] Received CPU meta: addr=0x" << std::hex << client_meta[0].addr 
-                         << " rkey=" << client_meta[0].rkey << std::dec << std::endl;
+                // std::cout << "[Meta] Received CPU meta: addr=0x" << std::hex << client_meta[0].addr 
+                //          << " rkey=" << client_meta[0].rkey << std::dec << std::endl;
             }
     
             if (client_meta[1].allocated) {
@@ -524,8 +637,8 @@ public:
                 }
     
                 // 连接失败处理
-                std::cerr << "[Meta] Connect to " << ip_ << ":" << meta_port 
-                         << " failed (attempt " << (retries+1) << "/" << MAX_RETRIES << ")\n";
+                // std::cerr << "[Meta] Connect to " << ip_ << ":" << meta_port 
+                //          << " failed (attempt " << (retries+1) << "/" << MAX_RETRIES << ")\n";
                 close(sockfd);
                 ++retries;
                 sleep(1);  // 等待重试

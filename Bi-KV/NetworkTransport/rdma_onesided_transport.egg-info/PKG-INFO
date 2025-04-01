@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: rdma_onesided_transport
+Version: 0.2
+Summary: RDMA One-Sided Transport with CUDA and Verbs support

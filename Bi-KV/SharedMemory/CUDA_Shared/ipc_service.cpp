@@ -173,17 +173,17 @@ void consumer_init(int device_id, const char* shm_name) {
 
 torch::Tensor consumer_receive() {
     // 获取开始时间
-    auto start_time = std::chrono::high_resolution_clock::now();
+    // auto start_time = std::chrono::high_resolution_clock::now();
 
     // 等待信号量
     sem_wait(&consumer_ctrl->sem_start);
 
     // 获取 sem_wait 结束的时间
-    auto sem_wait_end_time = std::chrono::high_resolution_clock::now();
+    // auto sem_wait_end_time = std::chrono::high_resolution_clock::now();
 
     // 计算从函数开始到 sem_wait 结束的时间
-    auto time_before_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(sem_wait_end_time - start_time).count();
-    std::cout << "Time from function start to sem_wait end: " << time_before_sem_wait << " microseconds" << std::endl;
+    // auto time_before_sem_wait = std::chrono::duration_cast<std::chrono::microseconds>(sem_wait_end_time - start_time).count();
+    // std::cout << "Time from function start to sem_wait end: " << time_before_sem_wait << " microseconds" << std::endl;
 
     int device_id = consumer_ctrl->device_id; // 新增字段保存设备ID
 

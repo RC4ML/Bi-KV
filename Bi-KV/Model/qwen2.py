@@ -445,7 +445,7 @@ def prepare_attention_meta(
     qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     qo_indptr[1:] = torch.cumsum(torch.tensor(q_seq_lens, dtype=torch.int32, device=device), dim=0)
     nnz_qo = qo_indptr[-1]
-    logging.info(f"nnz_qo: {nnz_qo} comm cost: {total_communication_cost}")
+    # logging.info(f"nnz_qo: {nnz_qo} comm cost: {total_communication_cost}")
     # Calculate paged_kv_indptr and paged_kv_last_page_len
     paged_kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     paged_kv_last_page_len = torch.zeros(batch_size, dtype=torch.int32, device=device)

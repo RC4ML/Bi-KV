@@ -1,0 +1,8 @@
+onesided_rdma_module.cpp
+setup.py
+setup_ordma.py
+rdma_onesided_transport.egg-info/PKG-INFO
+rdma_onesided_transport.egg-info/SOURCES.txt
+rdma_onesided_transport.egg-info/dependency_links.txt
+rdma_onesided_transport.egg-info/not-zip-safe
+rdma_onesided_transport.egg-info/top_level.txt

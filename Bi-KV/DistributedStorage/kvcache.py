@@ -65,7 +65,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         #                         9:'10.0.0.4'
         #                         }#
         # for shared memory
-        self.shm_name = f"/kv_cache_{self.cache_index}"  # 唯一共享内存名称
+        self.shm_name = f"/sj_kv_cache_{self.cache_index}"  # 唯一共享内存名称
         self._init_shared_memory()
 
     def _init_shared_memory(self):
@@ -94,8 +94,6 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         token_num = combined_task_info['token_num']
         id_token_pair_list = combined_task_info['id_token_pair']
         cache_pages_list = combined_task_info['cache_pages_list']
-        if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         # 计算总 token 数
         total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
 
@@ -123,15 +121,13 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         #             offset += self.page_size
 
         # send_tensor[:] = self.cache_data[indices]
-        if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
+        
         # time0 = time.time()
         self.ep.post_rdma_write(rank=dst_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
         # dist.send(tensor=send_tensor, dst=dst_rank)
         # time1 = time.time()
         # logging.info(f"{self.rank} send once time: {time1-time0}s, throughput: {(total_token_num*128*28*8/(time1-time0)/(1e9))} GB/s")
-        if DEBUG:
-            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+   
 
     def receive_data_batch(self, combined_task_info:Dict):
         # request_id = task_info['request_id']
