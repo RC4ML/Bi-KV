@@ -136,7 +136,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             self.page_manager.load_item(item_id, task.token_num)
             self.page_manager.set_protected(item_id)
         self.forward_with_computation_grpc(request.tasks)
-        # TODO 不马上发，由scheduler读写分离
+        return TaskInfo_pb2.Empty()
+    
+    def StartWriteCacheData(self, request, context):
         self.preprare_send_data_grpc(request.tasks)
         return TaskInfo_pb2.Empty()
 

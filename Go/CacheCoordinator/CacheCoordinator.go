@@ -324,7 +324,7 @@ func (cc *CacheCoordinator) ReceiveTasksFromScheduler(ctx context.Context, req *
 			itemMiss[task.RequestId] = 0
 		}
 		if hit == nil {
-			if task.Type == "user" {
+			if task.Type == "user cache" {
 				userMiss[task.RequestId] = task.TokenNum
 			} else {
 				itemMiss[task.RequestId] += task.TokenNum

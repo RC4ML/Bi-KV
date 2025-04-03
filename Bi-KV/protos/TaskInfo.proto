@@ -67,6 +67,7 @@ message StartRequest {
 // InferWorker 服务
 service InferWorkerService {
     rpc ReceiveTasksFromScheduler(TaskInfoList) returns (Empty);
+    rpc StartWriteCacheData(TaskInfoList) returns (Empty);
     rpc SendKVCacheData(CombindedTaskInfo) returns (Empty);
     rpc RecvKVCacheData(CombindedTaskInfo) returns (Empty);
     rpc ShutDown(Empty) returns (Empty);  // 关闭 infer worker

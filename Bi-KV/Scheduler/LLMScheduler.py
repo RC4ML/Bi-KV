@@ -149,6 +149,21 @@ class LLMScheduler:
         for future,channel in future_list:
             future.result()
             channel.close()
+        
+        # 控制写
+        future_list = []
+        for infer_worker in task_info_list_dict:
+            infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
+            # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
+            task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
+            channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
+            stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+            future = stub.StartWriteCacheData.future(task_info_list)
+            future_list.append((future,channel))  
+            
+        for future,channel in future_list:
+            future.result()
+            channel.close()
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
