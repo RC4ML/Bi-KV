@@ -23,6 +23,7 @@ class InputPrompt():
         self.user_history_tokens = user_history_tokens
         self.items = items
         self.timestamp = timestamp
+        self.task_id = 0
 
 class LLMInput():
     def __init__(self,k:int,poisson_lambda:500,args:Namespace) -> None:

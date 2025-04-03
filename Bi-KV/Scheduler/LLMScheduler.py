@@ -1,5 +1,6 @@
 # import uuid
-from typing import List
+import json
+from typing import Dict, List
 
 import grpc
 from protos import TaskInfo_pb2,TaskInfo_pb2_grpc
@@ -28,11 +29,13 @@ class LLMScheduler:
         self.world_size = world_size
         self.master_port = master_port
         self.num_workers = WORKER_NUM
+        self.cache_coordinator_address = f"{rank_to_ip[1]}:{master_port+1}"
         self.coordinator_ref = []
         self.worker_ref = []
-        self.prompt_list = []
+        self.prompt_list:List[InputPrompt] = []
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
+        self._task_counter = 0
         self.batchsize = 32
         
         time.sleep(1)
@@ -47,29 +50,32 @@ class LLMScheduler:
         batch_size = self.num_workers * self.batchsize  # 每批次的大小
         total_prompts = len(self.prompt_list)
         for prompt in self.prompt_list:
+            self._id_counter += 1
+            prompt.task_id = self._id_counter
             working_prompt_list.append(prompt)
             cnt += 1
             if cnt % batch_size == 0:
-                self._send_prompt_batch(working_prompt_list)
+                ans_dict = self._check_batch(working_prompt_list)
+                self._send_prompt_batch(working_prompt_list,ans_dict)
                 working_prompt_list = []
         # 处理尾巴部分（未整除的 prompts）
         remaining = total_prompts % batch_size  # 剩余未整除的数量
         if remaining > 0:  # 检查是否有剩余
             self._send_prompt_batch(self.prompt_list[-remaining:])
                         
-    def _send_prompt_batch(self, prompt_list:List[InputPrompt]):
+    def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict):
         future_list = []
         task_info_list_dict = {}
-
+        # 先check一遍cache
         for ind,prompt in enumerate(prompt_list): 
             prompt_order = PromptOrder(prompt)
             # 历史优先，调度用户历史kvcache
-            if prompt_order == "User History First":
+            # if prompt_order == "User History First":
+            if ans_dict[str(prompt.task_id)] == 1:
                 infer_worker = self.strategy(self._id_counter)
                 token_num = prompt.user_history_tokens
-                self._id_counter += 1
                 task_info = TaskInfo_pb2.TaskInfo(
-                    request_id = self._id_counter,
+                    request_id = prompt.task_id,
                     id = prompt.user_id+2000000,
                     infer_worker = infer_worker,
                     token_num = token_num,
@@ -87,7 +93,7 @@ class LLMScheduler:
                 for ind,i in enumerate(prompt.items):
                     recomputing_tokens = i.token_count 
                 task_info = TaskInfo_pb2.TaskInfo(
-                    request_id = self._id_counter,
+                    request_id = prompt.task_id,
                     id = -1,
                     infer_worker = infer_worker,
                     token_num = recomputing_tokens,
@@ -99,14 +105,13 @@ class LLMScheduler:
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
-            elif prompt_order == "Item First":
-                self._id_counter += 1
+            elif ans_dict[str(prompt.task_id)] == 0:
                 infer_worker = self.strategy(self._id_counter)
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
                     token_num = i.token_count
                     task_info = TaskInfo_pb2.TaskInfo(
-                        request_id = self._id_counter,
+                        request_id = prompt.task_id,
                         id = i.item_id,
                         infer_worker = infer_worker,
                         token_num = token_num,
@@ -121,7 +126,7 @@ class LLMScheduler:
                         task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
                 task_info = TaskInfo_pb2.TaskInfo(
-                    request_id = self._id_counter,
+                    request_id = prompt.task_id,
                     id = -1,
                     infer_worker = infer_worker,
                     token_num = prompt.user_history_tokens,
@@ -165,31 +170,51 @@ class LLMScheduler:
     def calculate_data_len(self,token_num:int):
         return token_num*model_params["head_size"]*model_params["num_q_heads"]*model_params["num_layers"]*model_params["num_kv_heads"]
     
-    def test_write_cache(self):
-        print(f"[LLMScheduler] Write test start")
-        cache_worker = 1
-        infer_worker = 2
-        simulate_task_info = {
-            "request_id":42,
-            "id":42, 
-            "infer_worker":infer_worker,
-            'cache_worker':cache_worker, 
-            "token_num":42,
-            "data_length": 1234,
-            'index':0
-        }
-        
-        print(f"[LLMScheduler] Start recv")
-        recv_data_call = rpc.rpc_async(to=self.coordinator_ref[0].owner(), func=call_remote_method, 
-                         args=(CacheCoordinator.test_write,self.coordinator_ref[0],simulate_task_info))
-        print(f"[LLMScheduler] Start send")
-        cache_worker_ref = self.worker_ref[cache_worker]
-        owner_worker_ref = cache_worker_ref.owner() 
-        send_data_call = rpc.rpc_async(to=owner_worker_ref, func=call_remote_method, 
-                            args=(Worker.send_kvcache_data, cache_worker_ref, simulate_task_info))
-        send_data_call.wait()
-        recv_data_call.wait()
-        print(f"[LLMScheduler] Write test success!")
+    def _check_batch(self,prompt_list:List[InputPrompt]):
+        '''调度之前先查一遍cache'''
+        send_list = []
+        for prompt in prompt_list:
+            # 用户优先
+            token_num = prompt.user_history_tokens
+            # 需要一个标识
+            task_info = TaskInfo_pb2.TaskInfo(
+                    request_id = prompt.task_id,
+                    id = prompt.user_id+2000000,
+                    token_num = token_num,
+                    index = 0,
+                    task_type = SIGNAL_CHECK,
+                    type = 'user cache',
+                    task_num = 1
+                )
+            send_list.append(task_info)
+            # item优先
+            for ind,i in enumerate(prompt.items):
+                token_num = i.token_count
+                task_info = TaskInfo_pb2.TaskInfo(
+                        request_id = prompt.task_id,
+                        id = i.item_id,
+                        token_num = token_num,
+                        index = ind,
+                        task_type = SIGNAL_CHECK,
+                        type = 'item cache',
+                        task_num = len(prompt.items)
+                    )
+                send_list.append(task_info)
+        # 查cache
+        task_info_list = TaskInfo_pb2.TaskInfoList(tasks = send_list) 
+        channel = grpc.insecure_channel(self.cache_coordinator_address)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        future = stub.ReceiveTasksFromScheduler.future(task_info_list)
+        cache_miss_dict_data = future.result()
+        # ans dict结构 Dict[req id]0/1
+        ans_dict = json.loads(cache_miss_dict_data.msg)
+        # print(f"ans_dict:{ans_dict}")
+        return ans_dict
+
+    def schedule_strategy(self):
+        pass
+
+
         
 
 
