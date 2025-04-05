@@ -86,6 +86,42 @@ func (pm *PageManager) LoadItem(itemID int32, listLength int) ([]int32, []int32,
 	return allocatedPages, freedIDs, evtCost, allCost
 }
 
+func (pm *PageManager) LoadItemHack(itemID int32, listLength int, nextBatch map[int]struct{}) ([]int32, []int32, time.Duration, time.Duration) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// 如果已存在，直接返回
+	if _, ok := pm.pageTable[itemID]; ok {
+		pages := pm.AccessItem(itemID)
+		return pages, []int32{}, 0, 0
+	}
+
+	requiredPages := (listLength + pm.pageSize - 1) / pm.pageSize
+	if requiredPages > pm.numPages {
+		panic(fmt.Sprintf("列表过大，无法存入缓冲区: %d > %d", requiredPages, pm.numPages))
+	}
+	var evtCost time.Duration
+	var freedIDs []int32
+	evictionLock.Lock()
+	if len(pm.freePages) < requiredPages {
+		start := time.Now()
+		freedIDs = pm.performEvictionHack(requiredPages, nextBatch)
+		evtCost = time.Since(start)
+	}
+	start := time.Now()
+	allocatedPages := pm.allocatePages(requiredPages)
+	allCost := time.Since(start)
+	evictionLock.Unlock()
+
+	pm.pageTable[itemID] = PageEntry{
+		Pages:        allocatedPages,
+		LastAccessed: pm.currentTime,
+		Protected:    0,
+	}
+	pm.currentTime++
+	return allocatedPages, freedIDs, evtCost, allCost
+}
+
 // AccessItem 访问列表并更新时间戳
 func (pm *PageManager) AccessItem(itemID int32) []int32 {
 	pm.mu.Lock()
@@ -134,6 +170,48 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 		}
 	}
 
+	if len(pm.freePages) < requiredPages {
+		panic(fmt.Sprintf("无法换出足够页面，当前空闲页数: %d，要求页数: %d", len(pm.freePages), requiredPages))
+	}
+	return freedIDs
+}
+
+func (pm *PageManager) performEvictionHack(requiredPages int, nextBatch map[int]struct{}) []int32 {
+	type entry struct {
+		id           int32
+		lastAccessed int64
+		pages        []int32
+	}
+	var lruEntries []entry
+	for id, info := range pm.pageTable {
+		lruEntries = append(lruEntries, entry{id, info.LastAccessed, info.Pages})
+	}
+	sort.Slice(lruEntries, func(i, j int) bool {
+		return lruEntries[i].lastAccessed < lruEntries[j].lastAccessed
+	})
+
+	var freedIDs []int32
+	for _, entry := range lruEntries {
+		if pm.pageTable[entry.id].Protected != 0 {
+			continue
+		}
+		// 如果在下一个batch中则不换出
+		if _, ok := nextBatch[int(entry.id)]; ok {
+			continue
+		}
+		delete(pm.pageTable, entry.id)
+		for _, page := range entry.pages {
+			pm.freePages[page] = struct{}{}
+		}
+		freedIDs = append(freedIDs, entry.id)
+		if DEBUG {
+			log.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
+				time.Now().Unix(), entry.id, len(entry.pages), len(pm.freePages))
+		}
+		if len(pm.freePages) >= requiredPages {
+			break
+		}
+	}
 	if len(pm.freePages) < requiredPages {
 		panic(fmt.Sprintf("无法换出足够页面，当前空闲页数: %d，要求页数: %d", len(pm.freePages), requiredPages))
 	}
@@ -271,6 +349,56 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int) (int32, []in
 	targetPMID := targetPM.pmID
 	start := time.Now()
 	allocatedPages, freedIDs, evtCost, allCost := targetPM.LoadItem(itemID, listLength)
+	mpm.loadDuration += time.Since(start)
+	mpm.evtDuration += evtCost
+	mpm.allDuration += allCost
+	mpm.cachedIDs[targetPMID][itemID] = struct{}{}
+	for _, freedID := range freedIDs {
+		delete(mpm.cachedIDs[targetPMID], freedID)
+	}
+	return targetPMID, allocatedPages
+}
+
+// LoadItem 加载列表到缓存
+func (mpm *MultiPageManager) LoadItemHack(itemID int32, listLength int, nextBatch map[int]struct{}) (int32, []int32) {
+	mpm.mu.Lock()
+	defer mpm.mu.Unlock()
+
+	// 检查是否已在缓存中
+	for idx, cached := range mpm.cachedIDs {
+		if _, ok := cached[itemID]; ok {
+			pages := mpm.pageManagers[idx].AccessItem(itemID)
+			return int32(idx), pages
+		}
+	}
+
+	// 选择目标 PM
+	maxPageNum := 0
+	for _, pm := range mpm.pageManagers {
+		pm.mu.Lock()
+		if len(pm.freePages) > maxPageNum {
+			maxPageNum = len(pm.freePages)
+		}
+		pm.mu.Unlock()
+	}
+
+	var targetPM *PageManager
+	if maxPageNum > mpm.numPages/10 {
+		targetPM = mpm.pageManagers[0] // 默认第一个，后面更新
+		for _, pm := range mpm.pageManagers {
+			pm.mu.Lock()
+			if len(pm.freePages) == maxPageNum {
+				targetPM = pm
+			}
+			pm.mu.Unlock()
+		}
+	} else {
+		targetPM = mpm.pageManagers[rand.Intn(mpm.kvcacheNum)] // 随机选择
+	}
+
+	targetPMID := targetPM.pmID
+	start := time.Now()
+	allocatedPages, freedIDs, evtCost, allCost := targetPM.LoadItemHack(itemID, listLength, nextBatch)
 	mpm.loadDuration += time.Since(start)
 	mpm.evtDuration += evtCost
 	mpm.allDuration += allCost

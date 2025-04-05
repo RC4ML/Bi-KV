@@ -49,7 +49,7 @@ class LLMScheduler:
         working_prompt_list = []
         batch_size = self.num_workers * self.batchsize  # 每批次的大小
         total_prompts = len(self.prompt_list)
-        for prompt in self.prompt_list:
+        for ind, prompt in enumerate(self.prompt_list):
             self._id_counter += 1
             prompt.task_id = self._id_counter
             working_prompt_list.append(prompt)
@@ -57,10 +57,18 @@ class LLMScheduler:
             if cnt % batch_size == 0:
                 ans_dict = self._check_batch(working_prompt_list)
                 self._send_prompt_batch(working_prompt_list,ans_dict)
+                if ind+batch_size<len(self.prompt_list):
+                    next_batch = self.prompt_list[ind:ind+batch_size]
+                else:
+                    next_batch = self.prompt_list[ind:]
+                self._write_next_batch(next_batch)
                 working_prompt_list = []
         # 处理尾巴部分（未整除的 prompts）
         remaining = total_prompts % batch_size  # 剩余未整除的数量
         if remaining > 0:  # 检查是否有剩余
+            file_path = "../hackFlag.txt"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("0")
             self._send_prompt_batch(self.prompt_list[-remaining:])
                         
     def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict):
@@ -151,6 +159,9 @@ class LLMScheduler:
             channel.close()
         
         # 控制写
+        file_path = "../hackFlag.txt"
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("1")
         future_list = []
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
@@ -225,6 +236,39 @@ class LLMScheduler:
         ans_dict = json.loads(cache_miss_dict_data.msg)
         # print(f"ans_dict:{ans_dict}")
         return ans_dict
+    
+    def _write_next_batch(self,prompt_list:List[InputPrompt]):
+        send_list = []
+        for prompt in prompt_list:
+            # 用户优先
+            token_num = prompt.user_history_tokens
+            # 需要一个标识
+            task_info = {
+                    "request_id": prompt.task_id,
+                    "id" : prompt.user_id+2000000,
+                    "token_num" : token_num,
+                    "index" : 0,
+                    "task_type" : SIGNAL_CHECK,
+                    "type" : 'user cache',
+                    "task_num" : 1
+            }
+            send_list.append(task_info)
+            # item优先
+            for ind,i in enumerate(prompt.items):
+                token_num = i.token_count
+                task_info = {
+                    "request_id": prompt.task_id,
+                    "id" : i.item_id,
+                    "token_num" : token_num,
+                    "index" : ind,
+                    "task_type" : SIGNAL_CHECK,
+                    "type" : 'item cache',
+                    "task_num" : len(prompt.items)
+                }
+                send_list.append(task_info)
+        file_path = "../next_batch.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(send_list, f, ensure_ascii=False, indent=4)
 
     def schedule_strategy(self):
         pass

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	utils "github.com/RC4ML/Bi-KV/Utils"
 	pb "github.com/RC4ML/Bi-KV/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -33,6 +34,8 @@ type CacheCoordinator struct {
 	pageManager          *MultiPageManager // MultiPageManager 的 Go 实现
 	cacheMissDict        map[int32]map[int32]int32
 	server               *grpc.Server
+	hackFlag             int
+	nextBatchIDs         map[int]struct{}
 }
 
 // NewCacheCoordinator 初始化调度器
@@ -53,6 +56,8 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cac
 		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks)), // 初始化 PageManager
 		cacheMissDict:        make(map[int32]map[int32]int32),
 		server:               server,
+		hackFlag:             0,
+		nextBatchIDs:         make(map[int]struct{}),
 	}
 	kvcacheNum := int(cc.kvcacheNum)
 	for i := range kvcacheNum {
@@ -70,6 +75,19 @@ func (cc *CacheCoordinator) Strategy(reqID int32) int32 {
 // ReceiveTasksFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.Empty, error) {
 	log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
+	cc.lock.Lock()
+	hackFlag, _ := utils.ReadText("../hackFlag.txt")
+	cc.hackFlag = hackFlag
+	if hackFlag == 1 {
+		log.Println("Found Hack Flag. Start Hacking Mode.")
+		nextBatch, _ := utils.ReadJsonTask("../next_batch.json")
+		nextBatchIDs := make(map[int]struct{})
+		for _, task := range nextBatch {
+			nextBatchIDs[task.ID] = struct{}{}
+		}
+		cc.nextBatchIDs = nextBatchIDs
+	}
+	cc.lock.Unlock()
 	for _, task := range req.Tasks {
 		task.CacheWorker = int32(cc.Strategy(task.RequestId + task.Id))
 		cc.requestQueue <- task
@@ -162,10 +180,17 @@ func (cc *CacheCoordinator) processRequests() {
 					// taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
-					cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
-					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = pages
+					if cc.hackFlag == 0 {
+						cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+						cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+						taskInfo.CacheWorker = cacheWorker
+						taskInfo.CachePagesList = pages
+					} else {
+						cacheWorker, pages := cc.pageManager.LoadItemHack(taskInfo.Id, int(taskInfo.TokenNum), cc.nextBatchIDs)
+						cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+						taskInfo.CacheWorker = cacheWorker
+						taskInfo.CachePagesList = pages
+					}
 				}
 
 				cacheWorker := int(taskInfo.CacheWorker)
