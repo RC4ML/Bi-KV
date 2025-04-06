@@ -335,7 +335,7 @@ func (cc *CacheCoordinator) ReceiveTasksFromScheduler(ctx context.Context, req *
 	for key := range cacheMiss {
 		// 若user计算量大于item计算量
 		if userMiss[key] > itemMiss[key] {
-			cacheMiss[key] = 1
+			cacheMiss[key] = 0
 		}
 	}
 	data, err := json.Marshal(cacheMiss)
