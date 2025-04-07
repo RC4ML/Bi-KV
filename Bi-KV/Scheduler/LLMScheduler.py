@@ -171,12 +171,15 @@ class LLMScheduler:
     def set_prompt_generator(self, prompt_generator:LLMInput):
         self.prompt_generator = prompt_generator
 
-    def start(self, iter_round:int, batchsize:int):
+    def start(self, iter_round:int, batchsize:int, timestep_map = None):
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
-        for _ in range(iter_round):
-            input_prompt_list = self.prompt_generator.Generate(batchsize)
+        for timestep in range(iter_round):
+            if timestep_map != None:
+                input_prompt_list = self.prompt_generator.generate_time_series(batchsize,timestep,timestep_map)
+            else:
+                input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)
         # self.process_prompt()
         self.process_prompt_batch()

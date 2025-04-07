@@ -37,7 +37,7 @@ def run_worker(rank, world_size):
         init_rpc_backend(f"LLMScheduler{rank}", rank, world_size)
         llm_input = LLMInput(20,500,args)
         llm_input.set_random("weighted")
-        generate_res = llm_input.Generate(100)
+        generate_res = llm_input.generate(100)
         scheduler = LLMScheduler(world_size=world_size)
         time.sleep(1)
         scheduler.add_prompt_list(generate_res)

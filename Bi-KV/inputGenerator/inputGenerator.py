@@ -33,7 +33,7 @@ class LLMInput():
         self.poisson_lambda = poisson_lambda
         self.random_name = ""
 
-    def Generate(self,batch_size: int) -> List[InputPrompt]:
+    def generate(self,batch_size: int) -> List[InputPrompt]:
         prompts = []
         poisson_numbers = np.random.poisson(lam=self.poisson_lambda, size=batch_size)
         for ind,i in enumerate(self._get_random_index(batch_size)):
@@ -43,6 +43,31 @@ class LLMInput():
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
             prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp))
+        return prompts
+    
+    def generate_time_series(self,batch_size:int,timestep:int,time_step_map) -> List[InputPrompt]:
+        '''根据时序数据产生batch'''
+        prompts = []
+        user_list = time_step_map[str(timestep)]
+        user_list = random.sample(user_list[:1024],batch_size)
+        batch_counter = 0
+        for i in user_list:
+            user_id = i[0]
+            access_times = i[1]
+            data_point = self.dataset[user_id]
+            user_id = data_point['user_id']
+            user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+            items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
+            prompt = InputPrompt(user_id,user_history_tokens,items,timestep)
+            if batch_counter+access_times<batch_size:
+                prompts.extend([prompt]*access_times)
+                batch_counter+=access_times
+            else:
+                prompts.extend([prompt]*(batch_size-batch_counter))
+                batch_counter = batch_size-1
+            if batch_counter == batch_size-1:
+                break
+        print(prompts)
         return prompts
     
     def reset_k(self,k:int) -> None:
