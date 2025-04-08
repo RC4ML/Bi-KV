@@ -148,7 +148,7 @@ func (cc *CacheCoordinator) processRequests() {
 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
 					} else {
 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-						cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+						// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 						taskInfo.TaskType = SIGNAL_SEND
 						taskInfo.CacheWorker = cacheWorker
 						taskInfo.CachePagesList = pages
@@ -163,7 +163,7 @@ func (cc *CacheCoordinator) processRequests() {
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
-					cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+					// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
 				}
@@ -244,11 +244,11 @@ func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.T
 		return
 	}
 	// 解除保护
-	for _, i := range reqList {
-		if i.TaskType != SIGNAL_CHECK && i.Id != -1 {
-			cc.pageManager.pageManagers[cacheWorker].RemoveProtected(i.Id)
-		}
-	}
+	// for _, i := range reqList {
+	// 	if i.TaskType != SIGNAL_CHECK && i.Id != -1 {
+	// 		cc.pageManager.pageManagers[cacheWorker].RemoveProtected(i.Id)
+	// 	}
+	// }
 	var confirmationMsg map[int32]int32
 	if err := json.Unmarshal([]byte(resp.Msg), &confirmationMsg); err != nil {
 		log.Printf("[CacheCoordinator] Failed to unmarshal: %v\n", err)

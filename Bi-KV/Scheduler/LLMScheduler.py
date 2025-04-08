@@ -71,8 +71,9 @@ class LLMScheduler:
             prompt_order = PromptOrder(prompt)
             # 历史优先，调度用户历史kvcache
             # if prompt_order == "User History First":
-            if ans_dict[str(prompt.task_id)] == 1:
-                infer_worker = self.strategy(self._id_counter)
+            # if ans_dict[str(prompt.task_id)] == 1:
+            if True:
+                infer_worker = self.strategy(prompt.task_id)
                 token_num = prompt.user_history_tokens
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = prompt.task_id,
@@ -106,7 +107,7 @@ class LLMScheduler:
 
             # 商品优先，调度*一组*商品kvcache
             elif ans_dict[str(prompt.task_id)] == 0:
-                infer_worker = self.strategy(self._id_counter)
+                infer_worker = self.strategy(prompt.task_id)
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
                     token_num = i.token_count
