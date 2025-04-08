@@ -50,24 +50,38 @@ class LLMInput():
         prompts = []
         user_list = time_step_map[str(timestep)]
         user_list = random.sample(user_list[:1024],batch_size)
-        batch_counter = 0
-        for i in user_list:
-            user_id = i[0]
-            access_times = i[1]
-            data_point = self.dataset[user_id]
+        # batch_counter = 0
+        # for i in user_list:
+        #     user_id = i[0]
+        #     access_times = i[1]
+        #     data_point = self.dataset[user_id]
+        #     user_id = data_point['user_id']
+        #     user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+        #     items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
+        #     prompt = InputPrompt(user_id,user_history_tokens,items,timestep)
+        #     if batch_counter+access_times<batch_size:
+        #         prompts.extend([prompt]*access_times)
+        #         batch_counter+=access_times
+        #     else:
+        #         prompts.extend([prompt]*(batch_size-batch_counter))
+        #         batch_counter = batch_size-1
+        #     if batch_counter == batch_size-1:
+        #         break
+        # print(prompts)
+        for i in range(batch_size):
+            data_ind = user_list[i][0]
+            access_count = user_list[i][1]
+            data_point = self.dataset[data_ind]
             user_id = data_point['user_id']
             user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
-            prompt = InputPrompt(user_id,user_history_tokens,items,timestep)
-            if batch_counter+access_times<batch_size:
-                prompts.extend([prompt]*access_times)
-                batch_counter+=access_times
-            else:
-                prompts.extend([prompt]*(batch_size-batch_counter))
-                batch_counter = batch_size-1
-            if batch_counter == batch_size-1:
-                break
-        print(prompts)
+            timestamp = timestep  # 模拟timestamp
+            prompt = InputPrompt(user_id,user_history_tokens,items,timestamp)
+            # for _ in range(access_count):
+            prompts.append(prompt)
+            # 很奇怪，这样会卡住
+            # prompts.extend([prompt]*access_count)
+            random.shuffle(prompts)
         return prompts
     
     def reset_k(self,k:int) -> None:
