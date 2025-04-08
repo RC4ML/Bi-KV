@@ -206,10 +206,16 @@ void producer_copy_pages(
     torch::Tensor cache_data,
     torch::Tensor src_offsets,
     torch::Tensor dest_offsets,
-    torch::Tensor page_sizes,
     int page_size
 ) {
-    cuda_producer_copy_pages(cache_data,src_offsets,dest_offsets,page_sizes,producer_ctrl,producer_shared_mem,page_size);
+    cuda_producer_copy_pages(
+        cache_data,
+        src_offsets,
+        dest_offsets,
+        producer_ctrl,
+        producer_shared_mem,
+        page_size
+    );
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

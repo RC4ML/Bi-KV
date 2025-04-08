@@ -43,10 +43,7 @@ void producer_copy_pages(
     torch::Tensor cache_data,
     torch::Tensor src_offsets,
     torch::Tensor dest_offsets,
-    torch::Tensor page_sizes,
-    // SharedControl* producer_ctrl,
-    // void* producer_shared_mem,
-    int page_size
+    int page_size  // 固定页面大小参数
 );
 
 #ifdef __cplusplus
@@ -57,7 +54,6 @@ void cuda_producer_copy_pages(
     torch::Tensor cache_data,
     torch::Tensor src_offsets,
     torch::Tensor dest_offsets,
-    torch::Tensor page_sizes,
     SharedControl* producer_ctrl,
     void* producer_shared_mem,
     int page_size
