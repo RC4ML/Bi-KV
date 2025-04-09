@@ -37,13 +37,21 @@ void producer_cleanup();
 void consumer_init(int device_id, const char* shm_name, size_t buffer_size);
 torch::Tensor consumer_receive();
 void consumer_cleanup();
+// 新增结构体定义张量维度
+struct TensorDims {
+    int64_t total_tokens;
+    int64_t head_size;
+    int64_t num_kv_heads;
+    int64_t num_layers;
+    int64_t kv_pair;
+};
 
-// 新增核心函数声明
 void producer_copy_pages(
     torch::Tensor cache_data,
     torch::Tensor src_offsets,
     torch::Tensor dest_offsets,
-    int page_size  // 固定页面大小参数
+    int page_size,
+    const TensorDims& dims  // 直接传递维度结构体
 );
 
 #ifdef __cplusplus
@@ -56,9 +64,9 @@ void cuda_producer_copy_pages(
     torch::Tensor dest_offsets,
     SharedControl* producer_ctrl,
     void* producer_shared_mem,
-    int page_size
+    int page_size,
+    const TensorDims& dims  // 新增维度参数
 );
-
 #ifdef __cplusplus
 }
 #endif

@@ -17,6 +17,7 @@ from Remote.remote_call import call_remote_method
 from Model.qwen2 import token_shape
 from config import *
 import time
+SM_DEBUG=1
 
 
 
@@ -25,13 +26,19 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.rank = rank
         self.cache_index = int(rank/2) -1
         self.cache_size = cache_size
-        self.cache_data = torch.full(
+        self.device = torch.device(f"cuda:{self.cache_index}")
+        self.cpu_cache_data = torch.full(
             (self.cache_size,) + token_shape, 
             self.rank,
             device='cpu',
             dtype=torch.float16
         )
-        self.device=torch.device(f"cuda:{self.cache_index}" if torch.cuda.is_available() else "cpu")
+        self.cuda_cache_data= torch.full(
+            (self.cache_size,) + token_shape, 
+            self.rank,
+            device=self.device,
+            dtype=torch.float16
+        )
         self.start_pos = 0
         self.page_size = page_size
         self.recv_counter = 0
@@ -39,7 +46,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.master_port = master_port
         self.server = server
         if DEBUG:
-            print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cache_data.size()}，值={self.rank}")
+            print(f"[KVCache][CPU index:{self.cache_index} rank: {self.rank}] 初始化：Tensor大小={self.cpu_cache_data.size()}，值={self.rank}")
 
         # for shared memory
         self.shm_name = f"worker_buffer_{self.cache_index}"  # 唯一共享内存名称
@@ -56,7 +63,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
         start_pos = random.randint(0,self.cache_size/2)
-        send_tensor = self.cache_data[start_pos:start_pos+token_num]
+        send_tensor = self.cpu_cache_data[start_pos:start_pos+token_num]
         dist.send(tensor=send_tensor, dst=dst_rank)
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 请求ID={request_id}, 长度={token_num}")
@@ -94,7 +101,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
                     offset += self.page_size
 
-        send_tensor[:] = self.cache_data[indices]
+        send_tensor[:] = self.cpu_cache_data[indices]
         # print(send_tensor)
         if DEBUG:
             print(f"[KVCache][Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
@@ -183,7 +190,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             start_pos += item_token_num
 
         # 第二步：一次性写入 cache
-        self.cache_data[cache_indices] = recv_tensor[recv_indices]
+        self.cpu_cache_data[cache_indices] = recv_tensor[recv_indices]
     def shared_data_batch(self, combined_task_info: Dict):
         """使用CUDA共享内存传输数据"""
         dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
@@ -208,94 +215,146 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         expected_numel = total_token_num * np.prod(token_shape)
         assert send_tensor.numel() == expected_numel, \
             f"形状不匹配: {send_tensor.shape} vs 预期{token_shape}"
-         # === 页信息预处理 ===
-        pages_info = []
-        current_dest_offset = 0  # 在目标缓冲区中的当前偏移
-        
-        for batch_idx, (page_list, (req_id, req_token_num)) in enumerate(zip(cache_pages_list, id_token_pair_list)):
-            # 遍历每个请求的缓存页
+        indices = torch.empty(total_token_num, dtype=torch.long)
+        offset = 0
+        circle_counter = 0
+        for idx, page_list in enumerate(cache_pages_list):
+            id_token_pair = id_token_pair_list[idx]
+            item_token_num = id_token_pair[1]
             for page_idx, page in enumerate(page_list):
-                src_start = page * self.page_size  # 源缓存中的起始位置
-                
-                # 计算实际需要复制的元素数量
+                start = page * self.page_size
+                circle_counter += 1
                 if page_idx == len(page_list) - 1:
-                    # 最后一页可能不满
-                    copy_size = req_token_num % self.page_size
-                    if copy_size == 0:
-                        copy_size = self.page_size  # 正好整页
+                    size = (item_token_num % self.page_size) if (item_token_num % self.page_size != 0) else self.page_size
+                    indices[offset:offset + size] = torch.arange(start, start + size)
+                    offset += size
                 else:
-                    copy_size = self.page_size
-                    
-                pages_info.append({
-                    'src_start': src_start,
-                    'dest_start': current_dest_offset,
-                    'size': copy_size
-                })
-                
-                current_dest_offset += copy_size
-
-        # === 转换为CUDA张量 ===
+                    indices[offset:offset + self.page_size] = torch.arange(start, start + self.page_size)
+                    offset += self.page_size
         time1 = time.time()
-        
-        # 源起始位置张量 [num_pages,]
-        src_starts = torch.tensor(
-            [info['src_start'] for info in pages_info],
-            dtype=torch.int64,
-            device=self.device
-        )
-        
-        # 目标偏移张量 [num_pages,]
-        dest_starts = torch.tensor(
-            [info['dest_start'] for info in pages_info],
-            dtype=torch.int64,
-            device=self.device
-        )
-        
-        # 页大小张量 [num_pages,]
-        page_sizes = torch.tensor(
-            [info['size'] for info in pages_info],
-            dtype=torch.int64,
-            device=self.device
-        )
-        
-        num_pages = len(pages_info)
-        print(f"页预处理耗时: {time.time()-time1:.4f}s 总页数={num_pages}")
-
-        # === CUDA内核调用 ===
-        time2 = time.time()
-        
-        # 获取连续内存视图
-        cuda_cache_data = self.cache_data.to(self.device)
-        # send_tensor_contiguous = send_tensor.contiguous()
-        
-        # 调用内核接口
-        try:
-            ipc_service.producer_copy_pages(
-                cache_data=cuda_cache_data,
-                src_offsets=src_starts,
-                dest_offsets=dest_starts,
-                page_sizes=page_sizes,
-                page_size=self.page_size,
-            )
-        except RuntimeError as e:
-            raise RuntimeError(f"CUDA内核执行失败: {str(e)}") from e
-
-        torch.cuda.synchronize()  # 确保计时准确
-        print(f"内核执行耗时: {time.time()-time2:.4f}s")
-
-        # # === 更新控制信息 ===
-        # time3 = time.time()
-        
-        # # 计算总数据量
-        # total_bytes = page_sizes.sum().item() * torch.tensor([], dtype=send_tensor.dtype).element_size()
-        
-        # # 更新写入位置（环形缓冲区处理）
-        # self.current_offset = (self.current_offset + total_bytes) % self.buffer_capacity
-        # self.last_valid_offset = self.current_offset - total_bytes  # 记录有效数据起始
+        print(f"get index{time1-time0}")
+        time0 = time.time()
+        send_tensor[:] = self.cuda_cache_data[indices]
+        time1 = time.time()
+        # time1 = time.time()
+        print(f"copy pages{time1-time0}")
+        if DEBUG:
+            print(f"[KVCache]共享内存[Rank {self.rank}] send_tensor shape: {send_tensor.size()} token num: {token_num}")
+        time0 = time.time()
+        ipc_service.producer_send(send_tensor)
+        time1 = time.time()
+        print(f"ipc_service.producer_send{time1-time0}")
         if DEBUG:
             print(f"内部shared once time: {time1-time0}s, total_token_num: {total_token_num},throughput: {((token_num*8*28*128)/(time1-time0)/(1e9))} GB/s")
         if DEBUG:
             print(f"[KVCache]共享内存[Rank {self.rank}] 完成发送数据到 Rank {dst_rank}, 长度={token_num}")
+    def shared_data_batch_pages(self, combined_task_info: Dict):
+        """使用CUDA共享内存传输数据（带详细性能分析）"""
+        total_time_start = time.perf_counter()
+        dst_rank = 2*combined_task_info['infer_worker'] + WORKER_offset
+        token_num = combined_task_info['token_num']
+        id_token_pair_list = combined_task_info['id_token_pair']
+        cache_pages_list = combined_task_info['cache_pages_list']
+        
+        if SM_DEBUG:
+            print(f"\n[KVCache][Rank {self.rank}] 开始共享数据到 Rank {dst_rank}, token数={token_num}")
+
+        # ==================== 1. 数据准备阶段 ====================
+        prep_start = time.perf_counter()
+        
+        # 计算总token数
+        total_token_num = sum(id_token_pair[1] for id_token_pair in id_token_pair_list)
+        
+        # 准备源数据（从CPU到GPU）
+        data_transfer_start = time.perf_counter()
+        src_data = self.cuda_cache_data
+        data_transfer_end = time.perf_counter()
+        
+        prep_end = time.perf_counter()
+        if SM_DEBUG:
+            print(f"[阶段1] 数据准备耗时: {(prep_end-prep_start)*1000:.2f}ms (含GPU传输: {(data_transfer_end-data_transfer_start)*1000:.2f}ms)")
+
+        # ==================== 2. 页面索引计算 ====================
+        index_start = time.perf_counter()
+        
+        page_indices = []
+        page_offsets = []
+        current_offset = 0
+        
+        for idx, page_list in enumerate(cache_pages_list):
+            item_token_num = id_token_pair_list[idx][1]
+            for page_idx, page in enumerate(page_list):
+                # 计算每个页面的实际大小
+                size = (item_token_num % self.page_size) if (page_idx == len(page_list)-1 and 
+                        item_token_num % self.page_size != 0) else self.page_size
+                
+                page_indices.append(page)
+                page_offsets.append(current_offset)
+                current_offset += size
+        
+        index_end = time.perf_counter()
+        if SM_DEBUG:
+            print(f"[阶段2] 页面索引计算耗时: {(index_end-index_start)*1000:.2f}ms")
+            print(f"        总页面数: {len(page_indices)}, 总元素数: {current_offset}")
+
+        # ==================== 3. 张量转换 ====================
+        tensor_start = time.perf_counter()
+        
+        # 转换为CUDA张量
+        src_offsets = torch.tensor(
+            [p * self.page_size for p in page_indices],
+            dtype=torch.int64, 
+            device=self.device
+        )
+        dest_offsets = torch.tensor(
+            page_offsets,
+            dtype=torch.int64, 
+            device=self.device
+        )
+         # 创建TensorDims对象而不是字典
+        dims = ipc_service.TensorDims()
+        dims.total_tokens = len(page_indices) * self.page_size
+        dims.head_size = 128
+        dims.num_kv_heads = 2
+        dims.num_layers = 28
+        dims.kv_pair = 2
+        # 计算总数据量
+        total_tokens = len(page_indices) * self.page_size
+        data_size = total_tokens*128*8*28
+        tensor_end = time.perf_counter()
+        if SM_DEBUG:
+            print(f"[阶段3] 张量转换耗时: {(tensor_end-tensor_start)*1000:.2f}ms")
+
+        # ==================== 4. IPC页面拷贝 ====================
+        # dims = [
+        # self.page_size *src_offsets.shape[0] ,  # 会被覆盖为总token数
+        # 128,2,28,2
+        # ]
+         # 创建TensorDims对象而不是字典
+        ipc_start = time.perf_counter()
+
+        ipc_service.producer_copy_pages(
+            src_data,
+            src_offsets,
+            dest_offsets,
+            self.page_size,
+            dims
+        )
+        
+        ipc_end = time.perf_counter()
+        if SM_DEBUG:
+            print(f"[阶段4] IPC页面拷贝耗时: {(ipc_end-ipc_start)*1000:.2f}ms")
+            print(f"total_tokens:{total_tokens}  数据量: {data_size/1024/1024:.2f}MB, " 
+                f"带宽: {data_size/(ipc_end-ipc_start)/1024/1024:.2f}MB/s")
+
+        # ==================== 5. 总体统计 ====================
+        total_time_end = time.perf_counter()
+        total_time = total_time_end - total_time_start
+        if SM_DEBUG:
+            print(f"[阶段5] 总耗时: {total_time*1000:.2f}ms")
+            print(f"        平均每token耗时: {total_time/token_num*1000:.2f}ms")
+            print(f"[KVCache][Rank {self.rank}] 完成发送数据到 Rank {dst_rank}")
+
 
     def terminate(self):
         if DEBUG:
@@ -497,9 +556,9 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     start_time=time.time()
                     if cache_worker== infer_worker:
                         shared_start=time.time()
-                        self.shared_data_batch(task_info)  # 先写入CUDA共享内存，再call RPC,避免worker等待cache写入共享内存
+                        self.shared_data_batch_pages(task_info)  # 先写入CUDA共享内存，再call RPC,避免worker等待cache写入共享内存
                         shared_end=time.time()
-                        print(f"self.shared_data_batch{shared_end-shared_start}")
+                        print(f"self.shared_data_batch time:{shared_end-shared_start}")
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
@@ -524,7 +583,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                             time_send2=time.time()
                             with open(f'e2e_log_rank_send{self.rank}.txt', 'a+') as f:
                                 f.write(f"e2e send once time: {time_send2-start_time}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_send2-start_time)/(1e9))} GB/s\n")
-                            print(f"e2e send once time: {time_send2-start_time}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_send2-start_time)/(1e9))} GB/s")
+                            if DEBUG:
+                                print(f"e2e send once time: {time_send2-start_time}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_send2-start_time)/(1e9))} GB/s")
                     # print(f"[KVCache][RANK {self.rank}] 执行Send请求完成 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     self.send_counter += 1
 

@@ -144,7 +144,7 @@ void producer_send(torch::Tensor tensor) {
 
 // Consumer接收数据
 torch::Tensor consumer_receive() {
-    sem_wait(&consumer_ctrl->sem_start);
+    //sem_wait(&consumer_ctrl->sem_start);
 
     // 构造张量
     void* read_ptr = static_cast<char*>(consumer_shared_mem) + consumer_ctrl->last_valid_offset;
@@ -206,7 +206,8 @@ void producer_copy_pages(
     torch::Tensor cache_data,
     torch::Tensor src_offsets,
     torch::Tensor dest_offsets,
-    int page_size
+    int page_size,
+    const TensorDims& dims 
 ) {
     cuda_producer_copy_pages(
         cache_data,
@@ -214,11 +215,19 @@ void producer_copy_pages(
         dest_offsets,
         producer_ctrl,
         producer_shared_mem,
-        page_size
+        page_size,
+        dims
     );
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    pybind11::class_<TensorDims>(m, "TensorDims")
+        .def(pybind11::init<>())
+        .def_readwrite("total_tokens", &TensorDims::total_tokens)
+        .def_readwrite("head_size", &TensorDims::head_size)
+        .def_readwrite("num_kv_heads", &TensorDims::num_kv_heads)
+        .def_readwrite("num_layers", &TensorDims::num_layers)
+        .def_readwrite("kv_pair", &TensorDims::kv_pair);
     m.def("producer_init", &producer_init, "Init producer");
     m.def("producer_send", &producer_send, "Send data");
     m.def("producer_cleanup", &producer_cleanup, "Cleanup producer");

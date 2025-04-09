@@ -37,24 +37,26 @@ void cuda_producer_copy_pages(
     torch::Tensor dest_offsets,
     SharedControl* producer_ctrl,
     void* producer_shared_mem,
-    int page_size  // 固定页面大小参数
+    int page_size,
+    const TensorDims& dims  // 新增维度参数
 ) {
     TORCH_CHECK(cache_data.device().is_cuda(), "Cache data must be on CUDA");
     TORCH_CHECK(cache_data.is_contiguous(), "Cache data must be contiguous");
 
     const int num_pages = src_offsets.size(0);
-    const int data_size = num_pages * page_size * sizeof(half);
+    const int elements_per_token = dims.head_size * dims.num_kv_heads * dims.num_layers * dims.kv_pair;
+    const int page_elements = page_size * elements_per_token;
+    const int data_size = num_pages * page_elements * sizeof(half);
     
     // 检查缓冲区溢出
     if (producer_ctrl->current_offset + data_size > producer_ctrl->buffer_size) {
         producer_ctrl->current_offset = 0;
     }
 
-    // 二维Grid配置（优化大规模页面处理）
-    dim3 grid((num_pages + 31) / 32, 32);  // 32列二维Grid
-    dim3 block(1024);  // 每个Block 1024线程
+    // 二维Grid配置
+    dim3 grid((num_pages + 31) / 32, 32);
+    dim3 block(1024);
 
-    // 获取共享内存指针
     void* write_ptr = static_cast<void*>(producer_shared_mem) + producer_ctrl->current_offset;
     
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
@@ -69,7 +71,7 @@ void cuda_producer_copy_pages(
                 src_offsets.data_ptr<int64_t>(),
                 dest_offsets.data_ptr<int64_t>(),
                 num_pages,
-                page_size
+                page_elements
             );
         }
     );
@@ -78,9 +80,15 @@ void cuda_producer_copy_pages(
     cudaDeviceSynchronize();
     producer_ctrl->last_valid_offset = producer_ctrl->current_offset;
     producer_ctrl->current_offset += data_size;
-    producer_ctrl->tensor_dim = 1;
-    producer_ctrl->tensor_shape[0] = num_pages * page_size;
+    
+    // 设置五维张量形状
+    producer_ctrl->tensor_dim = 5;
+    producer_ctrl->tensor_shape[0] = num_pages * page_size;  // 总token数
+    producer_ctrl->tensor_shape[1] = dims.head_size;        // 128
+    producer_ctrl->tensor_shape[2] = dims.num_kv_heads;     // 2
+    producer_ctrl->tensor_shape[3] = dims.num_layers;       // 28
+    producer_ctrl->tensor_shape[4] = dims.kv_pair;          // 2
+    
     producer_ctrl->data_size = data_size;
-
-    sem_post(&producer_ctrl->sem_start);
+    //sem_post(&producer_ctrl->sem_start);
 }

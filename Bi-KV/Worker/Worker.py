@@ -86,7 +86,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         buffer_size = self.compute_buffer.element_size() * self.compute_buffer.nelement()
         print(f"buffer_size:{buffer_size/(1024**2)}MB")
         # 初始化生产者端共享内存
-        ipc_service.consumer_init(device_id, self.shm_name.encode(), buffer_size)
+        ipc_service.consumer_init(device_id, self.shm_name.encode(), buffer_size*5)
 
     def forward(self, task_info_list:List):
         coordinator_owner = self.coordinator_rank.owner()
@@ -214,7 +214,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             # print(f"[Worker][RANK {self.rank}] start get shared memory")
             # 从共享内存接收CUDA张量
             start_read=time.time()
-            ipc_service.consumer_receive()
+            recv_tensor=ipc_service.consumer_receive()
             end_read=time.time()
             
             # 将张量复制到CPU

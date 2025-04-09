@@ -11,6 +11,7 @@ class PageManager:
         # self.buffer = cache_size*['']
         self.page_size = page_size
         self.num_pages = cache_size // page_size
+        print(f"page_size,num_pages{page_size,self.num_pages}")
         # set是不是不合适，换成队列？
         self.free_pages = set(range(self.num_pages))
         self.page_table = {}  # 键为item ID，值为{'pages': set, 'last_accessed': int}
