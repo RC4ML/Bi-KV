@@ -346,12 +346,22 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         send_task_list = []
         hit_counter = 0
         length_counter = 0
+        length_counter_user = 0
+        length_counter_item = 0
+        hit_counter_user = 0
+        hit_counter_item = 0
         for task_info in task_info_list:
             item_id = task_info.id
             request_id = task_info.request_id
             cache_miss_dict = self.cache_miss_dict.get(str(request_id),{})
             hit_counter += sum(cache_miss_dict.values())
             length_counter += len(cache_miss_dict)
+            if task_info.type == 'user cache':
+                length_counter_user += len(cache_miss_dict)
+                hit_counter_user += sum(cache_miss_dict.values())
+            if task_info.type == 'item cache':
+                length_counter_item += len(cache_miss_dict)
+                hit_counter_item += sum(cache_miss_dict.values())
             if cache_miss_dict.get(str(item_id)) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info.task_type = SIGNAL_RECV
@@ -362,8 +372,11 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # TODO 适配
         # logging.info(f"length counter {hit_counter}/{length_counter} ")
         hit_rate = hit_counter/length_counter
+        user_hit_rate = hit_counter_user/length_counter_user if length_counter_user != 0 else 0
+        item_hit_rate = hit_counter_item/length_counter_item if length_counter_item != 0 else 0
         # if hit_rate > 0.7 and DEBUG:
-        logging.info(f"[Worker {self.rank}]Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
+        logging.info(f"[Worker {self.rank}] User Hit rate: {user_hit_rate} Item Hit rate: {item_hit_rate} Total Hit rate: {hit_rate}")
+        # logging.info(f"[Worker {self.rank}]Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
