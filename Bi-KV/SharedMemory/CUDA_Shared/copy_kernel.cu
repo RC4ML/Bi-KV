@@ -90,5 +90,5 @@ void cuda_producer_copy_pages(
     producer_ctrl->tensor_shape[4] = dims.kv_pair;          // 2
     
     producer_ctrl->data_size = data_size;
-    //sem_post(&producer_ctrl->sem_start);
+    sem_post(&producer_ctrl->sem_start);
 }

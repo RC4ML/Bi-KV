@@ -144,7 +144,7 @@ void producer_send(torch::Tensor tensor) {
 
 // Consumer接收数据
 torch::Tensor consumer_receive() {
-    //sem_wait(&consumer_ctrl->sem_start);
+    sem_wait(&consumer_ctrl->sem_start);
 
     // 构造张量
     void* read_ptr = static_cast<char*>(consumer_shared_mem) + consumer_ctrl->last_valid_offset;

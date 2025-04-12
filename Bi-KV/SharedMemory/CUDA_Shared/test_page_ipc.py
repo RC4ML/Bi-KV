@@ -38,7 +38,7 @@ def producer_process(device_id, shm_name, num_transfers):
 
         # 页面参数定义
         page_size = 50               # 每页50个token
-        num_pages = 800              # 总页数
+        num_pages = 200              # 总页数
         page_elements = page_size * token_elements  # 716800 elements/page
         total_elements = num_pages * page_elements
 
@@ -63,14 +63,14 @@ def producer_process(device_id, shm_name, num_transfers):
             dtype=torch.int64, device='cuda'
         )
 
-        # 预热传输（不统计）
-        ipc_service.producer_copy_pages(
-            cache_data, 
-            src_offsets, 
-            dest_offsets, 
-            page_size,
-            dims
-        )
+        # # 预热传输（不统计）
+        # ipc_service.producer_copy_pages(
+        #     cache_data, 
+        #     src_offsets, 
+        #     dest_offsets, 
+        #     page_size,
+        #     dims
+        # )
 
         # 正式测试循环
         transfer_times = []
@@ -113,7 +113,7 @@ def consumer_process(device_id, shm_name, buffer_size, num_transfers):
         print(f"[Consumer] Init time: {(init_end-init_start)*1000:.2f}ms")
 
         # 预热（丢弃首轮数据）
-        _ = ipc_service.consumer_receive()
+        #_ = ipc_service.consumer_receive()
 
         # 页面参数定义（必须与生产者一致）
         page_size = 50
@@ -171,7 +171,7 @@ if __name__ == "__main__":
         "device_id": 1,
         "shm_name": "/cuda_ipc_test",
         "buffer_size": 2 * 1024 * 1024 * 1024,  # 2GB缓冲区
-        "num_transfers": 11          # 1次预热 + 10次实测
+        "num_transfers": 2          # 1次预热 + 10次实测
     }
 
     # 启动测试

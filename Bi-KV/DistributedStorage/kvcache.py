@@ -17,7 +17,7 @@ from Remote.remote_call import call_remote_method
 from Model.qwen2 import token_shape
 from config import *
 import time
-SM_DEBUG=1
+SM_DEBUG=0
 
 
 
@@ -39,6 +39,12 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             device=self.device,
             dtype=torch.float16
         )
+        self.max_pages=(self.cache_size+page_size-1)//page_size 
+        self.src_index_pool = torch.empty(self.max_pages, dtype=torch.int64, device=self.device)
+        self.dst_index_pool = torch.empty(self.max_pages, dtype=torch.int64, device=self.device)
+        self.src_index_pool.fill_(-1)  # 用无效值初始化
+        self.dst_index_pool.fill_(-1)
+        #torch.cuda.synchronize()
         self.start_pos = 0
         self.page_size = page_size
         self.recv_counter = 0
@@ -55,7 +61,12 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         except Exception as e:
             print(f"KVcache {self.rank} shared mem init failed: {e}")
         print(f"[KVcach][RANK {self.rank}] Init finish")
-        
+    def get_index_tensors(self, num_pages):
+        assert num_pages <= self.max_pages, f"Requested {num_pages} exceeds pool size {self.max_pages}"
+        return (
+            self.src_index_pool[:num_pages],  # 返回视图，零拷贝
+            self.src_index_pool[:num_pages]
+        )
     def send_data(self,task_info:Dict):
         dst_rank = 2*task_info['infer_worker'] + 2
         request_id = task_info['request_id']
@@ -299,7 +310,9 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
 
         # ==================== 3. 张量转换 ====================
         tensor_start = time.perf_counter()
-        
+        # 获取预分配的张量
+        num_pages = len(combined_task_info['cache_pages_list'])
+        src_offsets, dest_offsets = self.get_index_tensors(num_pages)
         # 转换为CUDA张量
         src_offsets = torch.tensor(
             [p * self.page_size for p in page_indices],
