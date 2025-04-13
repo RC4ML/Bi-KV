@@ -70,7 +70,6 @@ class LLMScheduler:
         # 先check一遍cache
         for ind,prompt in enumerate(prompt_list): 
             prompt_order = PromptOrder(prompt)
-            priority = 0
             # 历史优先，调度用户历史kvcache
             # if prompt_order == "User History First":
             # if ans_dict[str(prompt.task_id)] == 1:
@@ -86,7 +85,7 @@ class LLMScheduler:
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
                     task_num = 1,
-                    priority=priority,
+                    priority=prompt.priority,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -105,12 +104,14 @@ class LLMScheduler:
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
                     task_num = 1,
-                    priority=priority,
+                    priority=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
+                # 商品优先级固定为0
+                priority = 0
             # elif ans_dict[str(prompt.task_id)] == 0:
                 infer_worker = self.strategy(prompt.task_id)
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")

@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"container/heap"
 	"fmt"
 	"log"
 	"math/rand"
@@ -13,22 +14,69 @@ var (
 	evictionLock sync.Mutex // 全局锁，模拟 Python 的 eviction_lock
 )
 
+// PageEntry 定义缓存项
+type PageEntry struct {
+	Pages        []int32 // 分配的页面集合
+	LastAccessed int64   // 最近访问时间戳
+	Protected    int     // 保护计数
+	Priority     int     // 优先级（越小越优先）
+}
+
+// Item 优先队列中的元素
+type Item struct {
+	id           int32   // 缓存项ID
+	priority     int     // 优先级
+	lastAccessed int64   // 最近访问时间
+	pages        []int32 // 页面列表
+	index        int     // 堆中的索引
+}
+
+// PriorityQueue 优先队列
+type PriorityQueue []*Item
+
+func (pq PriorityQueue) Len() int { return len(pq) }
+
+func (pq PriorityQueue) Less(i, j int) bool {
+	// 最小堆：优先级小的优先；优先级相同时，时间戳小的优先
+	if pq[i].priority == pq[j].priority {
+		return pq[i].lastAccessed < pq[j].lastAccessed
+	}
+	return pq[i].priority < pq[j].priority
+}
+
+func (pq PriorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index = i
+	pq[j].index = j
+}
+
+func (pq *PriorityQueue) Push(x any) {
+	n := len(*pq)
+	item := x.(*Item)
+	item.index = n
+	*pq = append(*pq, item)
+}
+
+func (pq *PriorityQueue) Pop() any {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	item.index = -1
+	*pq = old[0 : n-1]
+	return item
+}
+
 // PageManager 单个页面管理器
 type PageManager struct {
 	pmID        int32
 	pageSize    int
 	numPages    int
-	freePages   map[int32]struct{} // 使用 map 模拟 set
-	pageTable   map[int32]PageEntry
-	currentTime int64 // 用于 LRU 的时间戳
+	freePages   map[int32]struct{}  // 使用 map 模拟 set
+	pageTable   map[int32]PageEntry // 缓存项
+	priorities  map[int32]int       // 缓存项的 listLength
+	currentTime int64               // 用于时间戳
 	mu          sync.Mutex
-}
-
-type PageEntry struct {
-	Pages        []int32 // 分配的页面集合，使用slice固定顺序
-	LastAccessed int64   // 最近访问时间戳
-	Protected    int     // 保护计数
-	Priority     int32
 }
 
 // NewPageManager 初始化 PageManager
@@ -40,6 +88,7 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 		numPages:    numPages,
 		freePages:   make(map[int32]struct{}),
 		pageTable:   make(map[int32]PageEntry),
+		priorities:  make(map[int32]int),
 		currentTime: 0,
 	}
 	for i := range numPages {
@@ -49,8 +98,52 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 	return pm
 }
 
+// computePriorities 计算优先级
+func (pm *PageManager) computePriorities() {
+	// 收集所有长度
+	type priorityEntry struct {
+		id       int32
+		priority int
+	}
+	var priorityList []priorityEntry
+	for id, length := range pm.priorities {
+		priorityList = append(priorityList, priorityEntry{id, length})
+	}
+	if len(priorityList) == 0 {
+		return
+	}
+
+	// 按长度排序
+	sort.Slice(priorityList, func(i, j int) bool {
+		return priorityList[i].priority < priorityList[j].priority
+	})
+
+	// 计算百分位阈值
+	n := len(priorityList)
+	threshold70 := int(float64(n) * 0.7)
+	threshold80 := int(float64(n) * 0.8)
+	threshold90 := int(float64(n) * 0.9)
+
+	// 分配优先级
+	for i, entry := range priorityList {
+		priority := 0
+		if i >= threshold90 {
+			priority = 3
+		} else if i >= threshold80 {
+			priority = 2
+		} else if i >= threshold70 {
+			priority = 1
+		}
+		// 更新 pageTable 中的优先级
+		if pe, ok := pm.pageTable[entry.id]; ok {
+			pe.Priority = priority
+			pm.pageTable[entry.id] = pe
+		}
+	}
+}
+
 // LoadItem 加载列表到缓存
-func (pm *PageManager) LoadItem(itemID int32, listLength int) ([]int32, []int32, time.Duration, time.Duration) {
+func (pm *PageManager) LoadItem(itemID int32, listLength int, priority int) ([]int32, []int32, time.Duration, time.Duration) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -77,10 +170,16 @@ func (pm *PageManager) LoadItem(itemID int32, listLength int) ([]int32, []int32,
 	allCost := time.Since(start)
 	evictionLock.Unlock()
 
+	// 记录长度并更新优先级
+	pm.priorities[itemID] = priority
+	pm.computePriorities()
+
+	// 插入新项
 	pm.pageTable[itemID] = PageEntry{
 		Pages:        allocatedPages,
 		LastAccessed: pm.currentTime,
 		Protected:    0,
+		Priority:     pm.pageTable[itemID].Priority, // 优先级已在 computePriorities 中设置
 	}
 	pm.currentTime++
 	return allocatedPages, freedIDs, evtCost, allCost
@@ -100,37 +199,39 @@ func (pm *PageManager) AccessItem(itemID int32) []int32 {
 	panic(fmt.Sprintf("列表 %d 未加载", itemID))
 }
 
-// performEviction 执行 LRU 换出
+// performEviction 执行优先队列换出
 func (pm *PageManager) performEviction(requiredPages int) []int32 {
-	type entry struct {
-		id           int32
-		lastAccessed int64
-		pages        []int32
-	}
-	var lruEntries []entry
-	for id, info := range pm.pageTable {
-		lruEntries = append(lruEntries, entry{id, info.LastAccessed, info.Pages})
-	}
-	sort.Slice(lruEntries, func(i, j int) bool {
-		return lruEntries[i].lastAccessed < lruEntries[j].lastAccessed
-	})
+	pq := make(PriorityQueue, 0)
+	heap.Init(&pq)
 
-	var freedIDs []int32
-	for _, entry := range lruEntries {
-		if pm.pageTable[entry.id].Protected != 0 {
+	// 将所有未保护的项加入优先队列
+	for id, entry := range pm.pageTable {
+		if entry.Protected != 0 {
 			continue
 		}
-		delete(pm.pageTable, entry.id)
-		for _, page := range entry.pages {
+		if entry.Priority != 0 {
+			continue
+		}
+		heap.Push(&pq, &Item{
+			id:           id,
+			priority:     entry.Priority,
+			lastAccessed: entry.LastAccessed,
+			pages:        entry.Pages,
+		})
+	}
+
+	var freedIDs []int32
+	for pq.Len() > 0 && len(pm.freePages) < requiredPages {
+		item := heap.Pop(&pq).(*Item)
+		delete(pm.pageTable, item.id)
+		delete(pm.priorities, item.id) // 删除长度记录
+		for _, page := range item.pages {
 			pm.freePages[page] = struct{}{}
 		}
-		freedIDs = append(freedIDs, entry.id)
+		freedIDs = append(freedIDs, item.id)
 		if DEBUG {
-			log.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
-				time.Now().Unix(), entry.id, len(entry.pages), len(pm.freePages))
-		}
-		if len(pm.freePages) >= requiredPages {
-			break
+			log.Printf("[[%d]] 换出列表 %d，优先级 %d，释放页数 %d 空闲页数: %d\n",
+				time.Now().Unix(), item.id, item.priority, len(item.pages), len(pm.freePages))
 		}
 	}
 
@@ -197,209 +298,10 @@ func (pm *PageManager) GetLoadedLists() []int32 {
 	return ids
 }
 
-// LevelPageManager 优先级页表管理器
-type LevelPageManager struct {
-	pmID             int32
-	pageSize         int
-	priorityPageSize map[int32]int
-	numPages         int
-	freePages        map[int32]map[int32]struct{} // 使用 map 模拟 set
-	pageTable        map[int32]PageEntry
-	currentTime      int64 // 用于 LRU 的时间戳
-	mu               sync.Mutex
-}
-
-// NewPageManager 初始化 PageManager
-func NewLevelPageManager(cacheSize int, pageSize int, pmID int32, l1Size int, l2Size int, l3Size int) *LevelPageManager {
-	l1Pages := l1Size / pageSize
-	l2Pages := l2Size / pageSize
-	l3Pages := l3Size / pageSize
-	pm := &LevelPageManager{
-		pmID:     pmID,
-		pageSize: pageSize,
-		priorityPageSize: map[int32]int{
-			0: l1Pages,
-			1: l2Pages,
-			2: l3Pages,
-		},
-		numPages:    l1Pages + l2Pages + l3Pages,
-		freePages:   make(map[int32]map[int32]struct{}),
-		pageTable:   make(map[int32]PageEntry),
-		currentTime: 0,
-	}
-	pm.freePages[0] = make(map[int32]struct{})
-	pm.freePages[1] = make(map[int32]struct{})
-	pm.freePages[2] = make(map[int32]struct{})
-	for i := range l1Pages {
-		pm.freePages[0][int32(i)] = struct{}{}
-	}
-	for i := l1Pages; i < l2Pages; i++ {
-		pm.freePages[1][int32(i)] = struct{}{}
-	}
-	for i := l2Pages; i < l3Pages; i++ {
-		pm.freePages[2][int32(i)] = struct{}{}
-	}
-	log.Printf("初始空闲页数: L1 %d L2 %d L3 %d\n", l1Pages, l2Pages, l3Pages)
-	return pm
-}
-
-// LoadItem 加载列表到缓存
-func (lpm *LevelPageManager) LoadItem(itemID int32, listLength int, priority int32) ([]int32, []int32, time.Duration, time.Duration) {
-	lpm.mu.Lock()
-	defer lpm.mu.Unlock()
-
-	// 如果已存在，直接返回
-	if _, ok := lpm.pageTable[itemID]; ok {
-		pages := lpm.AccessItem(itemID)
-		return pages, []int32{}, 0, 0
-	}
-
-	requiredPages := (listLength + lpm.pageSize - 1) / lpm.pageSize
-	if requiredPages > lpm.priorityPageSize[priority] {
-		panic(fmt.Sprintf("列表过大，无法存入缓冲区: %d > %d", requiredPages, lpm.numPages))
-	}
-	var evtCost time.Duration
-	var freedIDs []int32
-	evictionLock.Lock()
-	if len(lpm.freePages[priority]) < requiredPages {
-		start := time.Now()
-		freedIDs = lpm.performEviction(requiredPages, priority)
-		evtCost = time.Since(start)
-	}
-	start := time.Now()
-	allocatedPages := lpm.allocatePages(requiredPages, priority)
-	allCost := time.Since(start)
-	evictionLock.Unlock()
-
-	lpm.pageTable[itemID] = PageEntry{
-		Pages:        allocatedPages,
-		LastAccessed: lpm.currentTime,
-		Protected:    0,
-		Priority:     priority,
-	}
-	lpm.currentTime++
-	return allocatedPages, freedIDs, evtCost, allCost
-}
-
-// AccessItem 访问列表并更新时间戳
-func (lpm *LevelPageManager) AccessItem(itemID int32) []int32 {
-	lpm.mu.Lock()
-	defer lpm.mu.Unlock()
-
-	if entry, ok := lpm.pageTable[itemID]; ok {
-		entry.LastAccessed = lpm.currentTime
-		lpm.currentTime++
-		lpm.pageTable[itemID] = entry
-		return entry.Pages
-	}
-	panic(fmt.Sprintf("列表 %d 未加载", itemID))
-}
-
-// performEviction 执行 LRU 换出
-func (lpm *LevelPageManager) performEviction(requiredPages int, priority int32) []int32 {
-	type entry struct {
-		id           int32
-		lastAccessed int64
-		pages        []int32
-	}
-	var lruEntries []entry
-	for id, info := range lpm.pageTable {
-		// 只找当前优先级的lru
-		if info.Priority == priority {
-			lruEntries = append(lruEntries, entry{id, info.LastAccessed, info.Pages})
-		}
-	}
-	// 每次都要sort，是不是可以用优先队列？
-	sort.Slice(lruEntries, func(i, j int) bool {
-		return lruEntries[i].lastAccessed < lruEntries[j].lastAccessed
-	})
-
-	var freedIDs []int32
-	for _, entry := range lruEntries {
-		if lpm.pageTable[entry.id].Protected != 0 {
-			continue
-		}
-		delete(lpm.pageTable, entry.id)
-		for _, page := range entry.pages {
-			lpm.freePages[priority][page] = struct{}{}
-		}
-		freedIDs = append(freedIDs, entry.id)
-		if DEBUG {
-			log.Printf("[[%d]] 换出列表 %d，释放页数 %d 空闲页数: %d\n",
-				time.Now().Unix(), entry.id, len(entry.pages), len(lpm.freePages))
-		}
-		if len(lpm.freePages[priority]) >= requiredPages {
-			break
-		}
-	}
-
-	if len(lpm.freePages[priority]) < requiredPages {
-		panic(fmt.Sprintf("无法换出足够页面，当前空闲页数: %d，要求页数: %d", len(lpm.freePages), requiredPages))
-	}
-	return freedIDs
-}
-
-// SetProtected 设置保护状态
-func (lpm *LevelPageManager) SetProtected(itemID int32) {
-	lpm.mu.Lock()
-	defer lpm.mu.Unlock()
-	if entry, ok := lpm.pageTable[itemID]; ok {
-		entry.Protected++
-		lpm.pageTable[itemID] = entry
-		if DEBUG {
-			log.Printf("[[%d]] 保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
-		}
-	} else {
-		panic(fmt.Sprintf("列表 %d 未加载", itemID))
-	}
-}
-
-// RemoveProtected 取消保护
-func (lpm *LevelPageManager) RemoveProtected(itemID int32) {
-	lpm.mu.Lock()
-	defer lpm.mu.Unlock()
-	if entry, ok := lpm.pageTable[itemID]; ok {
-		entry.Protected--
-		lpm.pageTable[itemID] = entry
-		if DEBUG {
-			log.Printf("[[%d]] 取消保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
-		}
-	} else {
-		panic(fmt.Sprintf("列表 %d 未加载", itemID))
-	}
-}
-
-// allocatePages 分配页面
-func (lpm *LevelPageManager) allocatePages(n int, priority int32) []int32 {
-	if len(lpm.freePages[priority]) < n {
-		panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(lpm.freePages), n))
-	}
-	allocated := make([]int32, n)
-	for range n {
-		for page := range lpm.freePages[priority] {
-			allocated = append(allocated, page)
-			delete(lpm.freePages[priority], page)
-			break
-		}
-	}
-	return allocated
-}
-
-// GetLoadedLists 获取当前加载的列表 ID
-func (lpm *LevelPageManager) GetLoadedLists() []int32 {
-	lpm.mu.Lock()
-	defer lpm.mu.Unlock()
-	var ids []int32
-	for id := range lpm.pageTable {
-		ids = append(ids, id)
-	}
-	return ids
-}
-
 // MultiPageManager 多个 PageManager 的集合
 type MultiPageManager struct {
 	kvcacheNum   int
-	pageManagers []*LevelPageManager
+	pageManagers []*PageManager
 	bufferSize   int
 	pageSize     int
 	numPages     int
@@ -411,10 +313,10 @@ type MultiPageManager struct {
 }
 
 // NewMultiPageManager 初始化 MultiPageManager
-func NewMultiPageManager(cacheSize, pageSize, kvcacheNum, l1Size, l2Size, l3Size int) *MultiPageManager {
+func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager {
 	mpm := &MultiPageManager{
 		kvcacheNum:   kvcacheNum,
-		pageManagers: make([]*LevelPageManager, kvcacheNum),
+		pageManagers: make([]*PageManager, kvcacheNum),
 		bufferSize:   cacheSize,
 		pageSize:     pageSize,
 		numPages:     cacheSize / pageSize,
@@ -424,7 +326,7 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum, l1Size, l2Size, l3Size
 		allDuration:  0,
 	}
 	for i := range kvcacheNum {
-		mpm.pageManagers[i] = NewLevelPageManager(cacheSize, pageSize, int32(i), l1Size, l2Size, l3Size)
+		mpm.pageManagers[i] = NewPageManager(cacheSize, pageSize, int32(i))
 		mpm.cachedIDs[i] = make(map[int32]struct{})
 	}
 	return mpm
@@ -453,7 +355,7 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int, priority int
 		pm.mu.Unlock()
 	}
 
-	var targetPM *LevelPageManager
+	var targetPM *PageManager
 	if maxPageNum > mpm.numPages/10 {
 		targetPM = mpm.pageManagers[0] // 默认第一个，后面更新
 		for _, pm := range mpm.pageManagers {
@@ -469,7 +371,7 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, listLength int, priority int
 
 	targetPMID := targetPM.pmID
 	start := time.Now()
-	allocatedPages, freedIDs, evtCost, allCost := targetPM.LoadItem(itemID, listLength, priority)
+	allocatedPages, freedIDs, evtCost, allCost := targetPM.LoadItem(itemID, listLength, int(priority))
 	mpm.loadDuration += time.Since(start)
 	mpm.evtDuration += evtCost
 	mpm.allDuration += allCost

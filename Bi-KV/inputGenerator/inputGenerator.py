@@ -18,12 +18,13 @@ class PromptItem():
         return self.__str__()
 
 class InputPrompt():
-    def __init__(self,user_id:int,user_history_tokens:int,items:List[PromptItem],timestamp:int) -> None:
+    def __init__(self,user_id:int,user_history_tokens:int,items:List[PromptItem],timestamp:int,priority:int) -> None:
         self.user_id = user_id
         self.user_history_tokens = user_history_tokens
         self.items = items
         self.timestamp = timestamp
         self.task_id = 0
+        self.priority = priority
 
 class LLMInput():
     def __init__(self,k:int,poisson_lambda:500,args:Namespace) -> None:
@@ -76,7 +77,8 @@ class LLMInput():
             user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = timestep  # 模拟timestamp
-            prompt = InputPrompt(user_id,user_history_tokens,items,timestamp)
+            priority = access_count * user_history_tokens
+            prompt = InputPrompt(user_id,user_history_tokens,items,timestamp,priority)
             # for _ in range(access_count):
             prompts.append(prompt)
             # 很奇怪，这样会卡住

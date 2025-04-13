@@ -50,7 +50,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cac
 		stopLimit:            50000,
 		cacheSize:            cacheSize,
 		pageSize:             pageSize,
-		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks), l1Size, l2Size, l3Size), // 初始化 PageManager
+		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks)), // 初始化 PageManager
 		cacheMissDict:        make(map[int32]map[int32]int32),
 		server:               server,
 	}
