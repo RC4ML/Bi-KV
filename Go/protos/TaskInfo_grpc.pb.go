@@ -22,6 +22,7 @@ const (
 	InferWorkerService_ReceiveTasksFromScheduler_FullMethodName = "/InferWorkerService/ReceiveTasksFromScheduler"
 	InferWorkerService_SendKVCacheData_FullMethodName           = "/InferWorkerService/SendKVCacheData"
 	InferWorkerService_RecvKVCacheData_FullMethodName           = "/InferWorkerService/RecvKVCacheData"
+	InferWorkerService_StartWriteCacheData_FullMethodName       = "/InferWorkerService/StartWriteCacheData"
 	InferWorkerService_ShutDown_FullMethodName                  = "/InferWorkerService/ShutDown"
 )
 
@@ -34,6 +35,7 @@ type InferWorkerServiceClient interface {
 	ReceiveTasksFromScheduler(ctx context.Context, in *TaskInfoList, opts ...grpc.CallOption) (*Empty, error)
 	SendKVCacheData(ctx context.Context, in *CombindedTaskInfo, opts ...grpc.CallOption) (*Empty, error)
 	RecvKVCacheData(ctx context.Context, in *CombindedTaskInfo, opts ...grpc.CallOption) (*Empty, error)
+	StartWriteCacheData(ctx context.Context, in *TaskInfoList, opts ...grpc.CallOption) (*Empty, error)
 	ShutDown(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
 }
 
@@ -75,6 +77,16 @@ func (c *inferWorkerServiceClient) RecvKVCacheData(ctx context.Context, in *Comb
 	return out, nil
 }
 
+func (c *inferWorkerServiceClient) StartWriteCacheData(ctx context.Context, in *TaskInfoList, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, InferWorkerService_StartWriteCacheData_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *inferWorkerServiceClient) ShutDown(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Empty)
@@ -94,6 +106,7 @@ type InferWorkerServiceServer interface {
 	ReceiveTasksFromScheduler(context.Context, *TaskInfoList) (*Empty, error)
 	SendKVCacheData(context.Context, *CombindedTaskInfo) (*Empty, error)
 	RecvKVCacheData(context.Context, *CombindedTaskInfo) (*Empty, error)
+	StartWriteCacheData(context.Context, *TaskInfoList) (*Empty, error)
 	ShutDown(context.Context, *Empty) (*Empty, error)
 	mustEmbedUnimplementedInferWorkerServiceServer()
 }
@@ -113,6 +126,9 @@ func (UnimplementedInferWorkerServiceServer) SendKVCacheData(context.Context, *C
 }
 func (UnimplementedInferWorkerServiceServer) RecvKVCacheData(context.Context, *CombindedTaskInfo) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RecvKVCacheData not implemented")
+}
+func (UnimplementedInferWorkerServiceServer) StartWriteCacheData(context.Context, *TaskInfoList) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartWriteCacheData not implemented")
 }
 func (UnimplementedInferWorkerServiceServer) ShutDown(context.Context, *Empty) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ShutDown not implemented")
@@ -192,6 +208,24 @@ func _InferWorkerService_RecvKVCacheData_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InferWorkerService_StartWriteCacheData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskInfoList)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InferWorkerServiceServer).StartWriteCacheData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InferWorkerService_StartWriteCacheData_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InferWorkerServiceServer).StartWriteCacheData(ctx, req.(*TaskInfoList))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InferWorkerService_ShutDown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Empty)
 	if err := dec(in); err != nil {
@@ -228,6 +262,10 @@ var InferWorkerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RecvKVCacheData",
 			Handler:    _InferWorkerService_RecvKVCacheData_Handler,
+		},
+		{
+			MethodName: "StartWriteCacheData",
+			Handler:    _InferWorkerService_StartWriteCacheData_Handler,
 		},
 		{
 			MethodName: "ShutDown",

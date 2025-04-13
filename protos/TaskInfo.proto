@@ -27,7 +27,8 @@ message TaskInfo {
     int32 task_type = 7;
     string type = 8;
     int32 task_num = 9;
-    repeated int32 cache_pages_list = 10;
+    int32 priority = 10;
+    repeated int32 cache_pages_list = 11;
   }
 
 message CombindedTaskInfo {
@@ -69,6 +70,7 @@ service InferWorkerService {
     rpc ReceiveTasksFromScheduler(TaskInfoList) returns (Empty);
     rpc SendKVCacheData(CombindedTaskInfo) returns (Empty);
     rpc RecvKVCacheData(CombindedTaskInfo) returns (Empty);
+    rpc StartWriteCacheData(TaskInfoList) returns (Empty);
     rpc ShutDown(Empty) returns (Empty);  // 关闭 infer worker
 }
 

@@ -1,5 +1,6 @@
 # import uuid
 import json
+import random
 from typing import Dict, List
 
 import grpc
@@ -69,6 +70,7 @@ class LLMScheduler:
         # 先check一遍cache
         for ind,prompt in enumerate(prompt_list): 
             prompt_order = PromptOrder(prompt)
+            priority = 0
             # 历史优先，调度用户历史kvcache
             # if prompt_order == "User History First":
             # if ans_dict[str(prompt.task_id)] == 1:
@@ -83,7 +85,8 @@ class LLMScheduler:
                     index = 0,
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
-                    task_num = 1
+                    task_num = 1,
+                    priority=priority,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -101,12 +104,14 @@ class LLMScheduler:
                     index = -1,
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
-                    task_num = 1
+                    task_num = 1,
+                    priority=priority,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
 
             # 商品优先，调度*一组*商品kvcache
-            elif ans_dict[str(prompt.task_id)] == 0:
+            elif prompt_order == "Item First":
+            # elif ans_dict[str(prompt.task_id)] == 0:
                 infer_worker = self.strategy(prompt.task_id)
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
                 for ind,i in enumerate(prompt.items):
@@ -119,7 +124,8 @@ class LLMScheduler:
                         index = ind,
                         task_type = SIGNAL_CHECK,
                         type = 'item cache',
-                        task_num = len(prompt.items)
+                        task_num = len(prompt.items),
+                        priority=priority,
                     )
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
@@ -134,7 +140,8 @@ class LLMScheduler:
                     index = -1,
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
-                    task_num = len(prompt.items)
+                    task_num = len(prompt.items),
+                    priority=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
 

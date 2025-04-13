@@ -106,7 +106,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error getting rank to IP mapping: %v", err)
 	}
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s, rankToIP)
+	l1Size := config.KvCache.L1Size
+	l2Size := config.KvCache.L2Size
+	l3Size := config.KvCache.L3Size
+	log.Printf("Page size %d L1 size: %d, L2 size: %d, L3 size: %d\n", config.KvCache.PageSize, l1Size, l2Size, l3Size)
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s, rankToIP, l1Size, l2Size, l3Size)
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", rankToIP[rank], masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)

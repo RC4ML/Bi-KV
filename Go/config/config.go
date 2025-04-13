@@ -38,6 +38,9 @@ type Config struct {
 		MaxWorkers int `yaml:"max_workers"`
 		CacheSize  int `yaml:"cache_size"`
 		PageSize   int `yaml:"page_size"`
+		L1Size     int `yaml:"l1_size"`
+		L2Size     int `yaml:"l2_size"`
+		L3Size     int `yaml:"l3_size"`
 	} `yaml:"kv_cache"`
 
 	Worker struct {

@@ -143,7 +143,8 @@ type TaskInfo struct {
 	TaskType       int32                  `protobuf:"varint,7,opt,name=task_type,json=taskType,proto3" json:"task_type,omitempty"`
 	Type           string                 `protobuf:"bytes,8,opt,name=type,proto3" json:"type,omitempty"`
 	TaskNum        int32                  `protobuf:"varint,9,opt,name=task_num,json=taskNum,proto3" json:"task_num,omitempty"`
-	CachePagesList []int32                `protobuf:"varint,10,rep,packed,name=cache_pages_list,json=cachePagesList,proto3" json:"cache_pages_list,omitempty"`
+	Priority       int32                  `protobuf:"varint,10,opt,name=priority,proto3" json:"priority,omitempty"`
+	CachePagesList []int32                `protobuf:"varint,11,rep,packed,name=cache_pages_list,json=cachePagesList,proto3" json:"cache_pages_list,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -237,6 +238,13 @@ func (x *TaskInfo) GetType() string {
 func (x *TaskInfo) GetTaskNum() int32 {
 	if x != nil {
 		return x.TaskNum
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
 	}
 	return 0
 }
@@ -593,7 +601,7 @@ const file_TaskInfo_proto_rawDesc = "" +
 	"\x0eTaskInfo.proto\":\n" +
 	"\vIdTokenPair\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x1b\n" +
-	"\ttoken_num\x18\x02 \x01(\x05R\btokenNum\"\xa8\x02\n" +
+	"\ttoken_num\x18\x02 \x01(\x05R\btokenNum\"\xc4\x02\n" +
 	"\bTaskInfo\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x05R\trequestId\x12\x0e\n" +
@@ -604,9 +612,10 @@ const file_TaskInfo_proto_rawDesc = "" +
 	"\x05index\x18\x06 \x01(\x05R\x05index\x12\x1b\n" +
 	"\ttask_type\x18\a \x01(\x05R\btaskType\x12\x12\n" +
 	"\x04type\x18\b \x01(\tR\x04type\x12\x19\n" +
-	"\btask_num\x18\t \x01(\x05R\ataskNum\x12(\n" +
-	"\x10cache_pages_list\x18\n" +
-	" \x03(\x05R\x0ecachePagesList\"\xee\x02\n" +
+	"\btask_num\x18\t \x01(\x05R\ataskNum\x12\x1a\n" +
+	"\bpriority\x18\n" +
+	" \x01(\x05R\bpriority\x12(\n" +
+	"\x10cache_pages_list\x18\v \x03(\x05R\x0ecachePagesList\"\xee\x02\n" +
 	"\x11CombindedTaskInfo\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x05R\trequestId\x12\x0e\n" +
@@ -637,11 +646,12 @@ const file_TaskInfo_proto_rawDesc = "" +
 	"SIGNAL_ACK\x10\x02\x12\x10\n" +
 	"\fSIGNAL_CHECK\x10\x03\x12\x0f\n" +
 	"\vSIGNAL_SKIP\x10\x04\x12\x14\n" +
-	"\x10SIGNAL_TERMINATE\x10\t2\xc2\x01\n" +
+	"\x10SIGNAL_TERMINATE\x10\t2\xf0\x01\n" +
 	"\x12InferWorkerService\x122\n" +
 	"\x19ReceiveTasksFromScheduler\x12\r.TaskInfoList\x1a\x06.Empty\x12-\n" +
 	"\x0fSendKVCacheData\x12\x12.CombindedTaskInfo\x1a\x06.Empty\x12-\n" +
-	"\x0fRecvKVCacheData\x12\x12.CombindedTaskInfo\x1a\x06.Empty\x12\x1a\n" +
+	"\x0fRecvKVCacheData\x12\x12.CombindedTaskInfo\x1a\x06.Empty\x12,\n" +
+	"\x13StartWriteCacheData\x12\r.TaskInfoList\x1a\x06.Empty\x12\x1a\n" +
 	"\bShutDown\x12\x06.Empty\x1a\x06.Empty2\x9c\x02\n" +
 	"\x17CacheCoordinatorService\x124\n" +
 	"\x1bReceiveTasksFromInferWorker\x12\r.TaskInfoList\x1a\x06.Empty\x12@\n" +
@@ -685,27 +695,29 @@ var file_TaskInfo_proto_depIdxs = []int32{
 	5,  // 3: InferWorkerService.ReceiveTasksFromScheduler:input_type -> TaskInfoList
 	3,  // 4: InferWorkerService.SendKVCacheData:input_type -> CombindedTaskInfo
 	3,  // 5: InferWorkerService.RecvKVCacheData:input_type -> CombindedTaskInfo
-	7,  // 6: InferWorkerService.ShutDown:input_type -> Empty
-	5,  // 7: CacheCoordinatorService.ReceiveTasksFromInferWorker:input_type -> TaskInfoList
-	5,  // 8: CacheCoordinatorService.ReceiveTasksFromScheduler:input_type -> TaskInfoList
-	5,  // 9: CacheCoordinatorService.PollBatchFromInferWorker:input_type -> TaskInfoList
-	8,  // 10: CacheCoordinatorService.StartProcessRequest:input_type -> StartRequest
-	7,  // 11: CacheCoordinatorService.ShutDown:input_type -> Empty
-	5,  // 12: KVCacheService.ReceiveTasksFromCoordinator:input_type -> TaskInfoList
-	7,  // 13: KVCacheService.ShutDown:input_type -> Empty
-	7,  // 14: InferWorkerService.ReceiveTasksFromScheduler:output_type -> Empty
-	7,  // 15: InferWorkerService.SendKVCacheData:output_type -> Empty
-	7,  // 16: InferWorkerService.RecvKVCacheData:output_type -> Empty
-	7,  // 17: InferWorkerService.ShutDown:output_type -> Empty
-	7,  // 18: CacheCoordinatorService.ReceiveTasksFromInferWorker:output_type -> Empty
-	6,  // 19: CacheCoordinatorService.ReceiveTasksFromScheduler:output_type -> ComfirmationMessage
-	6,  // 20: CacheCoordinatorService.PollBatchFromInferWorker:output_type -> ComfirmationMessage
-	7,  // 21: CacheCoordinatorService.StartProcessRequest:output_type -> Empty
-	7,  // 22: CacheCoordinatorService.ShutDown:output_type -> Empty
-	6,  // 23: KVCacheService.ReceiveTasksFromCoordinator:output_type -> ComfirmationMessage
-	7,  // 24: KVCacheService.ShutDown:output_type -> Empty
-	14, // [14:25] is the sub-list for method output_type
-	3,  // [3:14] is the sub-list for method input_type
+	5,  // 6: InferWorkerService.StartWriteCacheData:input_type -> TaskInfoList
+	7,  // 7: InferWorkerService.ShutDown:input_type -> Empty
+	5,  // 8: CacheCoordinatorService.ReceiveTasksFromInferWorker:input_type -> TaskInfoList
+	5,  // 9: CacheCoordinatorService.ReceiveTasksFromScheduler:input_type -> TaskInfoList
+	5,  // 10: CacheCoordinatorService.PollBatchFromInferWorker:input_type -> TaskInfoList
+	8,  // 11: CacheCoordinatorService.StartProcessRequest:input_type -> StartRequest
+	7,  // 12: CacheCoordinatorService.ShutDown:input_type -> Empty
+	5,  // 13: KVCacheService.ReceiveTasksFromCoordinator:input_type -> TaskInfoList
+	7,  // 14: KVCacheService.ShutDown:input_type -> Empty
+	7,  // 15: InferWorkerService.ReceiveTasksFromScheduler:output_type -> Empty
+	7,  // 16: InferWorkerService.SendKVCacheData:output_type -> Empty
+	7,  // 17: InferWorkerService.RecvKVCacheData:output_type -> Empty
+	7,  // 18: InferWorkerService.StartWriteCacheData:output_type -> Empty
+	7,  // 19: InferWorkerService.ShutDown:output_type -> Empty
+	7,  // 20: CacheCoordinatorService.ReceiveTasksFromInferWorker:output_type -> Empty
+	6,  // 21: CacheCoordinatorService.ReceiveTasksFromScheduler:output_type -> ComfirmationMessage
+	6,  // 22: CacheCoordinatorService.PollBatchFromInferWorker:output_type -> ComfirmationMessage
+	7,  // 23: CacheCoordinatorService.StartProcessRequest:output_type -> Empty
+	7,  // 24: CacheCoordinatorService.ShutDown:output_type -> Empty
+	6,  // 25: KVCacheService.ReceiveTasksFromCoordinator:output_type -> ComfirmationMessage
+	7,  // 26: KVCacheService.ShutDown:output_type -> Empty
+	15, // [15:27] is the sub-list for method output_type
+	3,  // [3:15] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
 	3,  // [3:3] is the sub-list for extension extendee
 	0,  // [0:3] is the sub-list for field type_name

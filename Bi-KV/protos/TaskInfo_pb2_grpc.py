@@ -40,11 +40,6 @@ class InferWorkerServiceStub(object):
                 request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
                 response_deserializer=TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
-        self.StartWriteCacheData = channel.unary_unary(
-                '/InferWorkerService/StartWriteCacheData',
-                request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
-                response_deserializer=TaskInfo__pb2.Empty.FromString,
-                _registered_method=True)
         self.SendKVCacheData = channel.unary_unary(
                 '/InferWorkerService/SendKVCacheData',
                 request_serializer=TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
@@ -53,6 +48,11 @@ class InferWorkerServiceStub(object):
         self.RecvKVCacheData = channel.unary_unary(
                 '/InferWorkerService/RecvKVCacheData',
                 request_serializer=TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
+                response_deserializer=TaskInfo__pb2.Empty.FromString,
+                _registered_method=True)
+        self.StartWriteCacheData = channel.unary_unary(
+                '/InferWorkerService/StartWriteCacheData',
+                request_serializer=TaskInfo__pb2.TaskInfoList.SerializeToString,
                 response_deserializer=TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
         self.ShutDown = channel.unary_unary(
@@ -72,12 +72,6 @@ class InferWorkerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StartWriteCacheData(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def SendKVCacheData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -85,6 +79,12 @@ class InferWorkerServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def RecvKVCacheData(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartWriteCacheData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -105,11 +105,6 @@ def add_InferWorkerServiceServicer_to_server(servicer, server):
                     request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
                     response_serializer=TaskInfo__pb2.Empty.SerializeToString,
             ),
-            'StartWriteCacheData': grpc.unary_unary_rpc_method_handler(
-                    servicer.StartWriteCacheData,
-                    request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
-                    response_serializer=TaskInfo__pb2.Empty.SerializeToString,
-            ),
             'SendKVCacheData': grpc.unary_unary_rpc_method_handler(
                     servicer.SendKVCacheData,
                     request_deserializer=TaskInfo__pb2.CombindedTaskInfo.FromString,
@@ -118,6 +113,11 @@ def add_InferWorkerServiceServicer_to_server(servicer, server):
             'RecvKVCacheData': grpc.unary_unary_rpc_method_handler(
                     servicer.RecvKVCacheData,
                     request_deserializer=TaskInfo__pb2.CombindedTaskInfo.FromString,
+                    response_serializer=TaskInfo__pb2.Empty.SerializeToString,
+            ),
+            'StartWriteCacheData': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartWriteCacheData,
+                    request_deserializer=TaskInfo__pb2.TaskInfoList.FromString,
                     response_serializer=TaskInfo__pb2.Empty.SerializeToString,
             ),
             'ShutDown': grpc.unary_unary_rpc_method_handler(
@@ -152,33 +152,6 @@ class InferWorkerService(object):
             request,
             target,
             '/InferWorkerService/ReceiveTasksFromScheduler',
-            TaskInfo__pb2.TaskInfoList.SerializeToString,
-            TaskInfo__pb2.Empty.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StartWriteCacheData(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/InferWorkerService/StartWriteCacheData',
             TaskInfo__pb2.TaskInfoList.SerializeToString,
             TaskInfo__pb2.Empty.FromString,
             options,
@@ -234,6 +207,33 @@ class InferWorkerService(object):
             target,
             '/InferWorkerService/RecvKVCacheData',
             TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
+            TaskInfo__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartWriteCacheData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/InferWorkerService/StartWriteCacheData',
+            TaskInfo__pb2.TaskInfoList.SerializeToString,
             TaskInfo__pb2.Empty.FromString,
             options,
             channel_credentials,
