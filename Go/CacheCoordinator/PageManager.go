@@ -113,23 +113,21 @@ func (pm *PageManager) computePriorities() {
 		return
 	}
 
-	// 按长度排序
+	// 按优先级排序
 	sort.Slice(priorityList, func(i, j int) bool {
 		return priorityList[i].priority < priorityList[j].priority
 	})
 
 	// 计算百分位阈值
+	// TODO threshold可调
 	n := len(priorityList)
 	threshold70 := int(float64(n) * 0.7)
 	threshold80 := int(float64(n) * 0.8)
-	threshold90 := int(float64(n) * 0.9)
 
 	// 分配优先级
 	for i, entry := range priorityList {
 		priority := 0
-		if i >= threshold90 {
-			priority = 3
-		} else if i >= threshold80 {
+		if i >= threshold80 {
 			priority = 2
 		} else if i >= threshold70 {
 			priority = 1

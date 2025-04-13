@@ -85,7 +85,7 @@ class LLMScheduler:
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
                     task_num = 1,
-                    priority=prompt.priority,
+                    priority=prompt.weight,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
