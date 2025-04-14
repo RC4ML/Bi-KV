@@ -53,6 +53,13 @@ void producer_copy_pages(
     int page_size,
     const TensorDims& dims  // 直接传递维度结构体
 );
+void producer_zero_copy_pages(
+    torch::Tensor cpu_data,
+    torch::Tensor page_indices,
+    torch::Tensor dest_offsets,
+    int page_size,
+    const TensorDims& dims
+);
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +73,15 @@ void cuda_producer_copy_pages(
     void* producer_shared_mem,
     int page_size,
     const TensorDims& dims  // 新增维度参数
+);
+void cuda_producer_zero_copy_pages(
+    torch::Tensor cpu_data,
+    torch::Tensor page_indices,
+    torch::Tensor dest_offsets,
+    SharedControl* producer_ctrl,
+    void* producer_shared_mem,
+    int page_size,
+    const TensorDims& dims
 );
 #ifdef __cplusplus
 }

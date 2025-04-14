@@ -1,3 +1,3 @@
 # ninja log v5
-0	12717	1744291795902200939	/data/zzm/Bi-KV/Bi-KV/SharedMemory/CUDA_Shared/build/temp.linux-x86_64-3.10/ipc_service.o	60930fb4129e35f5
-0	29257	1744291812413705404	/data/zzm/Bi-KV/Bi-KV/SharedMemory/CUDA_Shared/build/temp.linux-x86_64-3.10/copy_kernel.o	55a22c6689d212b5
+1	14894	1744553371392667413	/data/zzm/Bi-KV/Bi-KV/SharedMemory/CUDA_Shared/build/temp.linux-x86_64-3.10/ipc_service.o	60930fb4129e35f5
+0	28915	1744553385384264373	/data/zzm/Bi-KV/Bi-KV/SharedMemory/CUDA_Shared/build/temp.linux-x86_64-3.10/copy_kernel.o	55a22c6689d212b5

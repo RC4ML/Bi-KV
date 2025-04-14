@@ -219,7 +219,24 @@ void producer_copy_pages(
         dims
     );
 }
-
+// 添加新的 Zero Copy 页面接口
+void producer_zero_copy_pages(
+    torch::Tensor cpu_data,
+    torch::Tensor page_indices,
+    torch::Tensor dest_offsets,
+    int page_size,
+    const TensorDims& dims
+) {
+    cuda_producer_zero_copy_pages(
+        cpu_data,
+        page_indices,
+        dest_offsets,
+        producer_ctrl,  // 控制结构
+        producer_shared_mem,  // 共享内存指针
+        page_size,
+        dims
+    );
+}
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     pybind11::class_<TensorDims>(m, "TensorDims")
         .def(pybind11::init<>())
@@ -236,4 +253,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("consumer_cleanup", &consumer_cleanup, "Cleanup consumer");
     m.def("producer_copy_pages", &producer_copy_pages, "Direct page copy to shared memory");
     m.def("cuda_producer_copy_pages", &cuda_producer_copy_pages, "cuda Direct page copy to shared memory");
+    m.def("producer_zero_copy_pages", &producer_zero_copy_pages, "Zero copy pages from pinned CPU memory");
 }

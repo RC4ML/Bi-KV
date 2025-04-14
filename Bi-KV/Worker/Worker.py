@@ -234,13 +234,14 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             #     f.write(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
             #         f"throughput: {throughput} GB/s\n")
         else: 
-            #start_recv=time.time()
+            #print("skip send")
+            start_recv=time.time()
             recv_tensor = torch.empty(
             (token_num,) + token_shape, 
             dtype=torch.float16
             )
             dist.recv(tensor=recv_tensor, src=src_rank)
-            #end_recv=time.time()
+            end_recv=time.time()
             # #计算总数据量（字节）
             # total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             # time_diff = end_recv - start_recv

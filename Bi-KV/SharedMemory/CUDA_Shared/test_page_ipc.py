@@ -1,3 +1,4 @@
+# test_page_ipc
 import torch
 import time
 import multiprocessing
@@ -171,7 +172,7 @@ if __name__ == "__main__":
         "device_id": 1,
         "shm_name": "/cuda_ipc_test",
         "buffer_size": 2 * 1024 * 1024 * 1024,  # 2GB缓冲区
-        "num_transfers": 2          # 1次预热 + 10次实测
+        "num_transfers": 11         # 1次预热 + 10次实测
     }
 
     # 启动测试
