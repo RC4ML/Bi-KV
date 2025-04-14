@@ -53,9 +53,8 @@ kv_cache:
   max_workers: 10  # KVCache 的最大线程池大小
   cache_size: 80000  # 缓存大小
   page_size: 25  # 页面大小
-  l1_size: 50000  # L1缓存大小
-  l2_size: 20000  # L2缓存大小
-  l3_size: 10000  # L3缓存大小
+  p0_scale: 0.7  # L1缓存大小
+  p1_scale: 0.8  # L2缓存大小
 
 worker:
   max_workers: 10  # KVCache 的最大线程池大小

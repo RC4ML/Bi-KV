@@ -85,7 +85,7 @@ class LLMScheduler:
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
                     task_num = 1,
-                    priority=prompt.weight,
+                    weight=prompt.weight,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -104,7 +104,7 @@ class LLMScheduler:
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
                     task_num = 1,
-                    priority=0,
+                    weight=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
 
@@ -126,7 +126,7 @@ class LLMScheduler:
                         task_type = SIGNAL_CHECK,
                         type = 'item cache',
                         task_num = len(prompt.items),
-                        priority=priority,
+                        weight=priority,
                     )
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
@@ -142,7 +142,7 @@ class LLMScheduler:
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
                     task_num = len(prompt.items),
-                    priority=priority,
+                    weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
 

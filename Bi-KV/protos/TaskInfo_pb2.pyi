@@ -30,7 +30,7 @@ class IdTokenPair(_message.Message):
     def __init__(self, id: _Optional[int] = ..., token_num: _Optional[int] = ...) -> None: ...
 
 class TaskInfo(_message.Message):
-    __slots__ = ("request_id", "id", "infer_worker", "cache_worker", "token_num", "index", "task_type", "type", "task_num", "priority", "cache_pages_list")
+    __slots__ = ("request_id", "id", "infer_worker", "cache_worker", "token_num", "index", "task_type", "type", "task_num", "weight", "cache_pages_list")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
     INFER_WORKER_FIELD_NUMBER: _ClassVar[int]
@@ -40,7 +40,7 @@ class TaskInfo(_message.Message):
     TASK_TYPE_FIELD_NUMBER: _ClassVar[int]
     TYPE_FIELD_NUMBER: _ClassVar[int]
     TASK_NUM_FIELD_NUMBER: _ClassVar[int]
-    PRIORITY_FIELD_NUMBER: _ClassVar[int]
+    WEIGHT_FIELD_NUMBER: _ClassVar[int]
     CACHE_PAGES_LIST_FIELD_NUMBER: _ClassVar[int]
     request_id: int
     id: int
@@ -51,9 +51,9 @@ class TaskInfo(_message.Message):
     task_type: int
     type: str
     task_num: int
-    priority: int
+    weight: int
     cache_pages_list: _containers.RepeatedScalarFieldContainer[int]
-    def __init__(self, request_id: _Optional[int] = ..., id: _Optional[int] = ..., infer_worker: _Optional[int] = ..., cache_worker: _Optional[int] = ..., token_num: _Optional[int] = ..., index: _Optional[int] = ..., task_type: _Optional[int] = ..., type: _Optional[str] = ..., task_num: _Optional[int] = ..., priority: _Optional[int] = ..., cache_pages_list: _Optional[_Iterable[int]] = ...) -> None: ...
+    def __init__(self, request_id: _Optional[int] = ..., id: _Optional[int] = ..., infer_worker: _Optional[int] = ..., cache_worker: _Optional[int] = ..., token_num: _Optional[int] = ..., index: _Optional[int] = ..., task_type: _Optional[int] = ..., type: _Optional[str] = ..., task_num: _Optional[int] = ..., weight: _Optional[int] = ..., cache_pages_list: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class CombindedTaskInfo(_message.Message):
     __slots__ = ("request_id", "id", "infer_worker", "cache_worker", "token_num", "index", "task_type", "type", "task_num", "cache_pages_list", "id_token_pair")

@@ -143,7 +143,7 @@ type TaskInfo struct {
 	TaskType       int32                  `protobuf:"varint,7,opt,name=task_type,json=taskType,proto3" json:"task_type,omitempty"`
 	Type           string                 `protobuf:"bytes,8,opt,name=type,proto3" json:"type,omitempty"`
 	TaskNum        int32                  `protobuf:"varint,9,opt,name=task_num,json=taskNum,proto3" json:"task_num,omitempty"`
-	Priority       int32                  `protobuf:"varint,10,opt,name=priority,proto3" json:"priority,omitempty"`
+	Weight         int32                  `protobuf:"varint,10,opt,name=weight,proto3" json:"weight,omitempty"`
 	CachePagesList []int32                `protobuf:"varint,11,rep,packed,name=cache_pages_list,json=cachePagesList,proto3" json:"cache_pages_list,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -242,9 +242,9 @@ func (x *TaskInfo) GetTaskNum() int32 {
 	return 0
 }
 
-func (x *TaskInfo) GetPriority() int32 {
+func (x *TaskInfo) GetWeight() int32 {
 	if x != nil {
-		return x.Priority
+		return x.Weight
 	}
 	return 0
 }
@@ -601,7 +601,7 @@ const file_TaskInfo_proto_rawDesc = "" +
 	"\x0eTaskInfo.proto\":\n" +
 	"\vIdTokenPair\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x1b\n" +
-	"\ttoken_num\x18\x02 \x01(\x05R\btokenNum\"\xc4\x02\n" +
+	"\ttoken_num\x18\x02 \x01(\x05R\btokenNum\"\xc0\x02\n" +
 	"\bTaskInfo\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x05R\trequestId\x12\x0e\n" +
@@ -612,9 +612,9 @@ const file_TaskInfo_proto_rawDesc = "" +
 	"\x05index\x18\x06 \x01(\x05R\x05index\x12\x1b\n" +
 	"\ttask_type\x18\a \x01(\x05R\btaskType\x12\x12\n" +
 	"\x04type\x18\b \x01(\tR\x04type\x12\x19\n" +
-	"\btask_num\x18\t \x01(\x05R\ataskNum\x12\x1a\n" +
-	"\bpriority\x18\n" +
-	" \x01(\x05R\bpriority\x12(\n" +
+	"\btask_num\x18\t \x01(\x05R\ataskNum\x12\x16\n" +
+	"\x06weight\x18\n" +
+	" \x01(\x05R\x06weight\x12(\n" +
 	"\x10cache_pages_list\x18\v \x03(\x05R\x0ecachePagesList\"\xee\x02\n" +
 	"\x11CombindedTaskInfo\x12\x1d\n" +
 	"\n" +

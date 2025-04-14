@@ -76,6 +76,8 @@ type PageManager struct {
 	pageTable   map[int32]PageEntry // 缓存项
 	priorities  map[int32]int       // 缓存项的 listLength
 	currentTime int64               // 用于时间戳
+	p0Scale     float64
+	p1Scale     float64
 	mu          sync.Mutex
 }
 
@@ -90,12 +92,19 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 		pageTable:   make(map[int32]PageEntry),
 		priorities:  make(map[int32]int),
 		currentTime: 0,
+		p0Scale:     0.7,
+		p1Scale:     0.8,
 	}
 	for i := range numPages {
 		pm.freePages[int32(i)] = struct{}{}
 	}
 	log.Printf("初始空闲页数: %d\n", len(pm.freePages))
 	return pm
+}
+
+func (pm *PageManager) SetScale(p0scale, p1scale float64) {
+	pm.p0Scale = p0scale
+	pm.p1Scale = p1scale
 }
 
 // computePriorities 计算优先级
@@ -121,8 +130,8 @@ func (pm *PageManager) computePriorities() {
 	// 计算百分位阈值
 	// TODO threshold可调
 	n := len(priorityList)
-	threshold70 := int(float64(n) * 0.7)
-	threshold80 := int(float64(n) * 0.8)
+	threshold70 := int(float64(n) * pm.p0Scale)
+	threshold80 := int(float64(n) * pm.p1Scale)
 
 	// 分配优先级
 	for i, entry := range priorityList {
@@ -311,7 +320,7 @@ type MultiPageManager struct {
 }
 
 // NewMultiPageManager 初始化 MultiPageManager
-func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager {
+func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int, p0Scale, p1Scale float64) *MultiPageManager {
 	mpm := &MultiPageManager{
 		kvcacheNum:   kvcacheNum,
 		pageManagers: make([]*PageManager, kvcacheNum),
@@ -325,6 +334,7 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int) *MultiPageManager 
 	}
 	for i := range kvcacheNum {
 		mpm.pageManagers[i] = NewPageManager(cacheSize, pageSize, int32(i))
+		mpm.pageManagers[i].SetScale(p0Scale, p1Scale)
 		mpm.cachedIDs[i] = make(map[int32]struct{})
 	}
 	return mpm

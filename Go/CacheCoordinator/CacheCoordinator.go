@@ -36,7 +36,7 @@ type CacheCoordinator struct {
 }
 
 // NewCacheCoordinator 初始化调度器
-func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cacheSize int, pageSize int, server *grpc.Server, rankToIP map[int]string, l1Size, l2Size, l3Size int) *CacheCoordinator {
+func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cacheSize int, pageSize int, server *grpc.Server, rankToIP map[int]string, p0Scale, p1Scale float64) *CacheCoordinator {
 	cc := &CacheCoordinator{
 		rank:                 rank,
 		masterPort:           masterPort,
@@ -50,7 +50,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cac
 		stopLimit:            50000,
 		cacheSize:            cacheSize,
 		pageSize:             pageSize,
-		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks)), // 初始化 PageManager
+		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks), p0Scale, p1Scale), // 初始化 PageManager
 		cacheMissDict:        make(map[int32]map[int32]int32),
 		server:               server,
 	}
@@ -162,7 +162,7 @@ func (cc *CacheCoordinator) processRequests() {
 					// taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Priority)
+					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight)
 					// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages

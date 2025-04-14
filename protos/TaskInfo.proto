@@ -27,7 +27,7 @@ message TaskInfo {
     int32 task_type = 7;
     string type = 8;
     int32 task_num = 9;
-    int32 priority = 10;
+    int32 weight = 10;
     repeated int32 cache_pages_list = 11;
   }
 
