@@ -52,13 +52,13 @@ func TestPageManager_Eviction(t *testing.T) {
 
 	// Load items to fill cache
 	for i := range 5 {
-		_, _, _, _ = pm.LoadItem(int32(i), 100, 10+i)
+		_, _, _, _ = pm.LoadItem(int32(i), 100, 0)
 	}
 
 	// Load another item to trigger eviction
 	itemID := int32(6)
 	listLength := 200 // Requires 2 pages
-	_, freedIDs, _, _ := pm.LoadItem(itemID, listLength, 5)
+	_, freedIDs, _, _ := pm.LoadItem(itemID, listLength, 0)
 
 	if len(freedIDs) == 0 {
 		t.Errorf("Expected some items to be evicted")
@@ -81,7 +81,8 @@ func TestPageManager_ProtectedItems(t *testing.T) {
 	// Load an item
 	itemID := int32(1)
 	listLength := 100
-	pm.LoadItem(itemID, listLength, 10)
+	// NOTE 现在weight需要为0保证可以换出
+	pm.LoadItem(itemID, listLength, 0)
 
 	// Protect the item
 	pm.SetProtected(itemID)
@@ -91,7 +92,7 @@ func TestPageManager_ProtectedItems(t *testing.T) {
 
 	// Try to evict by loading more items
 	for i := 2; i <= 6; i++ {
-		pm.LoadItem(int32(i), 100, 10)
+		pm.LoadItem(int32(i), 100, 0)
 	}
 
 	// Verify protected item is still present
@@ -118,7 +119,7 @@ func TestMultiPageManager_LoadAndAccess(t *testing.T) {
 	itemID := int32(1)
 	listLength := 150
 	priority := int32(10)
-	pmID, pages := mpm.LoadItem(itemID, listLength, priority)
+	pmID, pages := mpm.LoadItem(itemID, listLength, priority, "item cache")
 
 	if pmID < 0 || int(pmID) >= kvcacheNum {
 		t.Errorf("Invalid pmID returned: %d", pmID)
@@ -152,7 +153,7 @@ func TestMultiPageManager_ConcurrentAccess(t *testing.T) {
 	priority := int32(10)
 
 	// Load item initially
-	mpm.LoadItem(itemID, listLength, priority)
+	mpm.LoadItem(itemID, listLength, priority, "item cache")
 
 	// Concurrently access the item
 	for range numGoroutines {

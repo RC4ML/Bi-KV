@@ -137,13 +137,16 @@ func (pm *PageManager) LoadItem(itemID int32, itemLength int, weight int) ([]int
 
 	// 记录权重
 	pm.weights[itemID] = weight
-
+	priority := 0
+	if weight != 0 {
+		priority = 1
+	}
 	// 插入新项
 	pm.pageTable[itemID] = PageEntry{
 		Pages:        allocatedPages,
 		LastAccessed: pm.currentTime,
 		Protected:    0,
-		Priority:     0, // 优先级在mpm.computePriorities中设置
+		Priority:     priority, // 优先级在mpm.computePriorities中设置
 	}
 	pm.currentTime++
 	return allocatedPages, freedIDs, evtCost, allCost
@@ -302,10 +305,9 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int, p0Scale, p1Scale f
 }
 
 // LoadItem 加载到缓存
-func (mpm *MultiPageManager) LoadItem(itemID int32, itemLength int, weight int32) (int32, []int32) {
+func (mpm *MultiPageManager) LoadItem(itemID int32, itemLength int, weight int32, itemType string) (int32, []int32) {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
-
 	// 检查是否已在缓存中
 	for idx, cached := range mpm.cachedIDs {
 		if _, ok := cached[itemID]; ok {
@@ -341,7 +343,9 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, itemLength int, weight int32
 	targetPMID := targetPM.pmID
 	start := time.Now()
 	allocatedPages, freedIDs, evtCost, allCost := targetPM.LoadItem(itemID, itemLength, int(weight))
-	mpm.computePriorities()
+	if itemType == "user cache" {
+		mpm.ComputePriorities()
+	}
 	mpm.loadDuration += time.Since(start)
 	mpm.evtDuration += evtCost
 	mpm.allDuration += allCost
@@ -366,7 +370,7 @@ func (mpm *MultiPageManager) AccessItem(itemID int32) (int32, []int32) {
 	return -1, nil // 表示未找到
 }
 
-func (mpm *MultiPageManager) computePriorities() {
+func (mpm *MultiPageManager) ComputePriorities() {
 	type weightEntry struct {
 		id     int32
 		weight int
@@ -375,6 +379,11 @@ func (mpm *MultiPageManager) computePriorities() {
 	var weightList []weightEntry
 	for pmID, pm := range mpm.pageManagers {
 		for id, weight := range pm.weights {
+			// 如果是商品不用排
+			// TODO 看一下初始化priority
+			if weight == 0 {
+				continue
+			}
 			weightList = append(weightList, weightEntry{id, weight, pmID})
 		}
 	}

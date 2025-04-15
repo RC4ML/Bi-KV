@@ -162,7 +162,7 @@ func (cc *CacheCoordinator) processRequests() {
 					// taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight)
+					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight, taskInfo.Type)
 					// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
