@@ -1,10 +1,8 @@
 package coordinator
 
 import (
-	"math/rand"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestPageManager_LoadAndAccessItem(t *testing.T) {
@@ -204,8 +202,4 @@ func TestPageManager_PriorityAssignment(t *testing.T) {
 			t.Errorf("Item %d not found in pageTable", item.id)
 		}
 	}
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }
