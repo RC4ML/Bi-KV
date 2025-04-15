@@ -38,6 +38,7 @@ class LLMScheduler:
         self._id_counter = 0
         self._task_counter = 0
         self.batchsize = 32
+        self.cold_start_flag = True
         
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
@@ -71,9 +72,9 @@ class LLMScheduler:
         for ind,prompt in enumerate(prompt_list): 
             prompt_order = PromptOrder(prompt)
             # 历史优先，调度用户历史kvcache
-            # if prompt_order == "User History First":
+            if prompt_order == "User History First" or self.cold_start_flag:
             # if ans_dict[str(prompt.task_id)] == 1:
-            if True:
+            # if True:
                 infer_worker = self.strategy(prompt.task_id)
                 token_num = prompt.user_history_tokens
                 task_info = TaskInfo_pb2.TaskInfo(
@@ -107,6 +108,7 @@ class LLMScheduler:
                     weight=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
+                self.cold_start_flag = False
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
