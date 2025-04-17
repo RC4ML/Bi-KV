@@ -43,7 +43,7 @@ class LLMInput():
             user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
-            prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp))
+            prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp,0))
         return prompts
     
     def generate_time_series(self,batch_size:int,timestep:int,time_step_map) -> List[InputPrompt]:

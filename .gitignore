@@ -13,3 +13,4 @@ Bi-KV/SharedMemory/CUDA_Shared/cuda_ipc.egg-info
 Bi-KV/SharedMemory/CUDA_Shared/dist
 hackFlag.txt
 next_batch.json
+*.ipynb

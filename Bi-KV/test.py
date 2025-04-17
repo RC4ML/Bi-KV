@@ -8,7 +8,9 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 args.model_code = 'llm'
 args.llm_retrieved_path = "/share/gnn_data/testmodel/LlamaRec/experiments/lru/games/"
 # args.llm_retrieved_path = "/data/testmodel/LlamaRec/experiments/lru/games"
-args.dataset_code = "games"
+args.dataset_code = "clothing"
+args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
+args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 set_template(args)
 
 def show_generate_res(res_list:List[InputPrompt]):

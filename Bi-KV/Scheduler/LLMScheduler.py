@@ -70,7 +70,7 @@ class LLMScheduler:
         task_info_list_dict = {}
         # 先check一遍cache
         for ind,prompt in enumerate(prompt_list): 
-            prompt_order = PromptOrder(prompt)
+            prompt_order = PromptOrder(prompt,ans_dict)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First" or self.cold_start_flag:
             # if ans_dict[str(prompt.task_id)] == 1:
