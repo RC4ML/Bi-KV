@@ -309,9 +309,9 @@ func (cc *CacheCoordinator) sendTerminateSignal() {
 }
 
 func (cc *CacheCoordinator) ReceiveTasksFromScheduler(ctx context.Context, req *pb.TaskInfoList) (*pb.ComfirmationMessage, error) {
-	// cacheMiss 统计一批task的情况 0为item 1为user
+	// cacheMiss 统计一批task的情况 user为user miss的token数 item为item miss的token数
 	// log.Printf("[CacheCoordinator] 收到调度查询请求，长度为%d\n", len(req.Tasks))
-	cacheMiss := make(map[int32]int32)
+	cacheMiss := make(map[int32]map[string]int32)
 	itemMiss := make(map[int32]int32)
 	userMiss := make(map[int32]int32)
 	cc.lock.Lock()
@@ -319,7 +319,7 @@ func (cc *CacheCoordinator) ReceiveTasksFromScheduler(ctx context.Context, req *
 		_, hit := cc.pageManager.AccessItem(task.Id)
 		if _, ok := cacheMiss[task.RequestId]; !ok {
 			// log.Printf("%d init", task.RequestId)
-			cacheMiss[task.RequestId] = 0
+			cacheMiss[task.RequestId] = make(map[string]int32)
 			userMiss[task.RequestId] = 0
 			itemMiss[task.RequestId] = 0
 		}
@@ -333,10 +333,8 @@ func (cc *CacheCoordinator) ReceiveTasksFromScheduler(ctx context.Context, req *
 	}
 	cc.lock.Unlock()
 	for key := range cacheMiss {
-		// 若user计算量大于item计算量
-		if userMiss[key] > itemMiss[key] {
-			cacheMiss[key] = 0
-		}
+		cacheMiss[key]["user miss"] = userMiss[key]
+		cacheMiss[key]["item miss"] = itemMiss[key]
 	}
 	data, err := json.Marshal(cacheMiss)
 	if err != nil {

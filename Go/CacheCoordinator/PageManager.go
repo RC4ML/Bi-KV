@@ -380,7 +380,6 @@ func (mpm *MultiPageManager) ComputePriorities() {
 	for pmID, pm := range mpm.pageManagers {
 		for id, weight := range pm.weights {
 			// 如果是商品不用排
-			// TODO 看一下初始化priority
 			if weight == 0 {
 				continue
 			}

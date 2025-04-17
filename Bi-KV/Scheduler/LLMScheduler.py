@@ -108,7 +108,7 @@ class LLMScheduler:
                     weight=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
-                self.cold_start_flag = False
+                # TODO 冷启动flag位置
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
@@ -175,6 +175,8 @@ class LLMScheduler:
         for future,channel in future_list:
             future.result()
             channel.close()
+        # 一批发送完后修改冷启动
+        self.cold_start_flag = False
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
@@ -243,15 +245,18 @@ class LLMScheduler:
     def schedule_strategy(self):
         pass
 
-
-        
-
-
-def PromptOrder(prompt: InputPrompt) -> str:
+def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
     # print(f"user {user_tokens}, item {item_tokens}")
-    if user_tokens > item_tokens:
+    if user_tokens >= item_tokens:
+        if ans_dict != None:
+            # 如果用户cache命中则用户优先，否则商品优先
+            if ans_dict[str(prompt.task_id)]['user miss']==0:
+                return "User History First"
+            else:
+                # 需要用cache空间判断
+                return "Item First"
         return "User History First"
     else:
         return "Item First"
