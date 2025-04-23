@@ -40,6 +40,7 @@ def set_gloo_socket(ip_prefix="10.0.0."):
     else:
         print("未找到匹配的网络接口，无法设置 GLOO_SOCKET_IFNAME。")
 
+# TODO 这里的IP前缀改成可配置
 def init_network():
     os.environ['MASTER_ADDR'] = os.getenv('MASTER_ADDR', '10.0.0.1')
     os.environ['MASTER_PORT'] = os.getenv('MASTER_PORT', '29051')

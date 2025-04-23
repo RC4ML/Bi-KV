@@ -1,4 +1,4 @@
-from .utils import Prompter, find_goods_index,generate_goods_mask,find_goods_index_llama3,generate_position_ids,get_excel_column_name,find_user_history
+from .utils import Prompter, find_goods_index,generate_goods_mask,find_goods_index_llama3,generate_position_ids,get_excel_column_name,find_user_history,read_and_convert_json
 
 import torch
 import random
@@ -93,12 +93,12 @@ class LLMDataloader():
         self.rng = np.random
         self.save_folder = dataset._get_preprocessed_folder_path()
         seq_dataset = dataset.load_dataset() # 读预处理好的数据
-        self.train = seq_dataset['train'] # u2seq train是用户历史
+        self.train = seq_dataset['train'] # u2seq train是用户历史除去倒数最后两个商品
         self.val = seq_dataset['val'] # u2val val是倒数第二个商品
         self.test = seq_dataset['test'] # u2ans test是最后一个商品
-        self.umap = seq_dataset['umap']
-        self.smap = seq_dataset['smap']
-        self.text_dict = seq_dataset['meta']
+        self.umap = seq_dataset['umap'] # umap 用户id（str）到用户序号（数字）的映射
+        self.smap = seq_dataset['smap'] # smap 商品id（str）到商品序号（数字）的映射
+        self.text_dict = seq_dataset['meta'] # meta 商品序号（数字）到商品名称（str）的映射
         self.user_count = len(self.umap)
         self.item_count = len(self.smap)
         
@@ -115,10 +115,16 @@ class LLMDataloader():
         
         self.llm_retrieved_path = args.llm_retrieved_path
         if not os.path.exists(self.llm_retrieved_path):
-            # 没有推荐模型下构造数据，从商品池中随机选择
-            # print(self.train[:10])
             self.test_users = [u for u in self.train]
-            self.test_candidates = [random.sample(list(self.text_dict.keys()),self.args.llm_negative_sample_size+1) \
+            item_access_path = f"/share/nfs/wsh/Bi-KV/Bi-KV/data/{self.args.dataset_code}/item_access_count.json"
+            item_access_count_dict = read_and_convert_json(item_access_path)
+            # with open(item_access_path, "r", encoding="utf-8") as f:
+            #     item_access_count_dict = json.load(f)
+            item_id_list = list(item_access_count_dict.keys())
+            access_count_list = list(item_access_count_dict.values())
+            # 根据商品访问次数加权
+            self.test_candidates = [random.choices(population=item_id_list,weights=access_count_list\
+                                                   ,k=self.args.llm_negative_sample_size+1) \
                                     for _ in self.test_users]
         else:
             logging.info('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
@@ -139,7 +145,8 @@ class LLMDataloader():
             self.test_users = range(1,len(self.test_probs)+1)
             self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
                                     self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
-
+            print("Construction completed")
+            print(self.test_candidates[0])
 
 
     @classmethod

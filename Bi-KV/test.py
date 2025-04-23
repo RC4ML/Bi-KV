@@ -6,9 +6,10 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 # from huggingface_hub import login
 # login()
 args.model_code = 'llm'
-args.llm_retrieved_path = "/share/gnn_data/testmodel/LlamaRec/experiments/lru/games/"
+# args.llm_retrieved_path = "/share/gnn_data/testmodel/LlamaRec/experiments/lru/games/"
 # args.llm_retrieved_path = "/data/testmodel/LlamaRec/experiments/lru/games"
 args.dataset_code = "clothing"
+args.llm_retrieved_path = f"/share/nfs/sunjie/{args.dataset_code}"
 args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
 args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 set_template(args)

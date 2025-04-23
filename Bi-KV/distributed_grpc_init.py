@@ -23,9 +23,10 @@ import json
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
+dataset_code = "books"
 args.model_code = 'llm'
-args.llm_retrieved_path = "/share/nfs/sunjie/games"
-args.dataset_code = "games"
+args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
+args.dataset_code = dataset_code
 args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
 args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 
