@@ -701,7 +701,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         shared_start=time.time()
                         self.shared_data_batch_pages_cpu2gpu(task_info)  # 先写入CUDA共享内存，再call RPC,避免worker等待cache写入共享内存
                         shared_end=time.time()
-                        print(f"self.shared_data_batch time:{shared_end-shared_start}")
+                        print(f"self.shared_data_batch time:{(shared_end-shared_start)*1000}ms")
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                         remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
@@ -710,7 +710,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                             time_share2=time.time()
                             with open(f'e2e_log_rank_shared{self.rank}.txt', 'a+') as f:
                                 f.write(f"e2e shared once time: {time_share2-start_time}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_share2-start_time)/(1e9))} GB/s\n")
-                            print(f"e2e shared once time: {time_share2-start_time}s,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_share2-start_time)/(1e9))} GB/s")
+                            print(f"e2e shared once time: {(time_share2-start_time)*1000}ms,token_num:{TokenNum}, throughput: {((TokenNum*8*28*128)/(time_share2-start_time)/(1e9))} GB/s")
+                            print(f"grpc overhead ={((time_share2-start_time)-(shared_end-shared_start))*1000}ms")
                             # time_send1=time.time()
                             # self.send_data_batch(task_info)
                             # remote_recv.result()
