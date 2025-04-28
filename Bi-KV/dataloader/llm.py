@@ -116,16 +116,15 @@ class LLMDataloader():
         self.llm_retrieved_path = args.llm_retrieved_path
         if not os.path.exists(self.llm_retrieved_path):
             self.test_users = [u for u in self.train]
-            item_access_path = f"/share/nfs/wsh/Bi-KV/Bi-KV/data/{self.args.dataset_code}/item_access_count.json"
-            item_access_count_dict = read_and_convert_json(item_access_path)
-            # with open(item_access_path, "r", encoding="utf-8") as f:
-            #     item_access_count_dict = json.load(f)
-            item_id_list = list(item_access_count_dict.keys())
-            access_count_list = list(item_access_count_dict.values())
+            item_access_path = f"/share/nfs/wsh/Bi-KV/Bi-KV/data/{self.args.dataset_code}/user_candidate.pickle"
+            logging.info('[Dataloader] Loading item access data from {}'.format(item_access_path))
+            with open(item_access_path, 'rb') as pickle_file:
+                user_candidate_dict = pickle.load(pickle_file)
+            # print(user_candidate_dict)
+            print(f"[Dataloader] user num: {len(user_candidate_dict)} user num: {len(self.test_users)}")
             # 根据商品访问次数加权
-            self.test_candidates = [random.choices(population=item_id_list,weights=access_count_list\
-                                                   ,k=self.args.llm_negative_sample_size+1) \
-                                    for _ in self.test_users]
+            self.test_candidates = [user_candidate_dict[user][:self.args.llm_negative_sample_size+1] \
+                                    for user in self.test_users]
         else:
             logging.info('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
             retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
@@ -145,8 +144,7 @@ class LLMDataloader():
             self.test_users = range(1,len(self.test_probs)+1)
             self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
                                     self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
-            print("Construction completed")
-            print(self.test_candidates[0])
+        logging.info("[Dataloader] Construction completed")
 
 
     @classmethod

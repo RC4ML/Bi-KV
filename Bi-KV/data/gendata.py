@@ -1,3 +1,4 @@
+import random
 import pandas as pd
 
 
@@ -77,8 +78,20 @@ def gendata(dataset_name):
         json.dump(access_count_dict, f, ensure_ascii=False, indent=4)
     print(f"已保存{dataset_name}/item_access_count.json")
 
+    item_id_list = list(access_count_dict.keys())
+    access_count_list = list(access_count_dict.values())
+    # 根据商品访问次数进行采样
+    user_candidate_dict = {}
+    for u in data['train']:
+        user_candidate_dict[u] = random.choices(population=item_id_list,weights=access_count_list\
+                                                   ,k=50)
+    with open(f'./{dataset_name}/user_candidate.pickle', "wb") as f:
+        pickle.dump(user_candidate_dict, f)
+    print(f"已保存{dataset_name}/user_candidate.pickle")
+
 if __name__ == "__main__":
     # dataset_name = 'games'
-    for i in ['games','books','beauty','clothing']:
+    # for i in ['games','beauty','clothing']:
+    for i in ['books']:
         print(f"正在处理数据集: {i}")
         gendata(i)

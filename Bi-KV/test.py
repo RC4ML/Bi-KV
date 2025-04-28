@@ -8,7 +8,7 @@ from inputGenerator.inputGenerator import LLMInput,InputPrompt
 args.model_code = 'llm'
 # args.llm_retrieved_path = "/share/gnn_data/testmodel/LlamaRec/experiments/lru/games/"
 # args.llm_retrieved_path = "/data/testmodel/LlamaRec/experiments/lru/games"
-args.dataset_code = "clothing"
+args.dataset_code = "books"
 args.llm_retrieved_path = f"/share/nfs/sunjie/{args.dataset_code}"
 args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
 args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
@@ -24,15 +24,15 @@ Item Count: {len(i.items)}")
 
 llm_input = LLMInput(20,500,args)
 generate_res = llm_input.generate(100)
-show_generate_res(generate_res)
-llm_input.reset_k(30)
-generate_res = llm_input.generate(10)
-show_generate_res(generate_res)
-print("====Random Mode: Sample====")
-llm_input.set_random("sample")
-generate_res = llm_input.generate(10)
-show_generate_res(generate_res)
-print("====Random Mode: Weighted====")
-llm_input.set_random("weighted")
-generate_res = llm_input.generate(10)
-show_generate_res(generate_res)
+# show_generate_res(generate_res)
+# llm_input.reset_k(30)
+# generate_res = llm_input.generate(10)
+# show_generate_res(generate_res)
+# print("====Random Mode: Sample====")
+# llm_input.set_random("sample")
+# generate_res = llm_input.generate(10)
+# show_generate_res(generate_res)
+# print("====Random Mode: Weighted====")
+# llm_input.set_random("weighted")
+# generate_res = llm_input.generate(10)
+# show_generate_res(generate_res)
