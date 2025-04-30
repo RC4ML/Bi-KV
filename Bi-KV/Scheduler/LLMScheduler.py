@@ -1,5 +1,6 @@
 # import uuid
 import json
+import logging
 import random
 from typing import Dict, List
 
@@ -69,12 +70,17 @@ class LLMScheduler:
         future_list = []
         task_info_list_dict = {}
         # 先check一遍cache
+        user_counter = 0
+        item_counter = 0 
+        total_counter = 0
         for ind,prompt in enumerate(prompt_list): 
+            total_counter += 1
             prompt_order = PromptOrder(prompt,ans_dict)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First" or self.cold_start_flag:
             # if ans_dict[str(prompt.task_id)] == 1:
             # if True:
+                user_counter += 1
                 infer_worker = self.strategy(prompt.task_id)
                 token_num = prompt.user_history_tokens
                 task_info = TaskInfo_pb2.TaskInfo(
@@ -112,6 +118,7 @@ class LLMScheduler:
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
+                item_counter += 1
                 # 商品优先级固定为0
                 priority = 0
             # elif ans_dict[str(prompt.task_id)] == 0:
@@ -147,7 +154,7 @@ class LLMScheduler:
                     weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
-
+        logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
