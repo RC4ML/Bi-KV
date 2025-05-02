@@ -64,9 +64,11 @@ class LLMScheduler:
         # 处理尾巴部分（未整除的 prompts）
         remaining = total_prompts % batch_size  # 剩余未整除的数量
         if remaining > 0:  # 检查是否有剩余
-            self._send_prompt_batch(self.prompt_list[-remaining:])
+            working_prompt_list = self.prompt_list[-remaining:]
+            ans_dict = self._check_batch(working_prompt_list)
+            self._send_prompt_batch(working_prompt_list,ans_dict)
                         
-    def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict):
+    def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict = None,prepare_flag=False):
         future_list = []
         task_info_list_dict = {}
         # 先check一遍cache
@@ -75,9 +77,13 @@ class LLMScheduler:
         total_counter = 0
         for ind,prompt in enumerate(prompt_list): 
             total_counter += 1
-            prompt_order = PromptOrder(prompt,ans_dict)
+            if prepare_flag:
+                prompt_order = "Item First"
+            else:
+                prompt_order = PromptOrder(prompt,ans_dict)
             # 历史优先，调度用户历史kvcache
-            if prompt_order == "User History First" or self.cold_start_flag:
+            if prompt_order == "User History First" or self.cold_start_flag and not prepare_flag:
+            # if prompt_order == "User History First":
             # if ans_dict[str(prompt.task_id)] == 1:
             # if True:
                 user_counter += 1
@@ -92,7 +98,7 @@ class LLMScheduler:
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
                     task_num = 1,
-                    weight=prompt.weight,
+                    weight = 1,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -114,7 +120,6 @@ class LLMScheduler:
                     weight=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
-                # TODO 冷启动flag位置
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
@@ -183,7 +188,8 @@ class LLMScheduler:
             future.result()
             channel.close()
         # 一批发送完后修改冷启动
-        self.cold_start_flag = False
+        if not prepare_flag:
+            self.cold_start_flag = False
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
@@ -191,7 +197,7 @@ class LLMScheduler:
     def set_prompt_generator(self, prompt_generator:LLMInput):
         self.prompt_generator = prompt_generator
 
-    def start(self, iter_round:int, batchsize:int, timestep_map = None):
+    def start(self, iter_round:int, batchsize:int, timestep_map = None, prepare_flag = False):
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
@@ -202,6 +208,8 @@ class LLMScheduler:
                 input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)
         # self.process_prompt()
+        if prepare_flag:
+            self.fill_cache_data(5,256)
         self.process_prompt_batch()
         # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
@@ -249,10 +257,37 @@ class LLMScheduler:
         # print(f"ans_dict:{ans_dict}")
         return ans_dict
 
+    def fill_cache_data(self, iter_round:int, batchsize:int):
+        logging.info(f"[LLMScheduler] Filling Cache Data...")
+        prompt_list = []
+        if not self.prompt_generator:
+            print("[LLMScheduler] Error: prompt_generator is NONE!")
+            return
+        for _ in range(iter_round):
+            input_prompt_list = self.prompt_generator.generate(batchsize)
+            prompt_list.extend(input_prompt_list)
+        cnt = 0
+        working_prompt_list = []
+        batch_size = self.num_workers * self.batchsize  # 每批次的大小
+        total_prompts = len(prompt_list)
+        for prompt in prompt_list:
+            self._id_counter += 1
+            prompt.task_id = self._id_counter
+            working_prompt_list.append(prompt)
+            cnt += 1
+            if cnt % batch_size == 0:
+                self._send_prompt_batch(working_prompt_list,None,True)
+                working_prompt_list = []
+        # 处理尾巴部分（未整除的 prompts）
+        remaining = total_prompts % batch_size  # 剩余未整除的数量
+        if remaining > 0:  # 检查是否有剩余
+            self._send_prompt_batch(self.prompt_list[-remaining:],None,True)
+
     def schedule_strategy(self):
         pass
 
 def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
+    # TODO 根据计算budget判断调度
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
     # print(f"user {user_tokens}, item {item_tokens}")

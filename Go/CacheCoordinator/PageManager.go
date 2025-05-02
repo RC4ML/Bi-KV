@@ -17,7 +17,7 @@ var (
 // PageEntry 定义缓存项
 type PageEntry struct {
 	Pages        []int32 // 分配的页面集合
-	LastAccessed int64   // 最近访问时间戳
+	LastAccessed int64   // 最近访问时间戳（Unix 纳秒）
 	Protected    int     // 保护计数
 	Priority     int     // 优先级（越小越优先）
 }
@@ -69,29 +69,27 @@ func (pq *PriorityQueue) Pop() any {
 
 // PageManager 单个页面管理器
 type PageManager struct {
-	pmID        int32
-	pageSize    int
-	numPages    int
-	freePages   map[int32]struct{}  // 使用 map 模拟 set
-	pageTable   map[int32]PageEntry // 缓存项
-	currentTime int64               // 用于时间戳
-	p0Scale     float64
-	p1Scale     float64
-	mu          sync.Mutex
+	pmID      int32
+	pageSize  int
+	numPages  int
+	freePages map[int32]struct{}  // 使用 map 模拟 set
+	pageTable map[int32]PageEntry // 缓存项
+	p0Scale   float64
+	p1Scale   float64
+	mu        sync.Mutex
 }
 
 // NewPageManager 初始化 PageManager
 func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 	numPages := cacheSize / pageSize
 	pm := &PageManager{
-		pmID:        pmID,
-		pageSize:    pageSize,
-		numPages:    numPages,
-		freePages:   make(map[int32]struct{}),
-		pageTable:   make(map[int32]PageEntry),
-		currentTime: 0,
-		p0Scale:     0.7,
-		p1Scale:     0.8,
+		pmID:      pmID,
+		pageSize:  pageSize,
+		numPages:  numPages,
+		freePages: make(map[int32]struct{}),
+		pageTable: make(map[int32]PageEntry),
+		p0Scale:   0.7,
+		p1Scale:   0.8,
 	}
 	for i := range numPages {
 		pm.freePages[int32(i)] = struct{}{}
@@ -141,11 +139,10 @@ func (pm *PageManager) LoadItem(itemID int32, itemLength int, weight int) ([]int
 	// 插入新项
 	pm.pageTable[itemID] = PageEntry{
 		Pages:        allocatedPages,
-		LastAccessed: pm.currentTime,
+		LastAccessed: time.Now().UnixNano(),
 		Protected:    0,
-		Priority:     priority, // 优先级在mpm.computePriorities中设置
+		Priority:     priority,
 	}
-	pm.currentTime++
 	return allocatedPages, freedIDs, evtCost, allCost
 }
 
@@ -155,8 +152,7 @@ func (pm *PageManager) AccessItem(itemID int32) []int32 {
 	defer pm.mu.Unlock()
 
 	if entry, ok := pm.pageTable[itemID]; ok {
-		entry.LastAccessed = pm.currentTime
-		pm.currentTime++
+		entry.LastAccessed = time.Now().UnixNano()
 		pm.pageTable[itemID] = entry
 		return entry.Pages
 	}
@@ -275,6 +271,7 @@ type MultiPageManager struct {
 	evtDuration  time.Duration
 	allDuration  time.Duration
 	gcInterval   time.Duration
+	ttlInterval  time.Duration
 	p0Scale      float64
 	p1Scale      float64
 	mu           sync.Mutex
@@ -291,7 +288,8 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int, p0Scale, p1Scale f
 		p1MaxPages:   cacheSize / pageSize / 4,
 		cachedIDs:    make([]map[int32]struct{}, kvcacheNum),
 		p2Items:      make(map[int32]struct{}),
-		gcInterval:   10 * time.Second, // TODO 这里也改成可配的
+		gcInterval:   1 * time.Second,
+		ttlInterval:  10 * time.Second,
 		loadDuration: 0,
 		evtDuration:  0,
 		allDuration:  0,
@@ -442,14 +440,13 @@ func (mpm *MultiPageManager) downgradeP1Items(excessPages int) {
 }
 
 func (mpm *MultiPageManager) ttlGc() {
-	// 根据TTL将所有优先级为2的项改为1
 	ticker := time.NewTicker(mpm.gcInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		if DEBUG {
 			log.Printf("[[%d]] 定期清理过期缓存\n", time.Now().Unix())
 		}
-		mpm.downgradeP2()
+		mpm.downgradeP2Items()
 		// 每次GC后检查优先级1的容量
 		mpm.mu.Lock()
 		mpm.checkAndAdjustP1Pages()
@@ -457,21 +454,27 @@ func (mpm *MultiPageManager) ttlGc() {
 	}
 }
 
-func (mpm *MultiPageManager) downgradeP2() {
+func (mpm *MultiPageManager) downgradeP2Items() {
 	mpm.mu.Lock()
 	defer mpm.mu.Unlock()
-	// 降级优先级为2的项
-	for i := range mpm.p2Items {
+	currentTime := time.Now().UnixNano()
+	ttl := mpm.ttlInterval.Nanoseconds()
+
+	for itemID := range mpm.p2Items {
 		for _, pm := range mpm.pageManagers {
-			if _, ok := pm.pageTable[i]; ok {
-				pm.mu.Lock()
-				if entry, ok := pm.pageTable[i]; ok {
+			pm.mu.Lock()
+			if entry, ok := pm.pageTable[itemID]; ok && entry.Priority == 2 {
+				elapsed := currentTime - entry.LastAccessed
+				if elapsed >= ttl {
 					entry.Priority = 1
-					pm.pageTable[i] = entry
+					pm.pageTable[itemID] = entry
+					if DEBUG {
+						log.Printf("[[%d]] 降级item %d from priority 2 to 1 due to TTL\n", time.Now().Unix(), itemID)
+					}
+					delete(mpm.p2Items, itemID)
 				}
-				pm.mu.Unlock()
-				delete(mpm.p2Items, i)
 			}
+			pm.mu.Unlock()
 		}
 	}
 }

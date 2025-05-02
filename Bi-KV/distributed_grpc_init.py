@@ -80,7 +80,7 @@ def init_process(rank, world_size, yaml_config):
         with open(timestamp_map_path, 'r') as f:
             time_step_map = json.load(f)
         # time_step_map = None
-        scheduler.start(10, 256,time_step_map)
+        scheduler.start(10,256,time_step_map,True)
         time2 = time.time()
         logging.info(f"Test Time cost: {time2 - time1}")
         fut.result()
