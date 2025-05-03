@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
-	"strings"
 
 	coordinator "github.com/RC4ML/Bi-KV/CacheCoordinator"
 	cfg "github.com/RC4ML/Bi-KV/config"
@@ -15,48 +13,6 @@ import (
 
 	"google.golang.org/grpc"
 )
-
-func getRankToIPMapping(hostfilePath string) (map[int]string, error) {
-	file, err := os.Open(hostfilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open hostfile: %v", err)
-	}
-	defer file.Close()
-
-	rankToIP := make(map[int]string)
-	scanner := bufio.NewScanner(file)
-	rank := 0
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Remove any comments and trim whitespace
-		if idx := strings.Index(line, "#"); idx != -1 {
-			line = line[:idx]
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		var ip string
-		var slots int
-		_, err := fmt.Sscanf(line, "%s slots=%d", &ip, &slots)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse line %q: %v", line, err)
-		}
-
-		for range slots {
-			rankToIP[rank] = ip
-			rank++
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read hostfile: %v", err)
-	}
-
-	return rankToIP, nil
-}
 
 func getRankToIP(rankToIPGRPC []string) (map[int]string, error) {
 	rankToIP := make(map[int]string)
@@ -106,7 +62,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error getting rank to IP mapping: %v", err)
 	}
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s, rankToIP)
+	p0Scale := config.KvCache.P0Scale
+	p1Scale := config.KvCache.P1Scale
+	log.Printf("Page size %d L1 size: %f, L2 size: %f \n", config.KvCache.PageSize, p0Scale, p1Scale)
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s, rankToIP, p0Scale, p1Scale)
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", rankToIP[rank], masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)

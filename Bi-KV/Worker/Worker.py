@@ -111,7 +111,19 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             print(f"Worker {self.rank} shared mem init failed: {e}")
 
         logging.info(f"[Worker][RANK {self.rank}] worker initialized")
-
+ 
+    def _init_shared_memory(self):
+        """初始化CUDA共享内存区域"""
+        device_id = self.worker_index
+        try:
+            # 先尝试清理可能存在的残留共享内存
+            ipc_service.consumer_cleanup()  
+        except:
+            pass
+        buffer_size = self.compute_buffer.element_size() * self.compute_buffer.nelement()
+        print(f"buffer_size:{buffer_size/(1024**2)}MB")
+        # 初始化生产者端共享内存
+        ipc_service.consumer_init(device_id, self.shm_name.encode(), buffer_size*5)
         
     def __del__(self):
         print(f"Worker {self.rank} destroyed at {time.time()}") 
@@ -187,7 +199,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             # print(f"[Worker][RANK {self.rank}] start get shared memory")
             # 从共享内存接收CUDA张量
             start_read=time.time()
-            cuda_tensor = ipc_service.consumer_receive()
+            recv_tensor=ipc_service.consumer_receive()
             end_read=time.time()
             
             # 将张量复制到CPU
@@ -201,9 +213,11 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             time_diff = end_read - start_read
             throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
-            
-            # print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
-            #     f"throughput: {throughput} GB/s\n")
+            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                     f"throughput: {throughput} GB/s\n")
+            # with open(f'shared_log_rank{self.rank}.txt', 'a+') as f:
+            #     f.write(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+            #         f"throughput: {throughput} GB/s\n")
         else: 
             start_recv=time.time()
             # self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)

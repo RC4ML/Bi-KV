@@ -206,3 +206,44 @@ def get_excel_column_name(n):
         n, r = divmod(n - 1, 26)
         name = chr(r + ord('A')) + name
     return name
+
+
+def convert_keys_and_values(data):
+    """
+    递归地将字典或列表中的键和值从字符串转换为整数。
+    :param data: 输入的 JSON 数据（字典或列表）
+    :return: 转换后的数据
+    """
+    if isinstance(data, dict):  # 如果是字典
+        new_dict = {}
+        for key, value in data.items():
+            # 尝试将键转换为整数
+            try:
+                new_key = int(key)
+            except ValueError:
+                new_key = key  # 如果无法转换，保持原样
+            
+            # 递归处理值
+            new_value = convert_keys_and_values(value)
+            new_dict[new_key] = new_value
+        return new_dict
+    elif isinstance(data, list):  # 如果是列表
+        return [convert_keys_and_values(item) for item in data]
+    elif isinstance(data, str):  # 如果是字符串
+        try:
+            return int(data)  # 尝试转换为整数
+        except ValueError:
+            return data  # 如果无法转换，保持原样
+    else:
+        return data  # 其他类型直接返回
+
+def read_and_convert_json(file_path):
+    """
+    从文件中读取 JSON 数据，并将所有键和值从字符串转换为整数。
+    :param file_path: JSON 文件路径
+    :return: 转换后的数据
+    """
+    with open(file_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)  # 读取 JSON 数据
+    converted_data = convert_keys_and_values(data)  # 转换键和值
+    return converted_data

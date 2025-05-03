@@ -1,4 +1,4 @@
-from .utils import Prompter, find_goods_index,generate_goods_mask,find_goods_index_llama3,generate_position_ids,get_excel_column_name,find_user_history
+from .utils import Prompter, find_goods_index,generate_goods_mask,find_goods_index_llama3,generate_position_ids,get_excel_column_name,find_user_history,read_and_convert_json
 
 import torch
 import random
@@ -93,12 +93,12 @@ class LLMDataloader():
         self.rng = np.random
         self.save_folder = dataset._get_preprocessed_folder_path()
         seq_dataset = dataset.load_dataset() # 读预处理好的数据
-        self.train = seq_dataset['train'] # u2seq seq应该就是用户历史
-        self.val = seq_dataset['val'] # u2val
-        self.test = seq_dataset['test'] # u2ans
-        self.umap = seq_dataset['umap']
-        self.smap = seq_dataset['smap']
-        self.text_dict = seq_dataset['meta']
+        self.train = seq_dataset['train'] # u2seq train是用户历史除去倒数最后两个商品
+        self.val = seq_dataset['val'] # u2val val是倒数第二个商品
+        self.test = seq_dataset['test'] # u2ans test是最后一个商品
+        self.umap = seq_dataset['umap'] # umap 用户id（str）到用户序号（数字）的映射
+        self.smap = seq_dataset['smap'] # smap 商品id（str）到商品序号（数字）的映射
+        self.text_dict = seq_dataset['meta'] # meta 商品序号（数字）到商品名称（str）的映射
         self.user_count = len(self.umap)
         self.item_count = len(self.smap)
         
@@ -114,24 +114,38 @@ class LLMDataloader():
         self.prompter = Prompter()
         
         self.llm_retrieved_path = args.llm_retrieved_path
-        logging.info('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
-        retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
-                                                       'retrieved.pkl'), 'rb'))
-        
-        # print('******************** Constructing Validation Subset ********************')
-        # self.val_probs = retrieved_file['val_probs']
-        # self.val_labels = retrieved_file['val_labels']
-        # self.val_metrics = retrieved_file['val_metrics']
-        # self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
-        #                   if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
-        # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
-        #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
+        if not os.path.exists(self.llm_retrieved_path):
+            self.test_users = [u for u in self.train]
+            item_access_path = f"/share/nfs/wsh/Bi-KV/Bi-KV/data/{self.args.dataset_code}/user_candidate.pickle"
+            logging.info('[Dataloader] Loading item access data from {}'.format(item_access_path))
+            with open(item_access_path, 'rb') as pickle_file:
+                user_candidate_dict = pickle.load(pickle_file)
+            # print(user_candidate_dict)
+            print(f"[Dataloader] user num: {len(user_candidate_dict)} user num: {len(self.test_users)}")
+            # 根据商品访问次数加权
+            self.test_candidates = [user_candidate_dict[user][:self.args.llm_negative_sample_size+1] \
+                                    for user in self.test_users]
+        else:
+            logging.info('[Dataloader] Loading retrieved file from {}'.format(self.llm_retrieved_path))
+            retrieved_file = pickle.load(open(os.path.join(args.llm_retrieved_path,
+                                                        'retrieved.pkl'), 'rb'))
+            
+            # print('******************** Constructing Validation Subset ********************')
+            # self.val_probs = retrieved_file['val_probs']
+            # self.val_labels = retrieved_file['val_labels']
+            # self.val_metrics = retrieved_file['val_metrics']
+            # self.val_users = [u for u, (p, l) in enumerate(zip(self.val_probs, self.val_labels), start=1) \
+            #                   if l in torch.topk(torch.tensor(p), self.args.llm_negative_sample_size+1).indices]
+            # self.val_candidates = [torch.topk(torch.tensor(self.val_probs[u-1]), 
+            #                         self.args.llm_negative_sample_size+1).indices.tolist() for u in self.val_users]
 
-        logging.info('[Dataloader] Constructing Test Subset...Please wait...')
-        self.test_probs = retrieved_file['test_probs']
-        self.test_users = range(1,len(self.test_probs)+1)
-        self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
-                                self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
+            logging.info('[Dataloader] Constructing Test Subset...Please wait...')
+            self.test_probs = retrieved_file['test_probs']
+            self.test_users = range(1,len(self.test_probs)+1)
+            self.test_candidates = [torch.topk(torch.tensor(self.test_probs[u-1]), 
+                                    self.args.llm_negative_sample_size+1).indices.tolist() for u in self.test_users]
+        logging.info("[Dataloader] Construction completed")
+
 
     @classmethod
     def code(cls):

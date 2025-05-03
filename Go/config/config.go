@@ -35,9 +35,12 @@ type Config struct {
 	} `yaml:"distributed"`
 
 	KvCache struct {
-		MaxWorkers int `yaml:"max_workers"`
-		CacheSize  int `yaml:"cache_size"`
-		PageSize   int `yaml:"page_size"`
+		MaxWorkers int     `yaml:"max_workers"`
+		CacheSize  int     `yaml:"cache_size"`
+		PageSize   int     `yaml:"page_size"`
+		P0Scale    float64 `yaml:"p0_scale"`
+		P1Scale    float64 `yaml:"p1_scale"`
+		P2Scale    float64 `yaml:"p2_scale"`
 	} `yaml:"kv_cache"`
 
 	Worker struct {

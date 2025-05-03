@@ -1,5 +1,6 @@
 # import uuid
 import json
+import random
 from typing import Dict, List
 
 import grpc
@@ -13,7 +14,7 @@ from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
 from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
 import time
-import logging
+
 import torch.distributed.rpc as rpc
 
 model_params = {
@@ -36,7 +37,8 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self._task_counter = 0
-        self.batchsize = 4
+        self.batchsize = 32
+        self.cold_start_flag = True
         
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
@@ -68,11 +70,11 @@ class LLMScheduler:
         task_info_list_dict = {}
         # 先check一遍cache
         for ind,prompt in enumerate(prompt_list): 
-            prompt_order = PromptOrder(prompt)
+            prompt_order = PromptOrder(prompt,ans_dict)
             # 历史优先，调度用户历史kvcache
-            if prompt_order == "User History First":
+            if prompt_order == "User History First" or self.cold_start_flag:
             # if ans_dict[str(prompt.task_id)] == 1:
-                # logging.info(f"User First ID: {prompt.user_id+2000000}")
+            # if True:
                 infer_worker = self.strategy(prompt.task_id)
                 token_num = prompt.user_history_tokens
                 task_info = TaskInfo_pb2.TaskInfo(
@@ -83,7 +85,8 @@ class LLMScheduler:
                     index = 0,
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
-                    task_num = 1
+                    task_num = 1,
+                    weight=prompt.weight,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -92,7 +95,7 @@ class LLMScheduler:
                 ## append recomputing tokens
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
-                    recomputing_tokens += i.token_count ## Bug in many versions
+                    recomputing_tokens = i.token_count 
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = prompt.task_id,
                     id = -1,
@@ -101,12 +104,16 @@ class LLMScheduler:
                     index = -1,
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
-                    task_num = 1
+                    task_num = 1,
+                    weight=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
+                # TODO 冷启动flag位置
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
+                # 商品优先级固定为0
+                priority = 0
             # elif ans_dict[str(prompt.task_id)] == 0:
                 infer_worker = self.strategy(prompt.task_id)
                 # print(f"[LLMScheduler] Schedule a group of item request ({len(prompt.items)} to worker {infer_worker}, request id {self._id_counter})")
@@ -120,7 +127,8 @@ class LLMScheduler:
                         index = ind,
                         task_type = SIGNAL_CHECK,
                         type = 'item cache',
-                        task_num = len(prompt.items)
+                        task_num = len(prompt.items),
+                        weight=priority,
                     )
                     if task_info_list_dict.get(infer_worker):
                         task_info_list_dict[infer_worker].append(task_info)
@@ -135,7 +143,8 @@ class LLMScheduler:
                     index = -1,
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
-                    task_num = len(prompt.items)
+                    task_num = len(prompt.items),
+                    weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
 
@@ -166,6 +175,8 @@ class LLMScheduler:
         for future,channel in future_list:
             future.result()
             channel.close()
+        # 一批发送完后修改冷启动
+        self.cold_start_flag = False
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
@@ -181,7 +192,7 @@ class LLMScheduler:
             if timestep_map != None:
                 input_prompt_list = self.prompt_generator.generate_time_series(batchsize,timestep,timestep_map)
             else:
-                input_prompt_list = self.prompt_generator.Generate(batchsize)
+                input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)
         # self.process_prompt()
         self.process_prompt_batch()
@@ -234,12 +245,18 @@ class LLMScheduler:
     def schedule_strategy(self):
         pass
 
-def PromptOrder(prompt: InputPrompt) -> str:
+def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
-    # return "User History First"
-    if user_tokens > item_tokens:
-        # logging.info(f"user id {prompt.user_id+2000000} user {user_tokens}, item {item_tokens}")
+    # print(f"user {user_tokens}, item {item_tokens}")
+    if user_tokens >= item_tokens:
+        if ans_dict != None:
+            # 如果用户cache命中则用户优先，否则商品优先
+            if ans_dict[str(prompt.task_id)]['user miss']==0:
+                return "User History First"
+            else:
+                # 需要用cache空间判断
+                return "Item First"
         return "User History First"
     else:
         return "Item First"
