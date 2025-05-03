@@ -143,27 +143,29 @@ func (cc *CacheCoordinator) processRequests() {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
 					// 查cache
-					// cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
-					// if cacheWorker == -1 {
-					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
-					// } else {
-					// 	cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					// 	cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
-					// 	taskInfo.TaskType = SIGNAL_SEND
-					// 	taskInfo.CacheWorker = cacheWorker
-					// 	taskInfo.CachePagesList = pages
-					// }
+					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+					if cacheWorker == -1 {
+						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
+					} else {
+						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+						// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+						taskInfo.TaskType = SIGNAL_SEND
+						taskInfo.CacheWorker = cacheWorker
+						taskInfo.CachePagesList = pages
+					}
 
 					// 测试用 全hit
-					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
-					taskInfo.CacheWorker = cacheWorker
-					taskInfo.CachePagesList = pages
-					cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					taskInfo.TaskType = SIGNAL_SEND
+					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					// taskInfo.CacheWorker = cacheWorker
+					// taskInfo.CachePagesList = pages
+					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+					// taskInfo.TaskType = SIGNAL_SEND
 
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
-					cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+					if taskInfo.Id > 2000000 {
+						cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+					}
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
 				}
@@ -244,11 +246,11 @@ func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.T
 		return
 	}
 	// 解除保护
-	for _, i := range reqList {
-		if i.TaskType != SIGNAL_CHECK && i.Id != -1 {
-			cc.pageManager.pageManagers[cacheWorker].RemoveProtected(i.Id)
-		}
-	}
+	// for _, i := range reqList {
+	// 	if i.TaskType != SIGNAL_CHECK && i.Id != -1 {
+	// 		cc.pageManager.pageManagers[cacheWorker].RemoveProtected(i.Id)
+	// 	}
+	// }
 	var confirmationMsg map[int32]int32
 	if err := json.Unmarshal([]byte(resp.Msg), &confirmationMsg); err != nil {
 		log.Printf("[CacheCoordinator] Failed to unmarshal: %v\n", err)
@@ -306,6 +308,43 @@ func (cc *CacheCoordinator) sendTerminateSignal() {
 	wg.Wait()
 	log.Println("[CacheCoordinator] 终止信号已发送...停止Coordinator")
 	cc.server.Stop()
+}
+
+func (cc *CacheCoordinator) ReceiveTasksFromScheduler(ctx context.Context, req *pb.TaskInfoList) (*pb.ComfirmationMessage, error) {
+	// cacheMiss 统计一批task的情况 0为item 1为user
+	// log.Printf("[CacheCoordinator] 收到调度查询请求，长度为%d\n", len(req.Tasks))
+	cacheMiss := make(map[int32]int32)
+	itemMiss := make(map[int32]int32)
+	userMiss := make(map[int32]int32)
+	cc.lock.Lock()
+	for _, task := range req.Tasks {
+		_, hit := cc.pageManager.AccessItem(task.Id)
+		if _, ok := cacheMiss[task.RequestId]; !ok {
+			// log.Printf("%d init", task.RequestId)
+			cacheMiss[task.RequestId] = 0
+			userMiss[task.RequestId] = 0
+			itemMiss[task.RequestId] = 0
+		}
+		if hit == nil {
+			if task.Type == "user cache" {
+				userMiss[task.RequestId] = task.TokenNum
+			} else {
+				itemMiss[task.RequestId] += task.TokenNum
+			}
+		}
+	}
+	cc.lock.Unlock()
+	for key := range cacheMiss {
+		// 若user计算量大于item计算量
+		if userMiss[key] > itemMiss[key] {
+			cacheMiss[key] = 0
+		}
+	}
+	data, err := json.Marshal(cacheMiss)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ComfirmationMessage{Msg: string(data)}, nil
 }
 
 func setToList(set map[int32]struct{}) []int32 {

@@ -1,0 +1,22 @@
+[LLMScheduler] finish init all class
+[Dataset] Already preprocessed. Skip preprocessing
+Process 0 (PID: 244644) failed with return code 1. Terminating all processes...
+Cleaning up all processes across all machines...
+Cleaning up on remote machine 192.168.189.8: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.8 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+Cleaning up on remote machine 192.168.189.9: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.9 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+Cleaning up on remote machine 192.168.189.10: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.10 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+All processes have been terminated across all machines.
+Received KeyboardInterrupt. Terminating all processes...
+Cleaning up all processes across all machines...
+Cleaning up on remote machine 192.168.189.8: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.8 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+Cleaning up on remote machine 192.168.189.9: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.9 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+Cleaning up on remote machine 192.168.189.10: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.10 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+All processes have been terminated across all machines.
+All processes have finished successfully.
+Received KeyboardInterrupt. Terminating all processes...
+Cleaning up all processes across all machines...
+Cleaning up on remote machine 192.168.189.8: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.8 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+Cleaning up on remote machine 192.168.189.9: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.9 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+Cleaning up on remote machine 192.168.189.10: ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 192.168.189.10 "ps -ef | grep 'distributed_grpc_init.py' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" 
+All processes have been terminated across all machines.
+All processes have finished successfully.

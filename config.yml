@@ -14,9 +14,9 @@ process_types:
 
 grpc:
   master_addr: "192.168.189.8"  # Grpc主地址
-  master_port: 50051  # 默认主端口
+  master_port: 50251  # 默认主端口
   slots: # 1G网控制，每个机器起几个进程
-  # 2机配置
+  # # 2机配置
   - "192.168.189.8 slots=2"
   - "192.168.189.9 slots=2"
   - "192.168.189.10 slots=2"
@@ -51,7 +51,7 @@ distributed:
 
 kv_cache:
   max_workers: 10  # KVCache 的最大线程池大小
-  cache_size: 500000  # 缓存大小
+  cache_size: 850000  # 缓存大小
   page_size: 50  # 缓存维度
 
 worker:

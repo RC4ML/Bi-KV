@@ -390,7 +390,7 @@ class Qwen2ForCausalLM(nn.Module):
                         device=device),
         })
 
-def process_task_info(task_info_list):
+def process_task_info(task_info_list, cache_miss_dict):
     """
     整合 task_info_list，统计 cache hit 和 cache miss+compute 的 token 总数。
 
@@ -408,15 +408,24 @@ def process_task_info(task_info_list):
         request_id = task_info.request_id#["request_id"]
         token_num = task_info.token_num#["token_num"]
         task_type = task_info.type#["type"]
-
-        if task_type == "user cache" or task_type == "item cache":
-            if True:  # 假定的函数，用于判断 cache 是否命中
-                request_stats[request_id]["cached_tokens"] += token_num
-            else:  # cache miss 处理
-                request_stats[request_id]["recomputing_tokens"] += token_num
-        elif task_type == "compute":
-            # compute 类型的 token_num 全部算作 "recomputing_tokens"
+        # logging.info(f"{request_id} {task_type} {token_num}")
+        id = task_info.id#["id"]
+        req_miss_dict = cache_miss_dict.get(f"{request_id}")
+        if req_miss_dict is None:
+            # cache miss 处理
             request_stats[request_id]["recomputing_tokens"] += token_num
+            # logging.info(f"{request_id} {req_miss_dict}")
+            continue
+        else:
+            # logging.info(f"{request_id} {req_miss_dict}")            
+            if task_type == "user cache" or task_type == "item cache":
+                if req_miss_dict.get(f"{id}") != 0 or task_type == "item cache":  # 假定的函数，用于判断 cache 是否命中
+                    request_stats[request_id]["cached_tokens"] += token_num
+                else:  # cache miss 处理
+                    request_stats[request_id]["recomputing_tokens"] += token_num
+            elif task_type == "compute":
+                # compute 类型的 token_num 全部算作 "recomputing_tokens"
+                request_stats[request_id]["recomputing_tokens"] += token_num
 
     # 将统计结果转化为列表
     queried_task_info_list = [

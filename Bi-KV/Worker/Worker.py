@@ -157,7 +157,10 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             self.page_manager.load_item(item_id, task.token_num)
             self.page_manager.set_protected(item_id)
         self.forward_with_computation_grpc(request.tasks)
-        # self.preprare_send_data_grpc(request.tasks)
+        return TaskInfo_pb2.Empty()
+    
+    def StartWriteCacheData(self, request, context):
+        self.preprare_send_data_grpc(request.tasks)
         return TaskInfo_pb2.Empty()
 
     def receive_task_info_batch(self, task_info_list):
@@ -341,14 +344,13 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         time2 = time.time()
         # logging.info(f"[Worker][RANK {self.rank}] poll time {time2-time1}s")
         cache_miss_dict = json.loads(cache_miss_dict_data.msg)
-        if DEBUG:
-            print(f"[Worker.forward_with_computation][RANK {self.rank}] cache_miss_dict: {cache_miss_dict}")
+        # logging.info(f"[Worker.forward_with_computation][RANK {self.rank}] cache_miss_dict: {cache_miss_dict}")
         # cache_miss_dict = future_call_poll.result()
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
         # ## start model inference
         time3 = time.time()
-        queried_task_info_list = process_task_info(tasks_list)
+        queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
         attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
         input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
         positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
@@ -362,12 +364,24 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         send_task_list = []
         hit_counter = 0
         length_counter = 0
+        
+        hit_counter_user = 0
+        length_counter_user = 0
+        hit_counter_item = 0
+        length_counter_item = 0
+        
         for task_info in task_info_list:
             item_id = task_info.id
             request_id = task_info.request_id
             cache_miss_dict = self.cache_miss_dict.get(str(request_id),{})
             hit_counter += sum(cache_miss_dict.values())
             length_counter += len(cache_miss_dict)
+            if task_info.type == 'user cache':
+                length_counter_user += len(cache_miss_dict)
+                hit_counter_user += sum(cache_miss_dict.values())
+            elif task_info.type == 'item cache':
+                length_counter_item += len(cache_miss_dict)
+                hit_counter_item += sum(cache_miss_dict.values())
             if cache_miss_dict.get(str(item_id)) == CACHE_MISS:
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info.task_type = SIGNAL_RECV
@@ -378,8 +392,10 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # TODO 适配
         # logging.info(f"length counter {hit_counter}/{length_counter} ")
         hit_rate = hit_counter/length_counter
+        user_hit_rate = hit_counter_user/length_counter_user if length_counter_user != 0 else 0
+        item_hit_rate = hit_counter_item/length_counter_item if length_counter_item != 0 else 0
         # if hit_rate > 0.7 and DEBUG:
-        logging.info(f"[Worker {self.rank}]Hit rate: {hit_rate} Sending {len(send_task_list)} tasks to kvcache") 
+        # logging.info(f"[Worker {self.rank}] User Hit rate: {user_hit_rate} Item Hit rate: {item_hit_rate} Total Hit rate: {hit_rate}") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)

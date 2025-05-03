@@ -76,7 +76,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             ipc_service.producer_cleanup()  
         except:
             pass
-        buffer_size = self.cache_data.element_size() * self.cache_data.nelement()
+        buffer_size = 1024*1024*1024*2 #self.cache_data.element_size() * self.cache_data.nelement()
         print(f"buffer_size:{buffer_size/(1024**2)}MB")
         # 初始化生产者端共享内存
         ipc_service.producer_init(device_id, self.shm_name.encode(), buffer_size)

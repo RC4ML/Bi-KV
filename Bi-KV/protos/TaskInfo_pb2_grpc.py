@@ -40,6 +40,11 @@ class InferWorkerServiceStub(object):
                 request_serializer=protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
                 response_deserializer=protos_dot_TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
+        self.StartWriteCacheData = channel.unary_unary(
+                '/InferWorkerService/StartWriteCacheData',
+                request_serializer=protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
+                response_deserializer=protos_dot_TaskInfo__pb2.Empty.FromString,
+                _registered_method=True)
         self.SendKVCacheData = channel.unary_unary(
                 '/InferWorkerService/SendKVCacheData',
                 request_serializer=protos_dot_TaskInfo__pb2.CombindedTaskInfo.SerializeToString,
@@ -62,6 +67,12 @@ class InferWorkerServiceServicer(object):
     """
 
     def ReceiveTasksFromScheduler(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartWriteCacheData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -91,6 +102,11 @@ def add_InferWorkerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ReceiveTasksFromScheduler': grpc.unary_unary_rpc_method_handler(
                     servicer.ReceiveTasksFromScheduler,
+                    request_deserializer=protos_dot_TaskInfo__pb2.TaskInfoList.FromString,
+                    response_serializer=protos_dot_TaskInfo__pb2.Empty.SerializeToString,
+            ),
+            'StartWriteCacheData': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartWriteCacheData,
                     request_deserializer=protos_dot_TaskInfo__pb2.TaskInfoList.FromString,
                     response_serializer=protos_dot_TaskInfo__pb2.Empty.SerializeToString,
             ),
@@ -136,6 +152,33 @@ class InferWorkerService(object):
             request,
             target,
             '/InferWorkerService/ReceiveTasksFromScheduler',
+            protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
+            protos_dot_TaskInfo__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartWriteCacheData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/InferWorkerService/StartWriteCacheData',
             protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
             protos_dot_TaskInfo__pb2.Empty.FromString,
             options,
@@ -245,6 +288,11 @@ class CacheCoordinatorServiceStub(object):
                 request_serializer=protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
                 response_deserializer=protos_dot_TaskInfo__pb2.Empty.FromString,
                 _registered_method=True)
+        self.ReceiveTasksFromScheduler = channel.unary_unary(
+                '/CacheCoordinatorService/ReceiveTasksFromScheduler',
+                request_serializer=protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
+                response_deserializer=protos_dot_TaskInfo__pb2.ComfirmationMessage.FromString,
+                _registered_method=True)
         self.PollBatchFromInferWorker = channel.unary_unary(
                 '/CacheCoordinatorService/PollBatchFromInferWorker',
                 request_serializer=protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
@@ -267,6 +315,12 @@ class CacheCoordinatorServiceServicer(object):
     """
 
     def ReceiveTasksFromInferWorker(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReceiveTasksFromScheduler(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -298,6 +352,11 @@ def add_CacheCoordinatorServiceServicer_to_server(servicer, server):
                     servicer.ReceiveTasksFromInferWorker,
                     request_deserializer=protos_dot_TaskInfo__pb2.TaskInfoList.FromString,
                     response_serializer=protos_dot_TaskInfo__pb2.Empty.SerializeToString,
+            ),
+            'ReceiveTasksFromScheduler': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReceiveTasksFromScheduler,
+                    request_deserializer=protos_dot_TaskInfo__pb2.TaskInfoList.FromString,
+                    response_serializer=protos_dot_TaskInfo__pb2.ComfirmationMessage.SerializeToString,
             ),
             'PollBatchFromInferWorker': grpc.unary_unary_rpc_method_handler(
                     servicer.PollBatchFromInferWorker,
@@ -343,6 +402,33 @@ class CacheCoordinatorService(object):
             '/CacheCoordinatorService/ReceiveTasksFromInferWorker',
             protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
             protos_dot_TaskInfo__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReceiveTasksFromScheduler(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/CacheCoordinatorService/ReceiveTasksFromScheduler',
+            protos_dot_TaskInfo__pb2.TaskInfoList.SerializeToString,
+            protos_dot_TaskInfo__pb2.ComfirmationMessage.FromString,
             options,
             channel_credentials,
             insecure,

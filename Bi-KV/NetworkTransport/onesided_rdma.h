@@ -965,7 +965,7 @@ private:
             ret = ibv_poll_cq(cq, 1, &wc);
         } while (ret == 0);
         if (ret < 0 || wc.status != IBV_WC_SUCCESS) {
-            std::cerr << "[poll_completion] Failed: ret=" << ret << ", status=" << wc.status << "\n";
+            std::cerr << mode_ <<" [poll_completion] Failed: ret=" << ret << ", status=" << wc.status << "\n";
             return -1;
         }
         return 0;
@@ -1044,19 +1044,35 @@ private:
             std::cerr << "ibv_create_cq failed: " << strerror(errno) << "\n";
             return -1;
         }
-        ibv_qp_init_attr qp_attr = {0};
-        qp_attr.cap.max_send_wr = 10;
-        qp_attr.cap.max_recv_wr = 10;
-        qp_attr.cap.max_send_sge = 1;
-        qp_attr.cap.max_recv_sge = 1;
-        qp_attr.send_cq = cq;
-        qp_attr.recv_cq = cq;
-        qp_attr.qp_type = IBV_QPT_RC;
-        if (rdma_create_qp(id, pd_, &qp_attr)) {
+        ibv_qp_init_attr qp_init_attr = {0};
+        qp_init_attr.cap.max_send_wr = 10;
+        qp_init_attr.cap.max_recv_wr = 10;
+        qp_init_attr.cap.max_send_sge = 1;
+        qp_init_attr.cap.max_recv_sge = 1;
+        qp_init_attr.send_cq = cq;
+        qp_init_attr.recv_cq = cq;
+        qp_init_attr.qp_type = IBV_QPT_RC;
+        int ret = rdma_create_qp(id, pd_, &qp_init_attr);
+        if (ret) {
             std::cerr << "rdma_create_qp failed: " << strerror(errno) << "\n";
             ibv_destroy_cq(cq);
             return -1;
         }
+
+        // struct ibv_qp *qp = id->qp; // 从 rdma_cm_id 中获取 QP
+        // struct ibv_qp_attr qp_attr;
+        // memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
+        // qp_attr.retry_cnt = 7;  // 设置重试次数为 7
+        // qp_attr.rnr_retry = 7;  // 设置 RNR 重试次数为 7
+        // qp_attr.timeout = 14;   // 设置超时（可选，例如 67ms 单次超时）
+        
+        // ret = ibv_modify_qp(qp, &qp_attr, IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_TIMEOUT);
+        // if (ret) {
+        //     fprintf(stderr, "ibv_modify_qp 失败: %s\n", strerror(ret));
+        //     rdma_destroy_qp(id);
+        //     return -1;
+        // }
+
         client_cqs_[id] = cq;
         return 0;
     }

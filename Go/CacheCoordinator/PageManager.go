@@ -61,12 +61,14 @@ func (pm *PageManager) LoadItem(itemID int32, listLength int) ([]int32, []int32,
 	}
 
 	requiredPages := (listLength + pm.pageSize - 1) / pm.pageSize
-	if requiredPages > pm.numPages {
-		panic(fmt.Sprintf("列表过大，无法存入缓冲区: %d > %d", requiredPages, pm.numPages))
-	}
+	// if requiredPages > pm.numPages {
+	// 	panic(fmt.Sprintf("列表过大，无法存入缓冲区: %d > %d", requiredPages, pm.numPages))
+	// }
 	var evtCost time.Duration
 	var freedIDs []int32
 	evictionLock.Lock()
+	log.Printf("PMID %d update item %d free pages %d and required pages %d\n", pm.pmID, itemID, len(pm.freePages), requiredPages)
+
 	if len(pm.freePages) < requiredPages {
 		start := time.Now()
 		freedIDs = pm.performEviction(requiredPages)
@@ -97,6 +99,7 @@ func (pm *PageManager) AccessItem(itemID int32) []int32 {
 		pm.pageTable[itemID] = entry
 		return entry.Pages
 	}
+	// return []int32{} // 返回空切片作为默认值
 	panic(fmt.Sprintf("列表 %d 未加载", itemID))
 }
 
@@ -120,6 +123,7 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 		if pm.pageTable[entry.id].Protected != 0 {
 			continue
 		}
+		log.Printf("换出 %d\n", entry.id)
 		delete(pm.pageTable, entry.id)
 		for _, page := range entry.pages {
 			pm.freePages[page] = struct{}{}
@@ -134,9 +138,9 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 		}
 	}
 
-	if len(pm.freePages) < requiredPages {
-		panic(fmt.Sprintf("无法换出足够页面，当前空闲页数: %d，要求页数: %d", len(pm.freePages), requiredPages))
-	}
+	// if len(pm.freePages) < requiredPages {
+	// 	panic(fmt.Sprintf("无法换出足够页面，当前空闲页数: %d，要求页数: %d", len(pm.freePages), requiredPages))
+	// }
 	return freedIDs
 }
 
@@ -150,9 +154,10 @@ func (pm *PageManager) SetProtected(itemID int32) {
 		if DEBUG {
 			log.Printf("[[%d]] 保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
 		}
-	} else {
-		panic(fmt.Sprintf("列表 %d 未加载", itemID))
-	}
+	} 
+	// else {
+		// panic(fmt.Sprintf("列表 %d 未加载", itemID))
+	// }
 }
 
 // RemoveProtected 取消保护
@@ -165,16 +170,17 @@ func (pm *PageManager) RemoveProtected(itemID int32) {
 		if DEBUG {
 			log.Printf("[[%d]] 取消保护item %d %d次\n", time.Now().Unix(), itemID, entry.Protected)
 		}
-	} else {
-		panic(fmt.Sprintf("列表 %d 未加载", itemID))
 	}
+	//  else {
+		// panic(fmt.Sprintf("列表 %d 未加载", itemID))
+	// }
 }
 
 // allocatePages 分配页面
 func (pm *PageManager) allocatePages(n int) []int32 {
-	if len(pm.freePages) < n {
-		panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(pm.freePages), n))
-	}
+	// if len(pm.freePages) < n {
+	// 	panic(fmt.Sprintf("内部错误：分配时页面不足，剩余: %d，要求: %d", len(pm.freePages), n))
+	// }
 	allocated := make(map[int32]struct{})
 	for range n {
 		for page := range pm.freePages {

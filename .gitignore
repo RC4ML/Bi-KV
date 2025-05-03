@@ -1,5 +1,5 @@
 __pycache__
-data
+Bi-KV/data/
 dataloader/__pycache__
 dataloader/datasets/__pycache__
 Bi-KV/DistributedStorage/__pycache__
@@ -11,3 +11,8 @@ Bi-KV/NetworkTransport/rdma_transport.egg-info
 Bi-KV/SharedMemory/CUDA_Shared/build
 Bi-KV/SharedMemory/CUDA_Shared/cuda_ipc.egg-info
 Bi-KV/SharedMemory/CUDA_Shared/dist
+hackFlag.txt
+next_batch.json
+*.ipynb
+*.csv
+!Bi-KV/data/gendata.py
