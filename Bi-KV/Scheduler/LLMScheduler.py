@@ -80,7 +80,7 @@ class LLMScheduler:
             if prepare_flag:
                 prompt_order = "Item First"
             else:
-                prompt_order = PromptOrder(prompt,ans_dict)
+                prompt_order = schedule_order_budget(prompt)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First" or self.cold_start_flag and not prepare_flag:
             # if prompt_order == "User History First":
@@ -210,8 +210,8 @@ class LLMScheduler:
         # self.process_prompt()
         if prepare_flag:
             self.fill_cache_data(5,256)
+        logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
         self.process_prompt_batch()
-        # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
     def calculate_data_len(self,token_num:int):
         return token_num*model_params["head_size"]*model_params["num_q_heads"]*model_params["num_layers"]*model_params["num_kv_heads"]
@@ -286,7 +286,7 @@ class LLMScheduler:
     def schedule_strategy(self):
         pass
 
-def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
+def schedule_order(prompt: InputPrompt,ans_dict = None) -> str:
     # TODO 根据计算budget判断调度
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
@@ -299,6 +299,16 @@ def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
             else:
                 # 需要用cache空间判断
                 return "Item First"
+        return "User History First"
+    else:
+        return "Item First"
+
+def schedule_order_budget(prompt: InputPrompt) -> str:
+    # TODO 根据计算budget判断调度，目前这个是随便定的
+    compute_budget = 1600
+    user_tokens = prompt.user_history_tokens
+    item_tokens = sum([item.token_count for item in prompt.items])
+    if user_tokens >= compute_budget:
         return "User History First"
     else:
         return "Item First"
