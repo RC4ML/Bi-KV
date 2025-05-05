@@ -74,8 +74,6 @@ type PageManager struct {
 	numPages  int
 	freePages map[int32]struct{}  // 使用 map 模拟 set
 	pageTable map[int32]PageEntry // 缓存项
-	p0Scale   float64
-	p1Scale   float64
 	mu        sync.Mutex
 }
 
@@ -88,19 +86,12 @@ func NewPageManager(cacheSize, pageSize int, pmID int32) *PageManager {
 		numPages:  numPages,
 		freePages: make(map[int32]struct{}),
 		pageTable: make(map[int32]PageEntry),
-		p0Scale:   0.7,
-		p1Scale:   0.8,
 	}
 	for i := range numPages {
 		pm.freePages[int32(i)] = struct{}{}
 	}
 	log.Printf("初始空闲页数: %d\n", len(pm.freePages))
 	return pm
-}
-
-func (pm *PageManager) SetScale(p0scale, p1scale float64) {
-	pm.p0Scale = p0scale
-	pm.p1Scale = p1scale
 }
 
 // LoadItem 加载到缓存
@@ -272,13 +263,11 @@ type MultiPageManager struct {
 	allDuration  time.Duration
 	gcInterval   time.Duration
 	ttlInterval  time.Duration
-	p0Scale      float64
-	p1Scale      float64
 	mu           sync.Mutex
 }
 
 // NewMultiPageManager 初始化 MultiPageManager
-func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int, p0Scale, p1Scale float64) *MultiPageManager {
+func NewMultiPageManager(cacheSize, pageSize, kvcacheNum, gcInterval, ttlInterval int) *MultiPageManager {
 	mpm := &MultiPageManager{
 		kvcacheNum:   kvcacheNum,
 		pageManagers: make([]*PageManager, kvcacheNum),
@@ -288,17 +277,14 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum int, p0Scale, p1Scale f
 		p1MaxPages:   cacheSize / pageSize / 4,
 		cachedIDs:    make([]map[int32]struct{}, kvcacheNum),
 		p2Items:      make(map[int32]struct{}),
-		gcInterval:   1 * time.Second,
-		ttlInterval:  10 * time.Second,
+		gcInterval:   time.Duration(gcInterval) * time.Second,
+		ttlInterval:  time.Duration(ttlInterval) * time.Second,
 		loadDuration: 0,
 		evtDuration:  0,
 		allDuration:  0,
-		p0Scale:      p0Scale,
-		p1Scale:      p1Scale,
 	}
 	for i := range kvcacheNum {
 		mpm.pageManagers[i] = NewPageManager(cacheSize, pageSize, int32(i))
-		mpm.pageManagers[i].SetScale(p0Scale, p1Scale)
 		mpm.cachedIDs[i] = make(map[int32]struct{})
 	}
 	go mpm.ttlGc()

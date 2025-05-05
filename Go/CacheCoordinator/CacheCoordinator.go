@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	cfg "github.com/RC4ML/Bi-KV/config"
 	pb "github.com/RC4ML/Bi-KV/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -36,7 +37,7 @@ type CacheCoordinator struct {
 }
 
 // NewCacheCoordinator 初始化调度器
-func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cacheSize int, pageSize int, server *grpc.Server, rankToIP map[int]string, p0Scale, p1Scale float64) *CacheCoordinator {
+func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, server *grpc.Server, rankToIP map[int]string, config *cfg.Config) *CacheCoordinator {
 	cc := &CacheCoordinator{
 		rank:                 rank,
 		masterPort:           masterPort,
@@ -48,9 +49,9 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, cac
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
 		stopLimit:            50000,
-		cacheSize:            cacheSize,
-		pageSize:             pageSize,
-		pageManager:          NewMultiPageManager(cacheSize, pageSize, len(cacheRanks), p0Scale, p1Scale), // 初始化 PageManager
+		cacheSize:            config.KvCache.CacheSize,
+		pageSize:             config.KvCache.PageSize,
+		pageManager:          NewMultiPageManager(config.KvCache.CacheSize, config.KvCache.PageSize, len(cacheRanks), config.Coordinator.GCIntreval, config.Coordinator.TTLINterval), // 初始化 PageManager
 		cacheMissDict:        make(map[int32]map[int32]int32),
 		server:               server,
 	}

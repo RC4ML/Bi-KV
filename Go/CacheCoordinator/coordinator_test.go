@@ -111,9 +111,7 @@ func TestMultiPageManager_LoadAndAccess(t *testing.T) {
 	cacheSize := 1000
 	pageSize := 100
 	kvcacheNum := 3
-	p0Scale := 0.7
-	p1Scale := 0.8
-	mpm := NewMultiPageManager(cacheSize, pageSize, kvcacheNum, p0Scale, p1Scale)
+	mpm := NewMultiPageManager(cacheSize, pageSize, kvcacheNum, 1, 10)
 
 	// Load an item
 	itemID := int32(1)
@@ -142,9 +140,7 @@ func TestMultiPageManager_ConcurrentAccess(t *testing.T) {
 	cacheSize := 1000
 	pageSize := 100
 	kvcacheNum := 2
-	p0Scale := 0.7
-	p1Scale := 0.8
-	mpm := NewMultiPageManager(cacheSize, pageSize, kvcacheNum, p0Scale, p1Scale)
+	mpm := NewMultiPageManager(cacheSize, pageSize, kvcacheNum, 1, 10)
 
 	var wg sync.WaitGroup
 	numGoroutines := 10

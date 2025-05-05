@@ -60,3 +60,7 @@ worker:
   max_workers: 10  # KVCache 的最大线程池大小
   cache_size: 100000  # 缓存大小
   page_size: 25  # 页面大小
+
+coordinator:
+  gc_interval: 1  # 垃圾回收间隔
+  ttl_interval: 10  # TTL间隔
