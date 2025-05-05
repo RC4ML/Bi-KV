@@ -95,7 +95,7 @@ class LLMScheduler:
                 ## append recomputing tokens
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
-                    recomputing_tokens = i.token_count 
+                    recomputing_tokens += i.token_count 
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = prompt.task_id,
                     id = -1,

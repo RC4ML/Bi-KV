@@ -1,116 +1,145 @@
-from argparse import Namespace
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, message=".*TORCH_CUDA_ARCH_LIST.*")
+import os
+import time
+import grpc
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from protos import TaskInfo_pb2, TaskInfo_pb2_grpc
+from Scheduler.LLMScheduler import LLMScheduler
+from DistributedStorage.CacheCoordinator import CacheCoordinator
+from DistributedStorage.kvcache import KVCache
+from inputGenerator.inputGenerator import LLMInput
+from Worker.Worker import Worker
+import logging
+from config import *
+from rpc_def import *
+from Remote.remote_call import call_remote_method
+from concurrent import futures
+from network import *
+from multiprocessing import Barrier
+import yaml
+import json
 
-from datasets import dataset_factory
-from dataloader import LLMDataloader
-import numpy as np
-from typing import List, Dict, Any
-import random
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
-from dataloader.llm import LLMTestDataset
+dataset_code = "games"
+args.model_code = 'llm'
+args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
+args.dataset_code = dataset_code
+args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
+args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 
-class PromptItem():
-    def __init__(self,item_id:int,token_count:int) -> None:
-        self.item_id = item_id
-        self.token_count = token_count
-    def __str__(self) -> str:
-        return f"{{item_id:{self.item_id}, token_count:{self.token_count}}}"
-    def __repr__(self) -> str:
-        return self.__str__()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("distributed_system.log"),
+        logging.StreamHandler()
+    ]
+)
 
-class InputPrompt():
-    def __init__(self,user_id:int,user_history_tokens:int,items:List[PromptItem],timestamp:int,weight:int) -> None:
-        self.user_id = user_id
-        self.user_history_tokens = user_history_tokens
-        self.items = items
-        self.timestamp = timestamp
-        self.task_id = 0
-        self.weight = weight
+def load_config(file_path):
+    with open(file_path, 'r') as file:
+        yaml_config = yaml.safe_load(file)
+    return yaml_config
 
-class LLMInput():
-    def __init__(self,k:int,poisson_lambda:500,args:Namespace) -> None:
-        self.k = -1
-        self.args = args
-        self.reset_k(k)
-        self.poisson_lambda = poisson_lambda
-        self.random_name = ""
+def init_backend(rank, world_size, process_type, type_index, timeout=120):
+    local_ip = get_local_ip()
+    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
+    dist.barrier()
+    logging.info(f"Process ID: {process_type} {type_index}, Rank: {rank}, IP: {local_ip}")
 
-    def generate(self,batch_size: int) -> List[InputPrompt]:
-        prompts = []
-        poisson_numbers = np.random.poisson(lam=self.poisson_lambda, size=batch_size)
-        for ind,i in enumerate(self._get_random_index(batch_size)):
-            data_point = self.dataset[i]
-            user_id = data_point['user_id']
-            user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
-            items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
-            timestamp = poisson_numbers[ind]  # 模拟timestamp
-            prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp,0))
-        return prompts
+def init_process(rank, world_size, yaml_config):
+    slots = yaml_config['grpc']['slots']
+    rank_to_ip = set_rank_to_ip(slots)
+    process_type, type_index = get_process_info(rank)
+    rank_map = generate_rank_map(world_size)
+    master_addr = os.environ['MASTER_ADDR']
     
-    def generate_time_series(self,batch_size:int,timestep:int,time_step_map) -> List[InputPrompt]:
-        '''根据时序数据产生batch'''
-        prompts = []
-        user_list = time_step_map[str(timestep)]
-        user_list = random.sample(user_list[:256],batch_size)
-        # batch_counter = 0
-        # for i in user_list:
-        #     user_id = i[0]
-        #     access_times = i[1]
-        #     data_point = self.dataset[user_id]
-        #     user_id = data_point['user_id']
-        #     user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
-        #     items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
-        #     prompt = InputPrompt(user_id,user_history_tokens,items,timestep)
-        #     if batch_counter+access_times<batch_size:
-        #         prompts.extend([prompt]*access_times)
-        #         batch_counter+=access_times
-        #     else:
-        #         prompts.extend([prompt]*(batch_size-batch_counter))
-        #         batch_counter = batch_size-1
-        #     if batch_counter == batch_size-1:
-        #         break
-        # print(prompts)
-        for i in range(batch_size):
-            data_ind = user_list[i][0]
-            # 时间步内访问次数
-            access_count = user_list[i][1]
-            data_point = self.dataset[data_ind]
-            user_id = data_point['user_id']
-            user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
-            items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
-            timestamp = timestep  # 模拟timestamp
-            weight = access_count * user_history_tokens
-            prompt = InputPrompt(user_id,user_history_tokens,items,timestamp,weight)
-            # for _ in range(access_count):
-            prompts.append(prompt)
-            # 很奇怪，这样会卡住
-            # prompts.extend([prompt]*access_count)
-            random.shuffle(prompts)
-        return prompts
-    
-    def reset_k(self,k:int) -> None:
-        self.k = k
-        self.args.llm_negative_sample_size = k-1
-        self.dataset = self._init_dataset()
-    
-    def set_random(self,random_name:str) -> None:
-        random_name_list = ['random','weighted']
-        if random_name not in random_name_list:
-            print("Warning: Invalid Random Name")
-        self.random_name = random_name
-    
-    def _init_dataset(self) -> LLMTestDataset:
-        dataset = dataset_factory(self.args)
-        dataloader = LLMDataloader(self.args, dataset)
-        llmDataset = dataloader._get_eval_dataset()
-        return llmDataset
-    
-    def _get_random_index(self,batch_size: int) -> List[int]:
-        indices = list(range(len(self.dataset)))
-        if self.random_name == "random":
-            return random.sample(indices, batch_size)
-        elif self.random_name == "weighted":
-            weights = [data_point["history_length"] for data_point in self.dataset]
-            sampled_index = random.choices(indices, weights=weights, k=batch_size)
-            return sampled_index
-        else:
-            return list(range(batch_size))
+    master_port = int(os.environ['MASTER_PORT']) # 50500
+    if process_type == 'scheduler':
+        timeout = 1000
+    else:
+        timeout = 360
+
+    init_backend(rank, world_size, process_type, type_index, timeout=timeout)
+
+    if process_type == 'LLMScheduler':
+        scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip)
+        input_generator = LLMInput(40, 5, args)
+        scheduler.set_prompt_generator(input_generator)
+        dist.barrier()
+        CacheCoordinator_addr = f"{master_addr}:{master_port + rank_map['CacheCoordinator'][0]}"
+        channel = grpc.insecure_channel(CacheCoordinator_addr)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        fut = stub.StartProcessRequest.future(TaskInfo_pb2.StartRequest(msg='start'))
+        logging.info("Start Testing")
+        time1 = time.time()
+        timestamp_map_path = '/share/nfs/wsh/Bi-KV/Bi-KV/data/games/timestep_map.json'
+        with open(timestamp_map_path, 'r') as f:
+            time_step_map = json.load(f)
+        # time_step_map = None
+        scheduler.start(10, 256,time_step_map)
+        time2 = time.time()
+        logging.info(f"Test Time cost: {time2 - time1}")
+        fut.result()
+        channel.close()
+
+    if process_type == 'CacheCoordinator':
+        dist.barrier()
+        pass
+
+    if process_type == 'Worker':
+        port = master_port + rank
+        cache_size = yaml_config['worker']['cache_size']
+        page_size = yaml_config['worker']['page_size']
+        max_workers = yaml_config['worker']['max_workers']
+        rank_to_ip_rdma = yaml_config['distributed']['rank_to_ip_rdma']
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
+        worker = Worker(rank, master_port, cache_size, page_size, rank_map['CacheCoordinator'][0], rank_to_ip, rank_to_ip_rdma, server)
+        TaskInfo_pb2_grpc.add_InferWorkerServiceServicer_to_server(
+            worker, server
+        )
+        server.add_insecure_port(f'{rank_to_ip[rank]}:{port}')
+        server.start()
+        worker.start_rdma()
+        dist.barrier()
+        server.wait_for_termination()
+
+    if process_type == 'KVCache':
+        port = master_port + rank
+        cache_size = yaml_config['kv_cache']['cache_size']
+        page_size = yaml_config['kv_cache']['page_size']
+        max_workers = yaml_config['kv_cache']['max_workers']
+        rank_to_ip_rdma = yaml_config['distributed']['rank_to_ip_rdma']
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
+        cache = KVCache(rank, cache_size, page_size, master_port, rank_to_ip,rank_to_ip_rdma, server)
+        TaskInfo_pb2_grpc.add_KVCacheServiceServicer_to_server(
+           cache, server
+        )
+        server.add_insecure_port(f'{rank_to_ip[rank]}:{port}')
+        server.start()
+        cache.start_rdma()
+        dist.barrier()
+        server.wait_for_termination()
+
+    dist.barrier()
+    dist.destroy_process_group()
+
+def main():
+    yaml_config = load_config("../config.yml")
+    init_network()
+    WORLD_SIZE = int(os.environ['WORLD_SIZE'])
+    WORLD_RANK = int(os.environ.get('RANK', os.environ.get('OMPI_COMM_WORLD_RANK', -1)))
+    if WORLD_RANK == 0:
+        logging.info(f"Bi-KV 启动分布式系统")
+
+    rank = WORLD_RANK
+    world_size = WORLD_SIZE
+    assert world_size == sum(count for _, count in PROCESS_TYPES)
+    assert world_size >= 2
+    init_process(rank, world_size, yaml_config)
+
+if __name__ == "__main__":
+    main()
