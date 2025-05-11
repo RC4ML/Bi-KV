@@ -68,7 +68,6 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
         infer_worker = task_info["infer_worker"]
         if DEBUG:
             print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Wroker{infer_worker}Rank={2*infer_worker+2}")
-        # TODO 需要补全cache miss逻辑，且用strategy庖代
         task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
         self.request_table.put(task_info)
@@ -294,7 +293,6 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
             request_id = req_list[0].request_id
             infer_worker = req_list[0].infer_worker
             print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
-        # TODO 若这里仍然是Check，则应该不执行
         send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=req_list)
         cache_rank = 2*cache_worker+KVCACHE_offset
         cache_coordinator_address = f"localhost:{self.master_port+cache_rank}"
@@ -332,7 +330,6 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
             request_id = req_list[0]['request_id']
             infer_worker = req_list[0]['infer_worker']
             print(f"[CacheCoordinator] 执行请求ID= {request_id} - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
-        # TODO 若这里仍然是Check，则应该不执行
         future = rpc.rpc_async(
             self.kvcache_ref[cache_worker].owner(),
             call_remote_method, 

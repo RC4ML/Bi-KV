@@ -287,7 +287,6 @@ class LLMScheduler:
         pass
 
 def schedule_order(prompt: InputPrompt,ans_dict = None) -> str:
-    # TODO 根据计算budget判断调度
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
     # print(f"user {user_tokens}, item {item_tokens}")
