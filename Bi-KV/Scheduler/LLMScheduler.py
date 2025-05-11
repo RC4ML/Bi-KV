@@ -38,7 +38,7 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self._task_counter = 0
-        self.batchsize = 32
+        self.batchsize = 8
         self.cold_start_flag = True
         
         time.sleep(1)

@@ -5,6 +5,7 @@ import argparse
 # from dataloader.utils import find_goods_index_llama3,find_goods_index
 
 
+# RAW_DATASET_ROOT_FOLDER = '/share/nfs/wsh/Bi-KV/Bi-KV/data'
 RAW_DATASET_ROOT_FOLDER = 'data'
 EXPERIMENT_ROOT = 'experiments'
 STATE_DICT_KEY = 'model_state_dict'

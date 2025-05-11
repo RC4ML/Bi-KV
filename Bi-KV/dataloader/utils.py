@@ -12,7 +12,9 @@ class Prompter(object):
         if not template_name:
             # template_name = "alpaca"
             template_name = "alpaca_short"
-        file_name = osp.join("dataloader", "templates", f"{template_name}.json")
+        # dataloader_path = '/share/nfs/wsh/Bi-KV/Bi-KV/dataloader'
+        dataloader_path = 'dataloader'
+        file_name = osp.join(dataloader_path, "templates", f"{template_name}.json")
         if not osp.exists(file_name):
             raise ValueError(f"Can't read {file_name}")
         with open(file_name) as fp:

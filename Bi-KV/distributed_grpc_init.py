@@ -67,7 +67,7 @@ def init_process(rank, world_size, yaml_config):
 
     if process_type == 'LLMScheduler':
         scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip)
-        input_generator = LLMInput(40, 5, args)
+        input_generator = LLMInput(100, 5, args)
         scheduler.set_prompt_generator(input_generator)
         dist.barrier()
         CacheCoordinator_addr = f"{master_addr}:{master_port + rank_map['CacheCoordinator'][0]}"

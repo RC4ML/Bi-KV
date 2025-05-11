@@ -18,13 +18,12 @@ def show_generate_res(res_list:List[InputPrompt]):
     for i in res_list:
         print(f"User ID: {i.user_id}\n\
 User History Tokens: {i.user_history_tokens}\n\
-Items: {i.items}\n\
 Timestamp: {i.timestamp}\n\
 Item Count: {len(i.items)}")
 
-llm_input = LLMInput(20,500,args)
+llm_input = LLMInput(100,500,args)
 generate_res = llm_input.generate(100)
-# show_generate_res(generate_res)
+show_generate_res(generate_res)
 # llm_input.reset_k(30)
 # generate_res = llm_input.generate(10)
 # show_generate_res(generate_res)
