@@ -80,7 +80,7 @@ class LLMScheduler:
             if prepare_flag:
                 prompt_order = "Item First"
             else:
-                prompt_order = schedule_order_budget(prompt)
+                prompt_order = schedule_order_budget(prompt, ans_dict)
             # 历史优先，调度用户历史kvcache
             if prompt_order == "User History First" or self.cold_start_flag and not prepare_flag:
             # if prompt_order == "User History First":
@@ -302,13 +302,18 @@ def schedule_order(prompt: InputPrompt,ans_dict = None) -> str:
     else:
         return "Item First"
 
-def schedule_order_budget(prompt: InputPrompt) -> str:
-    # TODO 根据计算budget判断调度，目前这个是随便定的
-    compute_budget = 1600
+def schedule_order_budget(prompt: InputPrompt, ans_dict = None) -> str:
+    compute_budget = 8000
     user_tokens = prompt.user_history_tokens
-    item_tokens = sum([item.token_count for item in prompt.items])
+    # item_tokens = sum([item.token_count for item in prompt.items])
     if user_tokens >= compute_budget:
-        return "User History First"
+        if ans_dict != None:
+            # 如果用户cache命中则用户优先，否则商品优先
+            if ans_dict[str(prompt.task_id)]['user miss']==0:
+                return "User History First"
+            else:
+                # 需要用cache空间判断
+                return "Item First"
     else:
         return "Item First"
     
