@@ -121,7 +121,7 @@ class LLMDataloader():
             with open(item_access_path, 'rb') as pickle_file:
                 user_candidate_dict = pickle.load(pickle_file)
             # print(user_candidate_dict)
-            print(f"[Dataloader] user num: {len(user_candidate_dict)} user num: {len(self.test_users)}")
+            print(f"[Dataloader] item num: {len(self.smap)} user num: {len(self.test_users)}")
             # 根据商品访问次数加权
             self.test_candidates = [user_candidate_dict[user][:self.args.llm_negative_sample_size+1] \
                                     for user in self.test_users]
