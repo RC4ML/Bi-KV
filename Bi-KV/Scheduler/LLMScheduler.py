@@ -174,7 +174,7 @@ class LLMScheduler:
             channel.close()
         
         # 控制写
-        future_list = []
+        write_future_list = []
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
@@ -182,9 +182,9 @@ class LLMScheduler:
             channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.StartWriteCacheData.future(task_info_list)
-            future_list.append((future,channel))  
+            write_future_list.append((future,channel))  
             
-        for future,channel in future_list:
+        for future,channel in write_future_list:
             future.result()
             channel.close()
         # 一批发送完后修改冷启动
@@ -209,7 +209,7 @@ class LLMScheduler:
             self.add_prompt_list(input_prompt_list)
         # self.process_prompt()
         if prepare_flag:
-            self.fill_cache_data(5,256)
+            self.fill_cache_data(5,128)
         logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
         self.process_prompt_batch()
         

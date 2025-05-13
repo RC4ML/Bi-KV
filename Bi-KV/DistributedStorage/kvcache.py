@@ -295,7 +295,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                 if task_type == SIGNAL_SEND:
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
-                        print(f"[KVCache {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
+                    logging.info(f"[KVCache {self.rank}] Send - cache {2*cache_worker+3} -> worker {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
                     # run_grpc_client(self.rdma_client, '192.168.189.9', 50052, 0, 1024*1024*128)
                     # if cache_worker== infer_worker:
@@ -315,15 +315,14 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     cache_worker = task_info['cache_worker']
                     if DEBUG:
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
-                        print(f"[KVCache {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
+                    logging.info(f"[KVCache {self.rank}] Recv - cache {2*cache_worker+3} -> worker {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
                     with grpc.insecure_channel(infer_worker_addr) as channel:
                         stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+                        logging.info(f"[KVCache {self.rank}] Start remote call - cache {2*cache_worker+3} -> worker {2*infer_worker+2}")
                         remote_send = stub.SendKVCacheData.future(combined_task_info_pb)
                         self.receive_data_batch(task_info)
                         remote_send.result()
-                    now = datetime.now()
-                    nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
                     # print(f"[KVCache][RANK {self.rank}] 执行Recv请求完成 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     self.recv_counter += 1
         return confirmation_msg

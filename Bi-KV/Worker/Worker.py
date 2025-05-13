@@ -390,12 +390,28 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.receive_kvcache_data_batch(task_info)
         return TaskInfo_pb2.Empty()
     
+    # def SendKVCacheData(self, request, context):
+    #     task_info = request
+    #     # if DEBUG:
+    #     dst_rank = 2*task_info.cache_worker + KVCACHE_offset
+    #     src_rank = 2*task_info.infer_worker+2
+    #     logging.info(f"[Worker {self.rank}] Recv remote call - cache {dst_rank} -> worker {src_rank}")
+    #     self.send_kvcache_data_batch(task_info)
+    #     return TaskInfo_pb2.Empty()
+
     def SendKVCacheData(self, request, context):
-        task_info = request
-        if DEBUG:
-            print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
-        self.send_kvcache_data_batch(task_info)
-        return TaskInfo_pb2.Empty()
+        try:
+            task_info = request
+            dst_rank = 2 * task_info.cache_worker + KVCACHE_offset
+            src_rank = 2 * task_info.infer_worker + 2
+            logging.info(f"[Worker {self.rank}] Recv remote call - cache {dst_rank} -> worker {src_rank}")
+            self.send_kvcache_data_batch(task_info)
+            return TaskInfo_pb2.Empty()
+        except Exception as e:
+            logging.error(f"[Worker {self.rank}] Error in SendKVCacheData: {e}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            raise
     
     def ShutDown(self, request, context):
         # 在这里处理关闭逻辑
