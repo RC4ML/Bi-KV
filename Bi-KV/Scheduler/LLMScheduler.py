@@ -10,6 +10,7 @@ from google.protobuf.json_format import ParseDict
 
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
+from Utils.channelpool import ChannelPool
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
 from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
@@ -40,6 +41,7 @@ class LLMScheduler:
         self._task_counter = 0
         self.batchsize = 8
         self.cold_start_flag = True
+        self.channelpool = ChannelPool()
         
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
@@ -164,14 +166,13 @@ class LLMScheduler:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
-            channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
+            channel = self.channelpool.get_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.ReceiveTasksFromScheduler.future(task_info_list)
             future_list.append((future,channel))  
             
         for future,channel in future_list:
             future.result()
-            channel.close()
         
         # 控制写
         write_future_list = []
@@ -179,14 +180,13 @@ class LLMScheduler:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
-            channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
+            channel = self.channelpool.get_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.StartWriteCacheData.future(task_info_list)
             write_future_list.append((future,channel))  
             
         for future,channel in write_future_list:
             future.result()
-            channel.close()
         # 一批发送完后修改冷启动
         if not prepare_flag:
             self.cold_start_flag = False
@@ -209,7 +209,7 @@ class LLMScheduler:
             self.add_prompt_list(input_prompt_list)
         # self.process_prompt()
         if prepare_flag:
-            self.fill_cache_data(5,128)
+            self.fill_cache_data(5,256)
         logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
         self.process_prompt_batch()
         

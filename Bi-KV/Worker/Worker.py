@@ -14,6 +14,7 @@ from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 from Utils.utils import now_time
+from Utils.channelpool import ChannelPool
 from rdma_transport import RDMAEndpoint
 import ipc_service
 
@@ -78,6 +79,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         self.start_pos = 0
         self.cache_miss_dict = {}
         self.server = server
+        self.channelpool = ChannelPool()
         
         # initialize model and parameters for inference
         intermediate_size = 8960
@@ -309,19 +311,21 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
     def forward_with_computation_grpc(self, tasks):
         tasks_list = tasks
         tasks = TaskInfo_pb2.TaskInfoList(tasks=tasks)
-        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-            stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
+        # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+        channel = self.channelpool.get_channel(self.cache_coordinator_address)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
         if DEBUG:
             print(f"{now_time()}[Worker {self.rank}] try to poll_batch")
-        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-            # stub.PollBatchFromInferWorker(tasks)
-            time1 = time.time()
-            future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
-            if DEBUG:
-                print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
-            cache_miss_dict_data = future_call_poll.result()
+        # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+        channel = self.channelpool.get_channel(self.cache_coordinator_address)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        # stub.PollBatchFromInferWorker(tasks)
+        time1 = time.time()
+        future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+        cache_miss_dict_data = future_call_poll.result()
         time2 = time.time()
         # logging.info(f"[Worker][RANK {self.rank}] poll time {time2-time1}s")
         cache_miss_dict = json.loads(cache_miss_dict_data.msg)
@@ -379,9 +383,10 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
-            with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-                stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-                stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
+            channel = self.channelpool.get_channel(self.cache_coordinator_address)
+            # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+            stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
 
     def RecvKVCacheData(self, request, context):
         task_info = request
