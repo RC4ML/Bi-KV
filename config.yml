@@ -18,7 +18,7 @@ grpc:
   slots: # 1G网控制，每个机器起几个进程
   # 2机配置
   - "192.168.189.7 slots=2"
-  - "192.168.189.9 slots=2"
+  - "192.168.189.8 slots=2"
   - "192.168.189.10 slots=2"
   # 4机的配置
   # - "192.168.189.8 slots=4"
@@ -33,8 +33,8 @@ distributed:
   # 2机配置
   - '10.0.0.1' # 0
   - '10.0.0.1' # 1
-  - '10.0.0.3' # 2
-  - '10.0.0.3' # 3
+  - '10.0.0.2' # 2
+  - '10.0.0.2' # 3
   - '10.0.0.4' # 4
   - '10.0.0.4' # 5  
   # 4机配置
@@ -50,13 +50,17 @@ distributed:
   # - '10.0.0.4' # 9
 
 kv_cache:
-  max_workers: 10  # KVCache 的最大线程池大小
+  max_workers: 20  # KVCache 的最大线程池大小
   cache_size: 60000  # 缓存大小
   page_size: 50  # 页面大小
   p0_scale: 0.7  # L1缓存大小
   p1_scale: 0.8  # L2缓存大小
 
 worker:
-  max_workers: 10  # KVCache 的最大线程池大小
+  max_workers: 20  # KVCache 的最大线程池大小
   cache_size: 100000  # 缓存大小
   page_size: 25  # 页面大小
+
+coordinator:
+  gc_interval: 1  # 垃圾回收间隔
+  ttl_interval: 10  # TTL间隔

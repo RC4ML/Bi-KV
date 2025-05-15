@@ -14,6 +14,7 @@ from DistributedStorage.PageManager import PageManager
 from DistributedStorage.Signals import SIGNAL_RECV,CACHE_MISS
 from Remote.remote_call import call_remote_method
 from Utils.utils import now_time
+from Utils.channelpool import ChannelPool
 
 # from rdma_transport import RDMAEndpoint
 from rdma_onesided_transport import RDMAOneSidedEndpoint
@@ -88,6 +89,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # 初始化消费者端共享内存
         self.shm_name = f"/sj_kv_cache_{self.worker_index}"
         self._init_shared_memory()
+        self.channelpool = ChannelPool()
  
     def _init_shared_memory(self):
         """初始化CUDA共享内存区域"""
@@ -175,7 +177,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         if self.worker_index == cache_worker:
             # 从共享内存接收CUDA张量
             start_read=time.time()
-            recv_tensor=ipc_service.consumer_receive()
+            # recv_tensor=ipc_service.consumer_receive()
             end_read=time.time()
             
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
@@ -263,19 +265,21 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
     def forward_with_computation_grpc(self, tasks):
         tasks_list = tasks
         tasks = TaskInfo_pb2.TaskInfoList(tasks=tasks)
-        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-            stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
+        # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+        channel = self.channelpool.get_channel(self.cache_coordinator_address)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
         if DEBUG:
             print(f"{now_time()}[Worker {self.rank}] try to poll_batch")
-        with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-            # stub.PollBatchFromInferWorker(tasks)
-            time1 = time.time()
-            future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
-            if DEBUG:
-                print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
-            cache_miss_dict_data = future_call_poll.result()
+        # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+        channel = self.channelpool.get_channel(self.cache_coordinator_address)
+        stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        # stub.PollBatchFromInferWorker(tasks)
+        time1 = time.time()
+        future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
+        if DEBUG:
+            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+        cache_miss_dict_data = future_call_poll.result()
         time2 = time.time()
         # logging.info(f"[Worker][RANK {self.rank}] poll time {time2-time1}s")
         cache_miss_dict = json.loads(cache_miss_dict_data.msg)
@@ -334,9 +338,10 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
-            with grpc.insecure_channel(self.cache_coordinator_address) as channel:
-                stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-                stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
+            # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
+            channel = self.channelpool.get_channel(self.cache_coordinator_address)
+            stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+            stub.ReceiveTasksFromInferWorker(send_task_list_gprc)
 
     def RecvKVCacheData(self, request, context):
         task_info = request

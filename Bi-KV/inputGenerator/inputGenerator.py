@@ -40,7 +40,7 @@ class LLMInput():
         for ind,i in enumerate(self._get_random_index(batch_size)):
             data_point = self.dataset[i]
             user_id = data_point['user_id']
-            user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+            user_history_tokens = data_point["history_length"]*20 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
             prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp,0))

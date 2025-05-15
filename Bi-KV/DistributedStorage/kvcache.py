@@ -12,6 +12,7 @@ import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from DistributedStorage.Signals import SIGNAL_SEND, SIGNAL_RECV
 from rpc_def import KVCACHE_offset,WORKER_offset, WORKER_NUM, KVCACHE_NUM
+from Utils.channelpool import ChannelPool
 from Remote.remote_call import call_remote_method
 from Model.qwen2 import token_shape
 from config import *
@@ -73,6 +74,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             print(f"KVcache {self.rank} shared mem init failed: {e}")
         self.cpu_cache_data = self.cpu_cache_data.pin_memory()  # 后pin内存
         torch.cuda.synchronize(self.device)
+        
+        self.channelpool = ChannelPool()
         print(f"[KVcach][RANK {self.rank}] Init finish")
         
     def get_index_tensors(self, num_pages):
@@ -425,16 +428,17 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}]{task_info}")
                         print(f"[KVCache {self.rank}] 执行Send请求 - cacheRank {2*cache_worker+3} -> workerRank {2*infer_worker+2}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
-                    if cache_worker== infer_worker:
-                        self.shared_data_batch_pages(task_info)
-                    with grpc.insecure_channel(infer_worker_addr) as channel:
-                        stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
-                        remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
-                        if cache_worker == infer_worker:
-                            remote_recv.result()
-                        else:
-                            self.send_data_batch(task_info)
-                            remote_recv.result()
+                    # if cache_worker== infer_worker:
+                    #     self.shared_data_batch_pages(task_info)
+                    # with grpc.insecure_channel(infer_worker_addr) as channel:
+                    channel = self.channelpool.get_channel(infer_worker_addr)
+                    stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+                    remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
+                    if cache_worker == infer_worker:
+                        remote_recv.result()
+                    else:
+                        self.send_data_batch(task_info)
+                        remote_recv.result()
                     self.send_counter += 1
 
                 elif task_type == SIGNAL_RECV:
@@ -443,11 +447,12 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                         print(f"[KVCache.receive_task_info_batch][RANK {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                         print(f"[KVCache {self.rank}] 执行Recv请求 - workerRank {2*infer_worker+2} -> cacheRank {2*cache_worker+3}")
                     combined_task_info_pb = self._task_info_json_to_pb(task_info)
-                    with grpc.insecure_channel(infer_worker_addr) as channel:
-                        stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
-                        remote_send = stub.SendKVCacheData.future(combined_task_info_pb)
-                        self.receive_data_batch(task_info)
-                        remote_send.result()
+                    # with grpc.insecure_channel(infer_worker_addr) as channel:
+                    channel = self.channelpool.get_channel(infer_worker_addr)
+                    stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
+                    remote_send = stub.SendKVCacheData.future(combined_task_info_pb)
+                    self.receive_data_batch(task_info)
+                    remote_send.result()
                     now = datetime.now()
                     nowtime = now.strftime("%Y-%m-%d %H:%M:%S") + f",{now.microsecond // 1000:03d}"
                     self.recv_counter += 1

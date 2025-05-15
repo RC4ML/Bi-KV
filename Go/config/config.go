@@ -48,6 +48,11 @@ type Config struct {
 		CacheSize  int `yaml:"cache_size"`
 		PageSize   int `yaml:"page_size"`
 	} `yaml:"worker"`
+
+	Coordinator struct {
+		GCIntreval  int `yaml:"gc_interval"`
+		TTLINterval int `yaml:"ttl_interval"`
+	} `yaml:"coordinator"`
 }
 
 // 读取配置文件

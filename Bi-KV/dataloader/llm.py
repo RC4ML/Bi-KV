@@ -22,8 +22,8 @@ def generate_and_tokenize_eval(args, data_point, tokenizer, prompter):
     in_prompt = prompter.generate_prompt(data_point["system"],
                                          data_point["input"])
     tokenized_full_prompt = tokenizer(in_prompt,
-                                      truncation=True,
-                                      max_length=args.llm_max_text_len,
+                                    #   truncation=True,
+                                    #   max_length=args.llm_max_text_len,
                                       padding=False,
                                       return_tensors=None)
     tokenized_full_prompt["labels"] = ord(data_point["output"]) - ord('A')
@@ -121,7 +121,7 @@ class LLMDataloader():
             with open(item_access_path, 'rb') as pickle_file:
                 user_candidate_dict = pickle.load(pickle_file)
             # print(user_candidate_dict)
-            print(f"[Dataloader] user num: {len(user_candidate_dict)} user num: {len(self.test_users)}")
+            print(f"[Dataloader] item num: {len(self.smap)} user num: {len(self.test_users)}")
             # 根据商品访问次数加权
             self.test_candidates = [user_candidate_dict[user][:self.args.llm_negative_sample_size+1] \
                                     for user in self.test_users]

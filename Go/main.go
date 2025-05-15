@@ -65,7 +65,7 @@ func main() {
 	p0Scale := config.KvCache.P0Scale
 	p1Scale := config.KvCache.P1Scale
 	log.Printf("Page size %d L1 size: %f, L2 size: %f \n", config.KvCache.PageSize, p0Scale, p1Scale)
-	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, config.KvCache.CacheSize, config.KvCache.PageSize, s, rankToIP, p0Scale, p1Scale)
+	cc := coordinator.NewCacheCoordinator(rank, masterPort, cacheRanks, inferRanks, s, rankToIP, config)
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", rankToIP[rank], masterPort+rank))
 	if err != nil {
 		fmt.Printf("Failed to listen: %v\n", err)

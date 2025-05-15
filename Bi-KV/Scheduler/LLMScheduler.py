@@ -1,5 +1,6 @@
 # import uuid
 import json
+import logging
 import random
 from typing import Dict, List
 
@@ -9,6 +10,7 @@ from google.protobuf.json_format import ParseDict
 
 from inputGenerator.inputGenerator import LLMInput,InputPrompt
 from Worker.Worker import Worker
+from Utils.channelpool import ChannelPool
 from rpc_def import *
 from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
 from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
@@ -37,8 +39,9 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self._task_counter = 0
-        self.batchsize = 32
+        self.batchsize = 8
         self.cold_start_flag = True
+        self.channelpool = ChannelPool()
         
         time.sleep(1)
         print("[LLMScheduler] finish init all class")
@@ -63,18 +66,29 @@ class LLMScheduler:
         # 处理尾巴部分（未整除的 prompts）
         remaining = total_prompts % batch_size  # 剩余未整除的数量
         if remaining > 0:  # 检查是否有剩余
-            self._send_prompt_batch(self.prompt_list[-remaining:])
+            working_prompt_list = self.prompt_list[-remaining:]
+            ans_dict = self._check_batch(working_prompt_list)
+            self._send_prompt_batch(working_prompt_list,ans_dict)
                         
-    def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict):
+    def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict = None,prepare_flag=False):
         future_list = []
         task_info_list_dict = {}
         # 先check一遍cache
+        user_counter = 0
+        item_counter = 0 
+        total_counter = 0
         for ind,prompt in enumerate(prompt_list): 
-            prompt_order = PromptOrder(prompt,ans_dict)
+            total_counter += 1
+            if prepare_flag:
+                prompt_order = "Item First"
+            else:
+                prompt_order = schedule_order_budget(prompt, ans_dict)
             # 历史优先，调度用户历史kvcache
-            if prompt_order == "User History First" or self.cold_start_flag:
+            if prompt_order == "User History First" or self.cold_start_flag and not prepare_flag:
+            # if prompt_order == "User History First":
             # if ans_dict[str(prompt.task_id)] == 1:
             # if True:
+                user_counter += 1
                 infer_worker = self.strategy(prompt.task_id)
                 token_num = prompt.user_history_tokens
                 task_info = TaskInfo_pb2.TaskInfo(
@@ -86,7 +100,7 @@ class LLMScheduler:
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
                     task_num = 1,
-                    weight=prompt.weight,
+                    weight = 1,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -95,7 +109,7 @@ class LLMScheduler:
                 ## append recomputing tokens
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
-                    recomputing_tokens += i.token_count 
+                    recomputing_tokens = i.token_count 
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = prompt.task_id,
                     id = -1,
@@ -108,10 +122,10 @@ class LLMScheduler:
                     weight=0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
-                # TODO 冷启动flag位置
 
             # 商品优先，调度*一组*商品kvcache
             elif prompt_order == "Item First":
+                item_counter += 1
                 # 商品优先级固定为0
                 priority = 0
             # elif ans_dict[str(prompt.task_id)] == 0:
@@ -147,36 +161,35 @@ class LLMScheduler:
                     weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
-
+        logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
-            channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
+            channel = self.channelpool.get_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.ReceiveTasksFromScheduler.future(task_info_list)
             future_list.append((future,channel))  
             
         for future,channel in future_list:
             future.result()
-            channel.close()
         
         # 控制写
-        future_list = []
+        write_future_list = []
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
             task_info_list = TaskInfo_pb2.TaskInfoList(tasks = task_info_list_dict[infer_worker]) 
-            channel = grpc.insecure_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
+            channel = self.channelpool.get_channel(f"{self.rank_to_ip[2*infer_worker + WORKER_offset]}:{infer_worker_port}")
             stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
             future = stub.StartWriteCacheData.future(task_info_list)
-            future_list.append((future,channel))  
+            write_future_list.append((future,channel))  
             
-        for future,channel in future_list:
+        for future,channel in write_future_list:
             future.result()
-            channel.close()
         # 一批发送完后修改冷启动
-        self.cold_start_flag = False
+        if not prepare_flag:
+            self.cold_start_flag = False
 
     def strategy(self, req_id: int) -> int:
         return req_id % self.num_workers
@@ -184,7 +197,7 @@ class LLMScheduler:
     def set_prompt_generator(self, prompt_generator:LLMInput):
         self.prompt_generator = prompt_generator
 
-    def start(self, iter_round:int, batchsize:int, timestep_map = None):
+    def start(self, iter_round:int, batchsize:int, timestep_map = None, prepare_flag = False):
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
@@ -195,8 +208,10 @@ class LLMScheduler:
                 input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)
         # self.process_prompt()
+        if prepare_flag:
+            self.fill_cache_data(5,256)
+        logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
         self.process_prompt_batch()
-        # 在这之后调CacheCoordinator.send_terminate_signal，会炸，不知道为什么
         
     def calculate_data_len(self,token_num:int):
         return token_num*model_params["head_size"]*model_params["num_q_heads"]*model_params["num_layers"]*model_params["num_kv_heads"]
@@ -242,10 +257,36 @@ class LLMScheduler:
         # print(f"ans_dict:{ans_dict}")
         return ans_dict
 
+    def fill_cache_data(self, iter_round:int, batchsize:int):
+        logging.info(f"[LLMScheduler] Filling Cache Data...")
+        prompt_list = []
+        if not self.prompt_generator:
+            print("[LLMScheduler] Error: prompt_generator is NONE!")
+            return
+        for _ in range(iter_round):
+            input_prompt_list = self.prompt_generator.generate(batchsize)
+            prompt_list.extend(input_prompt_list)
+        cnt = 0
+        working_prompt_list = []
+        batch_size = self.num_workers * self.batchsize  # 每批次的大小
+        total_prompts = len(prompt_list)
+        for prompt in prompt_list:
+            self._id_counter += 1
+            prompt.task_id = self._id_counter
+            working_prompt_list.append(prompt)
+            cnt += 1
+            if cnt % batch_size == 0:
+                self._send_prompt_batch(working_prompt_list,None,True)
+                working_prompt_list = []
+        # 处理尾巴部分（未整除的 prompts）
+        remaining = total_prompts % batch_size  # 剩余未整除的数量
+        if remaining > 0:  # 检查是否有剩余
+            self._send_prompt_batch(self.prompt_list[-remaining:],None,True)
+
     def schedule_strategy(self):
         pass
 
-def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
+def schedule_order(prompt: InputPrompt,ans_dict = None) -> str:
     user_tokens = prompt.user_history_tokens
     item_tokens = sum([item.token_count for item in prompt.items])
     # print(f"user {user_tokens}, item {item_tokens}")
@@ -258,6 +299,21 @@ def PromptOrder(prompt: InputPrompt,ans_dict = None) -> str:
                 # 需要用cache空间判断
                 return "Item First"
         return "User History First"
+    else:
+        return "Item First"
+
+def schedule_order_budget(prompt: InputPrompt, ans_dict = None) -> str:
+    compute_budget = 8000
+    user_tokens = prompt.user_history_tokens
+    # item_tokens = sum([item.token_count for item in prompt.items])
+    if user_tokens >= compute_budget:
+        if ans_dict != None:
+            # 如果用户cache命中则用户优先，否则商品优先
+            if ans_dict[str(prompt.task_id)]['user miss']==0:
+                return "User History First"
+            else:
+                # 需要用cache空间判断
+                return "Item First"
     else:
         return "Item First"
     

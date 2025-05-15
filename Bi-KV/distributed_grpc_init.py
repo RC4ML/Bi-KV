@@ -23,7 +23,7 @@ import json
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
-dataset_code = "games"
+dataset_code = "books"
 args.model_code = 'llm'
 args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
 args.dataset_code = dataset_code
@@ -67,7 +67,7 @@ def init_process(rank, world_size, yaml_config):
 
     if process_type == 'LLMScheduler':
         scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip)
-        input_generator = LLMInput(40, 5, args)
+        input_generator = LLMInput(100, 5, args)
         scheduler.set_prompt_generator(input_generator)
         dist.barrier()
         CacheCoordinator_addr = f"{master_addr}:{master_port + rank_map['CacheCoordinator'][0]}"
@@ -76,15 +76,15 @@ def init_process(rank, world_size, yaml_config):
         fut = stub.StartProcessRequest.future(TaskInfo_pb2.StartRequest(msg='start'))
         logging.info("Start Testing")
         time1 = time.time()
-        timestamp_map_path = '/share/nfs/wsh/Bi-KV/Bi-KV/data/games/timestep_map.json'
+        timestamp_map_path = f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{dataset_code}/timestep_map.json'
         with open(timestamp_map_path, 'r') as f:
             time_step_map = json.load(f)
         # time_step_map = None
-        scheduler.start(10, 256,time_step_map)
-        time2 = time.time()
-        logging.info(f"Test Time cost: {time2 - time1}")
+        scheduler.start(10,256,time_step_map,True)
         fut.result()
         channel.close()
+        time2 = time.time()
+        logging.info(f"Test Time cost: {time2 - time1}")
 
     if process_type == 'CacheCoordinator':
         dist.barrier()
