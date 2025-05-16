@@ -80,7 +80,7 @@ def init_process(rank, world_size, yaml_config):
         with open(timestamp_map_path, 'r') as f:
             time_step_map = json.load(f)
         # time_step_map = None
-        scheduler.start(10,256,time_step_map,True)
+        scheduler.start_test(10,256,time_step_map)
         fut.result()
         channel.close()
         time2 = time.time()
@@ -129,6 +129,9 @@ def init_process(rank, world_size, yaml_config):
 
 def main():
     yaml_config = load_config("../config.yml")
+    dataset_code = yaml_config['general']['dataset_code']
+    args.dataset_code = dataset_code
+    args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
     init_network()
     WORLD_SIZE = int(os.environ['WORLD_SIZE'])
     WORLD_RANK = int(os.environ.get('RANK', os.environ.get('OMPI_COMM_WORLD_RANK', -1)))

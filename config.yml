@@ -2,7 +2,7 @@
 general:
   model_code: "llm"  # 模型代码
   llm_retrieved_path: "/data/testmodel/LlamaRec/experiments/lru/games"  # 模型路径
-  dataset_code: "games"  # 数据集代码
+  dataset_code: "books"  # 数据集代码
   log_level: "INFO"  # 日志级别
   log_file: "distributed_system.log"  # 日志文件名
 

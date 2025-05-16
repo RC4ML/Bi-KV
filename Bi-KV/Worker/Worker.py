@@ -183,8 +183,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             time_diff = end_read - start_read
             throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
-            print(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
-                     f"throughput: {throughput} GB/s\n")
+            # logging.info(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
+                    #  f"throughput: {throughput} GB/s\n")
         else: 
             start_recv=time.time()
             # self.ep.post_send_by_rank(src_rank, token_num * 128 * 8 * 28)
@@ -297,7 +297,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # print(f"shape {input_ids.shape} {cached_tokens}")
         output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
-        logging.info(f"worker {self.worker_index}, read kv cache time {time3-time1}s, compute time: {time5-time3}s")
+        logging.info(f"[WORKER {self.worker_index}] read kv cache time {time3-time1}s, compute time: {time5-time3}s")
     
     def preprare_send_data_grpc(self, task_info_list):
         send_task_list = []

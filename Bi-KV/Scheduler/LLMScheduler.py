@@ -81,10 +81,13 @@ class LLMScheduler:
             total_counter += 1
             if prepare_flag:
                 prompt_order = "Item First"
+            elif self.cold_start_flag:
+                prompt_order = "User History First"
             else:
                 prompt_order = schedule_order_budget(prompt, ans_dict)
+            prompt_order = schedule_order(prompt)
             # 历史优先，调度用户历史kvcache
-            if prompt_order == "User History First" or self.cold_start_flag and not prepare_flag:
+            if prompt_order == "User History First":
             # if prompt_order == "User History First":
             # if ans_dict[str(prompt.task_id)] == 1:
             # if True:
@@ -100,7 +103,7 @@ class LLMScheduler:
                     task_type = SIGNAL_CHECK,
                     type = 'user cache',
                     task_num = 1,
-                    weight = 1,
+                    weight = 0,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -161,7 +164,7 @@ class LLMScheduler:
                     weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
-        logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
+        # logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
@@ -211,6 +214,21 @@ class LLMScheduler:
         if prepare_flag:
             self.fill_cache_data(5,256)
         logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
+        self.process_prompt_batch()
+
+    def start_test(self, iter_round:int, batchsize:int, timestep_map = None):
+        if not self.prompt_generator:
+            print("[LLMScheduler] Error: prompt_generator is NONE!")
+            return
+        for timestep in range(iter_round):
+            if timestep_map != None:
+                input_prompt_list = self.prompt_generator.generate_time_series(batchsize,timestep,timestep_map)
+            else:
+                input_prompt_list = self.prompt_generator.generate(batchsize)
+            self.add_prompt_list(input_prompt_list)
+        # self.process_prompt()
+        logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
+        self.cold_start_flag = False
         self.process_prompt_batch()
         
     def calculate_data_len(self,token_num:int):
