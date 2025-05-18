@@ -107,7 +107,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             dtype=torch.float16
         )
         # time0 = time.time()
-        self.ep.post_rdma_write(rank=dst_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
+        # self.ep.post_rdma_write(rank=dst_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
         # dist.send(tensor=send_tensor, dst=dst_rank)
         # time1 = time.time()
         # logging.info(f"{self.rank} send once time: {time1-time0}s, throughput: {(total_token_num*128*28*8/(time1-time0)/(1e9))} GB/s")
@@ -127,7 +127,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             dtype=torch.float16
         )
         # dist.recv(tensor=recv_tensor, src=src_rank)
-        self.ep.post_rdma_read(rank=src_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
+        # self.ep.post_rdma_read(rank=src_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
     
     def shared_data_batch_pages(self, combined_task_info: Dict):
         """使用CUDA共享内存传输数据（带详细性能分析）"""

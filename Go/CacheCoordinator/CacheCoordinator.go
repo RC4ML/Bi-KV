@@ -271,7 +271,8 @@ func (cc *CacheCoordinator) sendTerminateSignal() {
 		wg.Add(1)
 		go func(r int) {
 			defer wg.Done()
-			addr := fmt.Sprintf("localhost:%d", cc.masterPort+2*r+KVCACHEOffset)
+			cacheRank := 2*r + KVCACHEOffset // 假设 KVCACHEOffset 已定义
+			addr := fmt.Sprintf("%s:%d", cc.rankToIP[cacheRank], cc.masterPort+cacheRank)
 			conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				log.Printf("[CacheCoordinator] Failed to connect KVCache %d: %v\n", r, err)
@@ -290,7 +291,8 @@ func (cc *CacheCoordinator) sendTerminateSignal() {
 		wg.Add(1)
 		go func(r int) {
 			defer wg.Done()
-			addr := fmt.Sprintf("localhost:%d", cc.masterPort+2*r+INFEROffset)
+			workerRank := 2*r + INFEROffset
+			addr := fmt.Sprintf("%s:%d", cc.rankToIP[workerRank], cc.masterPort+workerRank)
 			conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				log.Printf("[CacheCoordinator] Failed to connect Infer Worker %d: %v\n", r, err)

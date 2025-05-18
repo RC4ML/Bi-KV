@@ -39,6 +39,7 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self._task_counter = 0
+        # TODO 改成max batch token 可配
         self.batchsize = 8
         self.cold_start_flag = True
         self.channelpool = ChannelPool()
@@ -217,6 +218,7 @@ class LLMScheduler:
         self.process_prompt_batch()
 
     def start_test(self, iter_round:int, batchsize:int, timestep_map = None):
+        test_user_counter = {}
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
@@ -226,9 +228,11 @@ class LLMScheduler:
             else:
                 input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)
+            for i in input_prompt_list:
+                test_user_counter[i.user_id] = 0
         # self.process_prompt()
-        logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
         self.cold_start_flag = False
+        logging.info(f"[LLMScheduler] Test User Num: {len(test_user_counter)}")
         self.process_prompt_batch()
         
     def calculate_data_len(self,token_num:int):
@@ -321,7 +325,7 @@ def schedule_order(prompt: InputPrompt,ans_dict = None) -> str:
         return "Item First"
 
 def schedule_order_budget(prompt: InputPrompt, ans_dict = None) -> str:
-    compute_budget = 8000
+    compute_budget = 2000
     user_tokens = prompt.user_history_tokens
     # item_tokens = sum([item.token_count for item in prompt.items])
     if user_tokens >= compute_budget:

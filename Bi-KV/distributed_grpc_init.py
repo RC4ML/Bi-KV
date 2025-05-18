@@ -23,10 +23,7 @@ import json
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
-dataset_code = "books"
 args.model_code = 'llm'
-args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
-args.dataset_code = dataset_code
 args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
 args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 
@@ -66,6 +63,7 @@ def init_process(rank, world_size, yaml_config):
     init_backend(rank, world_size, process_type, type_index, timeout=timeout)
 
     if process_type == 'LLMScheduler':
+        dataset_code = yaml_config['general']['dataset_code']
         scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip)
         input_generator = LLMInput(100, 5, args)
         scheduler.set_prompt_generator(input_generator)
@@ -74,12 +72,15 @@ def init_process(rank, world_size, yaml_config):
         channel = grpc.insecure_channel(CacheCoordinator_addr)
         stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
         fut = stub.StartProcessRequest.future(TaskInfo_pb2.StartRequest(msg='start'))
+        logging.info(f"Cache Size: {yaml_config['kv_cache']['cache_size']} Page Size: {yaml_config['kv_cache']['page_size']}")
+        logging.info(f"Worker Buffer Size: {yaml_config['worker']['cache_size']} Page Size: {yaml_config['worker']['page_size']}")
         logging.info("Start Testing")
         time1 = time.time()
         timestamp_map_path = f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{dataset_code}/timestep_map.json'
         with open(timestamp_map_path, 'r') as f:
             time_step_map = json.load(f)
         # time_step_map = None
+        # TODO 数据量调大
         scheduler.start_test(10,256,time_step_map)
         fut.result()
         channel.close()
