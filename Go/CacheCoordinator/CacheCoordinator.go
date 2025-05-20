@@ -71,6 +71,7 @@ func (cc *CacheCoordinator) Strategy(reqID int32) int32 {
 // ReceiveTasksFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.Empty, error) {
 	log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
+	cc.pageManager.ShowFreePages()
 	for _, task := range req.Tasks {
 		task.CacheWorker = int32(cc.Strategy(task.RequestId + task.Id))
 		cc.requestQueue <- task

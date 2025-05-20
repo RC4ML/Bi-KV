@@ -51,16 +51,25 @@ distributed:
 
 kv_cache:
   max_workers: 20  # KVCache 的最大线程池大小
-  cache_size: 60000  # 缓存大小
+  cache_size: 6200000  # 缓存大小
   page_size: 50  # 页面大小
   p0_scale: 0.7  # L1缓存大小
   p1_scale: 0.8  # L2缓存大小
 
 worker:
   max_workers: 20  # KVCache 的最大线程池大小
-  cache_size: 100000  # 缓存大小
+  cache_size: 200000  # 缓存大小
   page_size: 50  # 页面大小
 
 coordinator:
   gc_interval: 1  # 垃圾回收间隔
   ttl_interval: 10  # TTL间隔
+
+scheduler:
+  max_batch_token: 4000  # 最大批处理Token数
+  batch_size: 512 # 批处理大小
+  iter_round: 30  # 迭代轮数
+
+input_generator:
+  user_history_expand_ratio: 10
+  recommendation_size: 100

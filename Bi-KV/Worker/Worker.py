@@ -102,7 +102,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         buffer_size = self.compute_buffer.element_size() * self.compute_buffer.nelement()
         print(f"buffer_size:{buffer_size/(1024**2)}MB")
         # 初始化生产者端共享内存
-        ipc_service.consumer_init(device_id, self.shm_name.encode(), buffer_size*5)
+        # ipc_service.consumer_init(device_id, self.shm_name.encode(), buffer_size*5)
         
     def __del__(self):
         print(f"Worker {self.rank} destroyed at {time.time()}") 
