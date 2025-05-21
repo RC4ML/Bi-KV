@@ -68,7 +68,7 @@ coordinator:
 scheduler:
   max_batch_token: 4000  # 最大批处理Token数
   batch_size: 512 # 批处理大小
-  iter_round: 30  # 迭代轮数
+  iter_round: 50  # 迭代轮数
 
 input_generator:
   user_history_expand_ratio: 10

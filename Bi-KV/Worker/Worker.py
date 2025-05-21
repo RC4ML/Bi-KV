@@ -146,7 +146,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             if item_id == -1:
                 continue
             self.page_manager.load_item(item_id, task.token_num)
-            self.page_manager.set_protected(item_id)
+            # NOTE 目前测试先把保护飞了
+            # self.page_manager.set_protected(item_id)
         self.forward_with_computation_grpc(request.tasks)
         return TaskInfo_pb2.Empty()
     
@@ -193,7 +194,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             #计算总数据量（字节）
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             time_diff = end_recv - start_recv
-            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            # throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
             # print(f"[dist.recv]send once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
             #     f"throughput: {throughput} GB/s\n")
         
@@ -251,9 +252,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         )
         # send_tensor[send_indices] = self.compute_buffer[buffer_indices]
 
-        # 第三步：移除保护
-        for id_pair in id_pair_list:
-            self.page_manager.remove_protected(id_pair.id)
+        # 第三步：移除保护 NOTE 目前被飞了
+        # for id_pair in id_pair_list:
+        #     self.page_manager.remove_protected(id_pair.id)
         if DEBUG:
             print(f"[Worker][Rank {self.rank}] 开始发送数据到 Rank {dst_rank}, 长度={token_num}")
         # dist.send(tensor=send_tensor, dst=dst_rank)
@@ -289,13 +290,14 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
         # ## start model inference
         time3 = time.time()
-        queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
-        attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
-        input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
-        positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
-        time4 = time.time()
-        # print(f"shape {input_ids.shape} {cached_tokens}")
-        output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
+        # NOTE 测workload的时候要恢复 
+        # queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
+        # attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
+        # input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
+        # positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
+        # time4 = time.time()
+        # # print(f"shape {input_ids.shape} {cached_tokens}")
+        # output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
         logging.info(f"[WORKER {self.worker_index}] read kv cache time {time3-time1}s, compute time: {time5-time3}s")
     
@@ -325,9 +327,10 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
                 # print(f"[Worker][RANK {self.rank}] Cache miss detected")
                 task_info.task_type = SIGNAL_RECV
                 send_task_list.append(task_info)
-            else:
-                if item_id in self.page_manager.get_loaded_lists():
-                    self.page_manager.remove_protected(item_id)
+            # NOTE Worker上和保护有关的内容飞了
+            # else:
+            #     if item_id in self.page_manager.get_loaded_lists():
+            #         self.page_manager.remove_protected(item_id)
         # TODO 适配
         # logging.info(f"length counter {hit_counter}/{length_counter} ")
         hit_rate = hit_counter/length_counter

@@ -68,7 +68,6 @@ class CacheCoordinator(TaskInfo_pb2_grpc.CacheCoordinatorServiceServicer):
         infer_worker = task_info["infer_worker"]
         if DEBUG:
             print(f"[CacheCoordinator] 添加请求：请求ID={request_id}, 接收Wroker{infer_worker}Rank={2*infer_worker+2}")
-        # TODO 需要补全cache miss逻辑，且用strategy庖代
         task_info["cache_worker"] = self.strategy(request_id+task_info['id'])
         task_info["executing"] = False
         self.request_table.put(task_info)

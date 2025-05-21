@@ -53,7 +53,6 @@ class LLMInput():
         '''根据时序数据产生batch'''
         prompts = []
         user_list = time_step_map[str(timestep)]
-        # TODO Weitghted sample
         sampling_weight = [i[1] for i in user_list]
         user_list = random.choices(user_list, k=batch_size, weights=sampling_weight)
         for i in range(batch_size):
@@ -62,8 +61,7 @@ class LLMInput():
             access_count = user_list[i][1]
             data_point = self.dataset[data_ind]
             user_id = data_point['user_id']
-            # TODO 比例可调
-            user_history_tokens = data_point["history_length"]*10 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+            user_history_tokens = data_point["history_length"]*self.user_expand_ratio # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = timestep  # 模拟timestamp
             weight = access_count * user_history_tokens

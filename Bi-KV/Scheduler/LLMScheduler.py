@@ -39,7 +39,6 @@ class LLMScheduler:
         self.prompt_generator:LLMInput = None
         self._id_counter = 0
         self._task_counter = 0
-        # TODO 改成max batch token 可配
         self.max_batch_token = max_batch_token
         self.batchsize = 8
         self.cold_start_flag = True
@@ -55,7 +54,6 @@ class LLMScheduler:
             self.prompt_list.append(i)
                 
     def process_prompt_batch(self,hack_option = None):
-        # TODO 大batch查一次
         plan_tokens_num = 0
         last_pos = 0
         working_prompt_list = []
@@ -69,15 +67,17 @@ class LLMScheduler:
 
             if hack_option != None:
                 prompt.order = hack_option
+            # TODO 区分miss和原本的 增加属性
             prompt.user_history_tokens = ans_dict[str(prompt.task_id)]['user miss']
             prompt.item_tokens = ans_dict[str(prompt.task_id)]['item miss']
+            # UHF User前缀 item全重算
             if prompt.order == "User History First":
-                token_num = prompt.user_history_tokens
+                compute_token_num = prompt.item_tokens
             elif prompt.order == "Item First":
-                token_num = prompt.item_tokens
+                compute_token_num = prompt.user_history_tokens
             
             working_prompt_list.append(prompt)
-            plan_tokens_num += token_num
+            plan_tokens_num += compute_token_num
             if plan_tokens_num > self.max_batch_token:
                 self._send_prompt_batch(working_prompt_list,ans_dict)
                 working_prompt_list = []
@@ -133,11 +133,9 @@ class LLMScheduler:
                 else:
                     task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
-                # recomputing_tokens = 0
-                # for ind,i in enumerate(prompt.items):
-                #     recomputing_tokens += i.token_count 
-                # 重计算token为商品的重计算数
-                recomputing_tokens = prompt.item_tokens
+                recomputing_tokens = 0
+                for ind,i in enumerate(prompt.items):
+                    recomputing_tokens += i.token_count 
                 task_info = TaskInfo_pb2.TaskInfo(
                     request_id = prompt.task_id,
                     id = -1,
