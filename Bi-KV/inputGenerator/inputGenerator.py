@@ -27,6 +27,8 @@ class InputPrompt():
         self.item_tokens = sum([i.token_count for i in self.items])
         self.weight = weight
         self.order = None
+        self.miss_user_history_tokens = 0
+        self.miss_item_tokens = 0
 
 class LLMInput():
     def __init__(self,k:int,poisson_lambda:500,args:Namespace,user_expand_ratio=1) -> None:

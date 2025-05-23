@@ -33,6 +33,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("distributed_system.log"),
+        logging.FileHandler("metrics-item-250523-1.log"),
         logging.StreamHandler()
     ]
 )

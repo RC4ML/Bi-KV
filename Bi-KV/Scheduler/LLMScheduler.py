@@ -40,7 +40,7 @@ class LLMScheduler:
         self._id_counter = 0
         self._task_counter = 0
         self.max_batch_token = max_batch_token
-        self.batchsize = 8
+        self.batchsize = 100
         self.cold_start_flag = True
         self.channelpool = ChannelPool()
         
@@ -55,42 +55,36 @@ class LLMScheduler:
                 
     def process_prompt_batch(self,hack_option = None):
         plan_tokens_num = 0
-        last_pos = 0
         working_prompt_list = []
-        ans_dict = self._check_batch(self.prompt_list[:100])
-        for ind, prompt in enumerate(self.prompt_list):
-            if last_pos == 0:
-                # 冷启动
-                prompt.order = "User History First"
-            else:
-                prompt.order = schedule_order(prompt)
-
-            if hack_option != None:
-                prompt.order = hack_option
-            # TODO 区分miss和原本的 增加属性
-            prompt.user_history_tokens = ans_dict[str(prompt.task_id)]['user miss']
-            prompt.item_tokens = ans_dict[str(prompt.task_id)]['item miss']
-            # UHF User前缀 item全重算
-            if prompt.order == "User History First":
-                compute_token_num = prompt.item_tokens
-            elif prompt.order == "Item First":
-                compute_token_num = prompt.user_history_tokens
-            
-            working_prompt_list.append(prompt)
-            plan_tokens_num += compute_token_num
-            if plan_tokens_num > self.max_batch_token:
-                self._send_prompt_batch(working_prompt_list,ans_dict)
-                working_prompt_list = []
-                plan_tokens_num = 0
-                last_pos = ind
-                if ind+100<len(self.prompt_list):
-                    ans_dict = self._check_batch(self.prompt_list[ind:ind+100])
+        # TODO 100作为参数可调
+        for i in range(0,len(self.prompt_list),100):
+            batch_list = self.prompt_list[i:i+100]
+            ans_dict = self._check_batch(batch_list)
+            for ind, prompt in enumerate(batch_list):
+                
+                if hack_option == 'compete':
+                    prompt.order = schedule_order_compete(prompt)
+                elif hack_option != None:
+                    prompt.order = hack_option
                 else:
-                    ans_dict = self._check_batch(self.prompt_list[ind:])
-        # 处理尾巴部分（未整除的 prompts）
-        if len(working_prompt_list) > 0:  # 检查是否有剩余
-            ans_dict = self._check_batch(working_prompt_list)
-            self._send_prompt_batch(working_prompt_list,ans_dict)
+                    prompt.order = schedule_order_budget(prompt,ans_dict)
+                prompt.miss_user_history_tokens = ans_dict[str(prompt.task_id)]['user miss']
+                prompt.miss_item_tokens = ans_dict[str(prompt.task_id)]['item miss']
+                # UHF User前缀 item全重算
+                if prompt.order == "User History First":
+                    compute_token_num = prompt.item_tokens + prompt.miss_user_history_tokens
+                elif prompt.order == "Item First":
+                    compute_token_num = prompt.user_history_tokens + prompt.miss_item_tokens
+                
+                working_prompt_list.append(prompt)
+                plan_tokens_num += compute_token_num
+                if plan_tokens_num > self.max_batch_token:
+                    self._send_prompt_batch(working_prompt_list,ans_dict)
+                    working_prompt_list = []
+                    plan_tokens_num = 0
+            # 处理尾巴部分（未整除的 prompts）
+            if len(working_prompt_list) > 0:  # 检查是否有剩余
+                self._send_prompt_batch(working_prompt_list,ans_dict)
                         
     def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict = None,prepare_flag=False):
         future_list = []
@@ -101,6 +95,7 @@ class LLMScheduler:
         total_counter = 0
         for ind,prompt in enumerate(prompt_list): 
             total_counter += 1
+            # TODO 残留代码
             if prepare_flag:
                 prompt.order = "Item First"
             elif self.cold_start_flag:
@@ -133,6 +128,7 @@ class LLMScheduler:
                 else:
                     task_info_list_dict[infer_worker]=[task_info]
                 ## append recomputing tokens
+                # NOTE 重计算需要再次确认
                 recomputing_tokens = 0
                 for ind,i in enumerate(prompt.items):
                     recomputing_tokens += i.token_count 
@@ -187,7 +183,7 @@ class LLMScheduler:
                     weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
-        # logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
+        logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
@@ -251,13 +247,14 @@ class LLMScheduler:
             else:
                 input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)
-            for i in input_prompt_list:
-                test_user_counter[i.user_id] = 0
-                for item in i.items:
-                    test_item_counter[item.item_id] = 0
+            # NOTE 平时不用运行，看商品数量能不能填满
+            # for i in input_prompt_list:
+            #     test_user_counter[i.user_id] = 0
+            #     for item in i.items:
+            #         test_item_counter[item.item_id] = 0
         # self.process_prompt()
         self.cold_start_flag = False
-        logging.info(f"[LLMScheduler] Test User Num: {len(test_user_counter)} Test Item Num: {len(test_item_counter)}")
+        # logging.info(f"[LLMScheduler] Test User Num: {len(test_user_counter)} Test Item Num: {len(test_item_counter)}")
         self.process_prompt_batch(hack_option=hack_option)
         
     def calculate_data_len(self,token_num:int):
@@ -364,7 +361,11 @@ def schedule_order(prompt: InputPrompt,ans_dict = None, hook_option = None) -> s
     else:
         return "Item First"
 
-def schedule_order_budget(prompt: InputPrompt, ans_dict = None) -> str:
+def schedule_order_budget(prompt: InputPrompt, ans_dict = None, compute_budget = 2000) -> str:
+    # TODO compute_budget可调
+    # 假设 item first 情况下 user his+item miss 超 budget 变 用户first 
+    # *其他*情况保持item first
+    # 如果两者不满足（即变user还是超budget）报错
     compute_budget = 2000
     user_tokens = prompt.user_history_tokens
     # item_tokens = sum([item.token_count for item in prompt.items])
@@ -380,6 +381,15 @@ def schedule_order_budget(prompt: InputPrompt, ans_dict = None) -> str:
     else:
         return "Item First"
     
+def schedule_order_compete(prompt: InputPrompt) -> str:
+    user_tokens = prompt.user_history_tokens
+    item_tokens = sum([item.token_count for item in prompt.items])
+    # print(f"user {user_tokens}, item {item_tokens}")
+    if user_tokens >= item_tokens:
+        return "User History First"
+    else:
+        return "Item First"
+
 def dict_to_taskinfo(task_dict):
     task = TaskInfo_pb2.TaskInfo()
     ParseDict(task_dict, task)
