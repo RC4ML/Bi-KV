@@ -1,3 +1,4 @@
+from datetime import timedelta
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message=".*TORCH_CUDA_ARCH_LIST.*")
 import os
@@ -21,12 +22,13 @@ from multiprocessing import Barrier
 import yaml
 import json
 
+# GRPC debug
+# os.environ['GRPC_VERBOSITY'] = 'DEBUG'
+# os.environ['GRPC_TRACE'] = 'all'
+
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
-dataset_code = "books"
 args.model_code = 'llm'
-args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
-args.dataset_code = dataset_code
 args.llm_base_model = "/share/nfs/models/Llama-2-7b-hf"
 args.llm_base_tokenizer = "/share/nfs/models/Llama-2-7b-hf"
 
@@ -35,6 +37,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("distributed_system.log"),
+        logging.FileHandler("metrics-user-250524-2.log"),
         logging.StreamHandler()
     ]
 )
@@ -46,7 +49,7 @@ def load_config(file_path):
 
 def init_backend(rank, world_size, process_type, type_index, timeout=120):
     local_ip = get_local_ip()
-    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
+    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size,timeout = timedelta(seconds=4000000))
     dist.barrier()
     logging.info(f"Process ID: {process_type} {type_index}, Rank: {rank}, IP: {local_ip}")
 
@@ -66,21 +69,36 @@ def init_process(rank, world_size, yaml_config):
     init_backend(rank, world_size, process_type, type_index, timeout=timeout)
 
     if process_type == 'LLMScheduler':
-        scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip)
-        input_generator = LLMInput(100, 5, args)
+        dataset_code = yaml_config['general']['dataset_code']
+        max_batch_token = yaml_config['scheduler']['max_batch_token']
+        user_expand_ratio = yaml_config['input_generator']['user_history_expand_ratio']
+        recommendation_size = yaml_config['input_generator']['recommendation_size']
+        iter_round = yaml_config['scheduler']['iter_round']
+        batch_size = yaml_config['scheduler']['batch_size']
+        hack_option_dict = {0:"compete", 1:"User History First", 2:"Item First"}
+        hack_option = hack_option_dict[1]
+        scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip,max_batch_token=max_batch_token)
+        input_generator = LLMInput(recommendation_size, 5, args,user_expand_ratio)
         scheduler.set_prompt_generator(input_generator)
         dist.barrier()
         CacheCoordinator_addr = f"{master_addr}:{master_port + rank_map['CacheCoordinator'][0]}"
         channel = grpc.insecure_channel(CacheCoordinator_addr)
         stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
         fut = stub.StartProcessRequest.future(TaskInfo_pb2.StartRequest(msg='start'))
+        logging.info(f"Cache Size: {yaml_config['kv_cache']['cache_size']} Page Size: {yaml_config['kv_cache']['page_size']}")
+        logging.info(f"Worker Buffer Size: {yaml_config['worker']['cache_size']} Page Size: {yaml_config['worker']['page_size']}")
+        logging.info(f"Max Batch Token: {max_batch_token}")
+        logging.info(f"User History Expand Ratio: {user_expand_ratio}")
+        logging.info(f"Recommendation Size: {recommendation_size}")
+        logging.info(f"Iter Round: {iter_round} Batch Size: {batch_size}")
+        logging.info(f"Test Hack Option: {hack_option}")
         logging.info("Start Testing")
         time1 = time.time()
         timestamp_map_path = f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{dataset_code}/timestep_map.json'
         with open(timestamp_map_path, 'r') as f:
             time_step_map = json.load(f)
         # time_step_map = None
-        scheduler.start(10,256,time_step_map,True)
+        scheduler.start_test(iter_round,batch_size,time_step_map,hack_option=hack_option)
         fut.result()
         channel.close()
         time2 = time.time()
@@ -103,7 +121,7 @@ def init_process(rank, world_size, yaml_config):
         )
         server.add_insecure_port(f'{rank_to_ip[rank]}:{port}')
         server.start()
-        worker.start_rdma()
+        # worker.start_rdma()
         dist.barrier()
         server.wait_for_termination()
 
@@ -120,7 +138,7 @@ def init_process(rank, world_size, yaml_config):
         )
         server.add_insecure_port(f'{rank_to_ip[rank]}:{port}')
         server.start()
-        cache.start_rdma()
+        # cache.start_rdma()
         dist.barrier()
         server.wait_for_termination()
 
@@ -129,6 +147,9 @@ def init_process(rank, world_size, yaml_config):
 
 def main():
     yaml_config = load_config("../config.yml")
+    dataset_code = yaml_config['general']['dataset_code']
+    args.dataset_code = dataset_code
+    args.llm_retrieved_path = f"/share/nfs/sunjie/{dataset_code}"
     init_network()
     WORLD_SIZE = int(os.environ['WORLD_SIZE'])
     WORLD_RANK = int(os.environ.get('RANK', os.environ.get('OMPI_COMM_WORLD_RANK', -1)))

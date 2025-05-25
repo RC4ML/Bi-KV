@@ -24,15 +24,20 @@ class InputPrompt():
         self.items = items
         self.timestamp = timestamp
         self.task_id = 0
+        self.item_tokens = sum([i.token_count for i in self.items])
         self.weight = weight
+        self.order = None
+        self.miss_user_history_tokens = 0
+        self.miss_item_tokens = 0
 
 class LLMInput():
-    def __init__(self,k:int,poisson_lambda:500,args:Namespace) -> None:
+    def __init__(self,k:int,poisson_lambda:500,args:Namespace,user_expand_ratio=1) -> None:
         self.k = -1
         self.args = args
         self.reset_k(k)
         self.poisson_lambda = poisson_lambda
         self.random_name = ""
+        self.user_expand_ratio = user_expand_ratio
 
     def generate(self,batch_size: int) -> List[InputPrompt]:
         prompts = []
@@ -40,7 +45,7 @@ class LLMInput():
         for ind,i in enumerate(self._get_random_index(batch_size)):
             data_point = self.dataset[i]
             user_id = data_point['user_id']
-            user_history_tokens = data_point["history_length"]*20 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+            user_history_tokens = data_point["history_length"]*self.user_expand_ratio # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = poisson_numbers[ind]  # 模拟timestamp
             prompts.append(InputPrompt(user_id,user_history_tokens,items,timestamp,0))
@@ -50,32 +55,15 @@ class LLMInput():
         '''根据时序数据产生batch'''
         prompts = []
         user_list = time_step_map[str(timestep)]
-        user_list = random.sample(user_list[:256],batch_size)
-        # batch_counter = 0
-        # for i in user_list:
-        #     user_id = i[0]
-        #     access_times = i[1]
-        #     data_point = self.dataset[user_id]
-        #     user_id = data_point['user_id']
-        #     user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
-        #     items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
-        #     prompt = InputPrompt(user_id,user_history_tokens,items,timestep)
-        #     if batch_counter+access_times<batch_size:
-        #         prompts.extend([prompt]*access_times)
-        #         batch_counter+=access_times
-        #     else:
-        #         prompts.extend([prompt]*(batch_size-batch_counter))
-        #         batch_counter = batch_size-1
-        #     if batch_counter == batch_size-1:
-        #         break
-        # print(prompts)
+        sampling_weight = [i[1] for i in user_list]
+        user_list = random.choices(user_list, k=batch_size, weights=sampling_weight)
         for i in range(batch_size):
             data_ind = user_list[i][0]
             # 时间步内访问次数
             access_count = user_list[i][1]
             data_point = self.dataset[data_ind]
             user_id = data_point['user_id']
-            user_history_tokens = data_point["history_length"]*4 # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+            user_history_tokens = data_point["history_length"]*self.user_expand_ratio # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
             timestamp = timestep  # 模拟timestamp
             weight = access_count * user_history_tokens

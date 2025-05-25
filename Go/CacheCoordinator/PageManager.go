@@ -248,6 +248,12 @@ func (pm *PageManager) GetLoadedLists() []int32 {
 	return ids
 }
 
+func (pm *PageManager) ShowFreePages() {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	log.Printf("[PM %d] 空闲页数: %d\n", pm.pmID, len(pm.freePages))
+}
+
 // MultiPageManager 多个 PageManager 的集合
 type MultiPageManager struct {
 	kvcacheNum   int
@@ -462,6 +468,14 @@ func (mpm *MultiPageManager) downgradeP2Items() {
 			}
 			pm.mu.Unlock()
 		}
+	}
+}
+
+func (pm *MultiPageManager) ShowFreePages() {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	for _, pm := range pm.pageManagers {
+		pm.ShowFreePages()
 	}
 }
 

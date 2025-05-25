@@ -51,29 +51,29 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
         self.rank_to_ip_rdma = rank_to_ip_rdma
 
         # for shared memory
-        self.cuda_cache_data= torch.full(
-            (self.cache_size,) + token_shape, 
-            self.rank,
-            device=self.device,
-            dtype=torch.float16
-        )
+        # self.cuda_cache_data= torch.full(
+        #     (self.cache_size,) + token_shape, 
+        #     self.rank,
+        #     device=self.device,
+        #     dtype=torch.float16
+        # )
         self.max_pages=(self.cache_size+page_size-1)//page_size 
         self.src_index_pool = torch.empty(self.max_pages, dtype=torch.int64, device=self.device)
         self.dst_index_pool = torch.empty(self.max_pages, dtype=torch.int64, device=self.device)
         self.src_index_pool.fill_(-1)  # 用无效值初始化
         self.dst_index_pool.fill_(-1)
         self.shm_name = f"/sj_kv_cache_{self.cache_index}"
-        try:
-            # 先尝试清理可能存在的残留共享内存
-            ipc_service.producer_cleanup()  
-        except:
-            pass
-        try:
-            ipc_service.producer_init(self.cache_index, self.shm_name.encode())
-        except Exception as e:
-            print(f"KVcache {self.rank} shared mem init failed: {e}")
-        self.cpu_cache_data = self.cpu_cache_data.pin_memory()  # 后pin内存
-        torch.cuda.synchronize(self.device)
+        # try:
+        #     # 先尝试清理可能存在的残留共享内存
+        #     ipc_service.producer_cleanup()  
+        # except:
+        #     pass
+        # try:
+        #     ipc_service.producer_init(self.cache_index, self.shm_name.encode())
+        # except Exception as e:
+        #     print(f"KVcache {self.rank} shared mem init failed: {e}")
+        # self.cpu_cache_data = self.cpu_cache_data.pin_memory()  # 后pin内存
+        # torch.cuda.synchronize(self.device)
         
         self.channelpool = ChannelPool()
         print(f"[KVcach][RANK {self.rank}] Init finish")
@@ -107,7 +107,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             dtype=torch.float16
         )
         # time0 = time.time()
-        self.ep.post_rdma_write(rank=dst_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
+        # self.ep.post_rdma_write(rank=dst_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
         # dist.send(tensor=send_tensor, dst=dst_rank)
         # time1 = time.time()
         # logging.info(f"{self.rank} send once time: {time1-time0}s, throughput: {(total_token_num*128*28*8/(time1-time0)/(1e9))} GB/s")
@@ -127,7 +127,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
             dtype=torch.float16
         )
         # dist.recv(tensor=recv_tensor, src=src_rank)
-        self.ep.post_rdma_read(rank=src_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
+        # self.ep.post_rdma_read(rank=src_rank, size=token_num*128*8*28, src_type="cpu", dst_type="cpu")
     
     def shared_data_batch_pages(self, combined_task_info: Dict):
         """使用CUDA共享内存传输数据（带详细性能分析）"""
