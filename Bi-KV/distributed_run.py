@@ -74,7 +74,7 @@ script_path = "distributed_grpc_init.py"  # 替换为你的 Python 脚本路径
 
 # Conda 环境设置
 CONDA_ENV = "llamarec"  # 替换为你的 Conda 环境名称
-CONDA_INIT_SCRIPT = "/home/wsh/miniconda3/etc/profile.d/conda.sh"  # 替换为你的 Conda 初始化脚本路径
+CONDA_INIT_SCRIPT = "/home/sunjie/anaconda3/etc/profile.d/conda.sh"  # 替换为你的 Conda 初始化脚本路径
 
 # 获取本机 IP
 LOCAL_IP = get_local_ip()
@@ -87,7 +87,7 @@ try:
     for ip, slots in hosts:
         for local_rank in range(slots):
             # 构造基本命令
-            base_cmd = f"cd /share/nfs/wsh/Bi-KV/Bi-KV/ && source {CONDA_INIT_SCRIPT} && conda activate {CONDA_ENV} && env RANK={rank} WORLD_SIZE={WORLD_SIZE} MASTER_ADDR={MASTER_ADDR} MASTER_PORT={MASTER_PORT} KVCACHE_NUM={int(WORLD_SIZE/2 - 1)} WORKER_NUM={int(WORLD_SIZE/2 - 1)} python3 {script_path}"
+            base_cmd = f"cd /share/nfs/sunjie/grpc-Bi-KV/Bi-KV/Bi-KV/ && source {CONDA_INIT_SCRIPT} && conda activate {CONDA_ENV} && env RANK={rank} WORLD_SIZE={WORLD_SIZE} MASTER_ADDR={MASTER_ADDR} MASTER_PORT={MASTER_PORT} KVCACHE_NUM={int(WORLD_SIZE/2 - 1)} WORKER_NUM={int(WORLD_SIZE/2 - 1)} python3 {script_path}"
             
             if ip == LOCAL_IP:
                 # 如果是本机，直接运行命令

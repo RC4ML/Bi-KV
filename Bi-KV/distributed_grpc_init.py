@@ -22,10 +22,6 @@ from multiprocessing import Barrier
 import yaml
 import json
 
-# GRPC debug
-# os.environ['GRPC_VERBOSITY'] = 'DEBUG'
-# os.environ['GRPC_TRACE'] = 'all'
-
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 args.model_code = 'llm'
@@ -37,7 +33,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("distributed_system.log"),
-        logging.FileHandler("metrics-user-250524-2.log"),
         logging.StreamHandler()
     ]
 )
@@ -47,9 +42,9 @@ def load_config(file_path):
         yaml_config = yaml.safe_load(file)
     return yaml_config
 
-def init_backend(rank, world_size, process_type, type_index, timeout=120):
+def init_backend(rank, world_size, process_type, type_index, timeout=4000000):
     local_ip = get_local_ip()
-    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size,timeout = timedelta(seconds=4000000))
+    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size,timeout = timedelta(seconds=timeout))
     dist.barrier()
     logging.info(f"Process ID: {process_type} {type_index}, Rank: {rank}, IP: {local_ip}")
 
@@ -76,7 +71,7 @@ def init_process(rank, world_size, yaml_config):
         iter_round = yaml_config['scheduler']['iter_round']
         batch_size = yaml_config['scheduler']['batch_size']
         hack_option_dict = {0:"compete", 1:"User History First", 2:"Item First"}
-        hack_option = hack_option_dict[1]
+        hack_option = None
         scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip,max_batch_token=max_batch_token)
         input_generator = LLMInput(recommendation_size, 5, args,user_expand_ratio)
         scheduler.set_prompt_generator(input_generator)

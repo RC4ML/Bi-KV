@@ -302,19 +302,6 @@ class LLMScheduler:
         # print(f"ans_dict:{ans_dict}")
         return ans_dict
 
-    def _check_expect_batch(self,prompt_list:List[InputPrompt]):
-        # 预期内的token
-        total_tokens = 0
-        expect_list = []
-        for i in prompt_list:
-            min_tokens = min(i.user_history_tokens,i.item_tokens)
-            total_tokens += min_tokens
-            expect_list.append(i)
-            if total_tokens > self.max_batch_token:
-                break
-        ans_dict = self._check_batch(expect_list)
-        return ans_dict
-
     def fill_cache_data(self, iter_round:int, batchsize:int):
         logging.info(f"[LLMScheduler] Filling Cache Data...")
         prompt_list = []
