@@ -291,15 +291,15 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # ## start model inference
         time3 = time.time()
         # NOTE 测workload的时候要恢复 
-        # queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
-        # attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
-        # input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
-        # positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
-        # time4 = time.time()
-        # # print(f"shape {input_ids.shape} {cached_tokens}")
-        # output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
+        queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
+        attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
+        input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
+        positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
+        time4 = time.time()
+        # print(f"shape {input_ids.shape} {cached_tokens}")
+        output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
-        logging.info(f"[WORKER {self.worker_index}] read kv cache time {time3-time1}s, compute time: {time5-time3}s")
+        logging.info(f"[WORKER {self.rank}] read kv cache time {time3-time1}s, compute time: {time5-time3}s")
     
     def preprare_send_data_grpc(self, task_info_list):
         send_task_list = []

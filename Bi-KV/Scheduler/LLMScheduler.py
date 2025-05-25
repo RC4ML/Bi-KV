@@ -54,11 +54,11 @@ class LLMScheduler:
             self.prompt_list.append(i)
                 
     def process_prompt_batch(self,hack_option = None):
-        plan_tokens_num = 0
-        working_prompt_list = []
         # TODO 100作为参数可调
-        for i in range(0,len(self.prompt_list),100):
-            batch_list = self.prompt_list[i:i+100]
+        for i in range(0,len(self.prompt_list),self.batchsize):
+            plan_tokens_num = 0
+            working_prompt_list = []
+            batch_list = self.prompt_list[i:i+self.batchsize]
             ans_dict = self._check_batch(batch_list)
             for ind, prompt in enumerate(batch_list):
                 
@@ -79,6 +79,7 @@ class LLMScheduler:
                 working_prompt_list.append(prompt)
                 plan_tokens_num += compute_token_num
                 if plan_tokens_num > self.max_batch_token:
+                    # logging.info(f"[LLMScheduler] Plan tokens num: {plan_tokens_num}, max batch token: {self.max_batch_token} send batch {len(working_prompt_list)}")
                     self._send_prompt_batch(working_prompt_list,ans_dict)
                     working_prompt_list = []
                     plan_tokens_num = 0
@@ -183,7 +184,7 @@ class LLMScheduler:
                     weight=priority,
                 )
                 task_info_list_dict[infer_worker].append(task_info)
-        logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
+        # logging.info(f"[LLMScheduler] Send {total_counter} tasks, user {user_counter}, item {item_counter}")
         for infer_worker in task_info_list_dict:
             infer_worker_port = self.master_port + 2*infer_worker + WORKER_offset
             # print(f"[LLMScheduler] Send task({len(task_info_list_dict[infer_worker])}) to worker {infer_worker} at port {infer_worker_port}")
