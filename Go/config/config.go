@@ -50,8 +50,9 @@ type Config struct {
 	} `yaml:"worker"`
 
 	Coordinator struct {
-		GCIntreval  int `yaml:"gc_interval"`
-		TTLINterval int `yaml:"ttl_interval"`
+		GCIntreval      int    `yaml:"gc_interval"`
+		TTLINterval     int    `yaml:"ttl_interval"`
+		PrepareDataPath string `yaml:"prepare_data_path"`
 	} `yaml:"coordinator"`
 }
 
