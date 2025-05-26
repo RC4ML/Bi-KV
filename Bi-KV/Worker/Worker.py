@@ -337,7 +337,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         user_hit_rate = hit_counter_user/length_counter_user if length_counter_user != 0 else 0
         item_hit_rate = hit_counter_item/length_counter_item if length_counter_item != 0 else 0
         # if hit_rate > 0.7 and DEBUG:
-        # logging.info(f"[Worker {self.rank}] User Hit rate: {user_hit_rate} Item Hit rate: {item_hit_rate} Total Hit rate: {hit_rate}") 
+        logging.info(f"[Worker {self.rank}] User Hit rate: {user_hit_rate} Item Hit rate: {item_hit_rate} Total Hit rate: {hit_rate}") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)

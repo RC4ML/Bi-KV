@@ -64,6 +64,7 @@ worker:
 coordinator:
   gc_interval: 1  # 垃圾回收间隔
   ttl_interval: 10  # TTL间隔
+  prepare_data_path: "/share/nfs/wsh/Bi-KV/Bi-KV/data/books/prepare_cache_data.json"
 
 scheduler:
   max_batch_token: 4000  # 最大批处理Token数

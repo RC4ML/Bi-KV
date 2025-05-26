@@ -2,9 +2,11 @@ package coordinator
 
 import (
 	"container/heap"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -477,6 +479,19 @@ func (pm *MultiPageManager) ShowFreePages() {
 	for _, pm := range pm.pageManagers {
 		pm.ShowFreePages()
 	}
+}
+
+func (pm *MultiPageManager) ReadPreparedData(filePath string) {
+	file, _ := os.ReadFile(filePath)
+	var data map[string]int
+	json.Unmarshal(file, &data)
+	log.Printf("读取预加载数据: %d 条\n", len(data))
+	for k, v := range data {
+		var intKey int
+		fmt.Sscanf(k, "%d", &intKey)
+		pm.LoadItem(int32(intKey), v, 0, "prepared")
+	}
+	pm.ShowFreePages()
 }
 
 // 调试开关
