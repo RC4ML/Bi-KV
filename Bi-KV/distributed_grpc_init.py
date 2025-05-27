@@ -18,9 +18,9 @@ from rpc_def import *
 from Remote.remote_call import call_remote_method
 from concurrent import futures
 from network import *
-from multiprocessing import Barrier
 import yaml
 import json
+import pickle
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
@@ -70,10 +70,28 @@ def init_process(rank, world_size, yaml_config):
         recommendation_size = yaml_config['input_generator']['recommendation_size']
         iter_round = yaml_config['scheduler']['iter_round']
         batch_size = yaml_config['scheduler']['batch_size']
+        input_batch_size = yaml_config['scheduler']['input_batch_size']
         hack_option_dict = {0:"compete", 1:"User History First", 2:"Item First"}
         hack_option = None
-        scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip,max_batch_token=max_batch_token)
-        input_generator = LLMInput(recommendation_size, 5, args,user_expand_ratio)
+
+        with open(f'./data/{args.dataset_code}/prepare_cache_data_user_all.json', 'r') as f:
+            load_data_user = json.load(f)
+
+        with open(f'./data/{args.dataset_code}/prepare_cache_data_item_all.json', 'r') as f:
+            load_item_user = json.load(f)
+
+        timestamp_map_path = f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{args.dataset_code}/timestep_map.json'
+        with open(timestamp_map_path, 'r') as f:
+            time_step_map = json.load(f)
+
+        item_access_path = f"/share/nfs/wsh/Bi-KV/Bi-KV/data/{args.dataset_code}/user_candidate.pickle"
+        with open(item_access_path, 'rb') as pickle_file:
+            user_candidate_dict = pickle.load(pickle_file)
+
+        loaded_data = {"user": load_data_user, "item": load_item_user, "time_step_map": time_step_map, "user_candidate_dict": user_candidate_dict}
+
+        scheduler = LLMScheduler(world_size=world_size, master_port=master_port, rank_to_ip=rank_to_ip,max_batch_token=max_batch_token,batchsize=input_batch_size)
+        input_generator = LLMInput(recommendation_size, 5, args,user_expand_ratio,False)
         scheduler.set_prompt_generator(input_generator)
         dist.barrier()
         CacheCoordinator_addr = f"{master_addr}:{master_port + rank_map['CacheCoordinator'][0]}"
@@ -89,11 +107,8 @@ def init_process(rank, world_size, yaml_config):
         logging.info(f"Test Hack Option: {hack_option}")
         logging.info("Start Testing")
         time1 = time.time()
-        timestamp_map_path = f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{dataset_code}/timestep_map.json'
-        with open(timestamp_map_path, 'r') as f:
-            time_step_map = json.load(f)
         # time_step_map = None
-        scheduler.start_test(iter_round,batch_size,time_step_map,hack_option=hack_option)
+        scheduler.start_test(iter_round,batch_size,loaded_data,hack_option=hack_option)
         fut.result()
         channel.close()
         time2 = time.time()

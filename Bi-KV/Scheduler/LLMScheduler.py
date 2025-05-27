@@ -27,7 +27,7 @@ model_params = {
 }
 
 class LLMScheduler:
-    def __init__(self, world_size:int, master_port:int, rank_to_ip:dict,max_batch_token:4000):
+    def __init__(self, world_size:int, master_port:int, rank_to_ip:dict,max_batch_token:4000,batchsize:100):
         self.rank_to_ip = rank_to_ip
         self.world_size = world_size
         self.master_port = master_port
@@ -40,7 +40,7 @@ class LLMScheduler:
         self._id_counter = 0
         self._task_counter = 0
         self.max_batch_token = max_batch_token
-        self.batchsize = 100
+        self.batchsize = batchsize
         self.cold_start_flag = True
         self.channelpool = ChannelPool()
         
@@ -236,15 +236,20 @@ class LLMScheduler:
         logging.info(f"[LLMScheduler] Filling Completed. Start TEST!")
         self.process_prompt_batch()
 
-    def start_test(self, iter_round:int, batchsize:int, timestep_map = None,hack_option = None):
+    def start_test(self, iter_round:int, batchsize:int, loaded_datas = None,hack_option = None):
         test_user_counter = {}
         test_item_counter = {}
+        if loaded_datas != None:
+            load_data_user = loaded_datas['user']
+            load_item_user = loaded_datas['item']
+            timestep_map = loaded_datas['time_step_map']
+            user_item_data = loaded_datas['user_candidate_dict']
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
         for timestep in range(iter_round):
-            if timestep_map != None:
-                input_prompt_list = self.prompt_generator.generate_time_series(batchsize,timestep,timestep_map)
+            if loaded_datas != None:
+                input_prompt_list = self.prompt_generator.generate_time_series_without_dataloader(batchsize,timestep,timestep_map,user_item_data,load_data_user,load_item_user)
             else:
                 input_prompt_list = self.prompt_generator.generate(batchsize)
             self.add_prompt_list(input_prompt_list)

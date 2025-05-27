@@ -1,4 +1,5 @@
 from argparse import Namespace
+import logging
 
 from datasets import dataset_factory
 from dataloader import LLMDataloader
@@ -31,13 +32,17 @@ class InputPrompt():
         self.miss_item_tokens = 0
 
 class LLMInput():
-    def __init__(self,k:int,poisson_lambda:500,args:Namespace,user_expand_ratio=1) -> None:
+    def __init__(self,k:int,poisson_lambda:500,args:Namespace,user_expand_ratio=1,use_dataloader=True) -> None:
         self.k = -1
         self.args = args
-        self.reset_k(k)
         self.poisson_lambda = poisson_lambda
         self.random_name = ""
         self.user_expand_ratio = user_expand_ratio
+        if use_dataloader:
+            self.reset_k(k)
+        else:
+            logging.warning("Using LLMInput without dataloader, this may cause issues with dataset initialization.")
+            self.k = k
 
     def generate(self,batch_size: int) -> List[InputPrompt]:
         prompts = []
@@ -72,9 +77,25 @@ class LLMInput():
             prompts.append(prompt)
             # 很奇怪，这样会卡住
             # prompts.extend([prompt]*access_count)
-            random.shuffle(prompts)
+        random.shuffle(prompts)
         return prompts
     
+    def generate_time_series_without_dataloader(self,batch_size:int,timestep:int,time_step_map,user_item_map,user_token_map,item_token_map) -> List[InputPrompt]:
+        prompts = []
+        user_list = time_step_map[str(timestep)]
+        sampling_weight = [i[1] for i in user_list]
+        user_list = random.choices(user_list, k=batch_size, weights=sampling_weight)
+        for i in range(batch_size):
+            data_ind = user_list[i][0]
+            item_list = user_item_map[data_ind]
+            user_history_tokens = user_token_map[str(data_ind+2000000)]
+            items = [PromptItem(item_id, item_token_map[str(item_id)]) for item_id in item_list]
+            timestamp = timestep
+            prompt = InputPrompt(data_ind,user_history_tokens,items,timestamp,0)
+            prompts.append(prompt)
+        random.shuffle(prompts)
+        return prompts
+
     def reset_k(self,k:int) -> None:
         self.k = k
         self.args.llm_negative_sample_size = k-1
@@ -102,3 +123,14 @@ class LLMInput():
             return sampled_index
         else:
             return list(range(batch_size))
+        
+    def access_index(self, index: int) -> InputPrompt:
+        """Access a specific index in the dataset."""
+        if 0 <= index < len(self.dataset):
+            data_point = self.dataset[index]
+            user_id = data_point['user_id']
+            user_history_tokens = data_point["history_length"]*self.user_expand_ratio # 用户历史的token数量, NOTE: expand raw prompt length by 4x
+            items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
+            return InputPrompt(user_id,user_history_tokens,items,0,0)
+        else:
+            raise IndexError("Index out of bounds for the dataset.")
