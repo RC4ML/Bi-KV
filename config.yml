@@ -64,10 +64,12 @@ worker:
 coordinator:
   gc_interval: 1  # 垃圾回收间隔
   ttl_interval: 10  # TTL间隔
-  prepare_data_path: "/share/nfs/wsh/Bi-KV/Bi-KV/data/books/prepare_cache_data.json"
+  prepare_data_path: "/share/nfs/wsh/Bi-KV/Bi-KV/data/books/prepare_cache_data_user.json"
+  read_prepared_data: true  # 是否读取预处理数据
 
 scheduler:
   max_batch_token: 4000  # 最大批处理Token数
+  input_batch_size: 100
   batch_size: 512 # 批处理大小
   iter_round: 50  # 迭代轮数
 
