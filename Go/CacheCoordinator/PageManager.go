@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -341,13 +342,62 @@ func (mpm *MultiPageManager) LoadItem(itemID int32, itemLength int, weight int32
 	mpm.loadDuration += time.Since(start)
 	mpm.evtDuration += evtCost
 	mpm.allDuration += allCost
-	mpm.p2Items[itemID] = struct{}{}
+	if itemType == "user cache" {
+		mpm.p2Items[itemID] = struct{}{}
+	}
 	mpm.cachedIDs[targetPMID][itemID] = struct{}{}
 	for _, freedID := range freedIDs {
 		delete(mpm.cachedIDs[targetPMID], freedID)
 	}
 	mpm.checkAndAdjustP1Pages()
 	return targetPMID, allocatedPages
+}
+
+func (mpm *MultiPageManager) LoadPreparedItem(itemID int32, itemLength int, weight int32, itemType string) {
+	mpm.mu.Lock()
+	defer mpm.mu.Unlock()
+	// 检查是否已在缓存中
+	for idx, cached := range mpm.cachedIDs {
+		if _, ok := cached[itemID]; ok {
+			mpm.pageManagers[idx].AccessItem(itemID)
+			return
+		}
+	}
+
+	// 选择目标 PM
+	maxPageNum := 0
+	for _, pm := range mpm.pageManagers {
+		pm.mu.Lock()
+		if len(pm.freePages) > maxPageNum {
+			maxPageNum = len(pm.freePages)
+		}
+		pm.mu.Unlock()
+	}
+
+	var targetPM *PageManager
+	if maxPageNum > mpm.numPages/10 {
+		targetPM = mpm.pageManagers[0] // 默认第一个，后面更新
+		for _, pm := range mpm.pageManagers {
+			pm.mu.Lock()
+			if len(pm.freePages) == maxPageNum {
+				targetPM = pm
+			}
+			pm.mu.Unlock()
+		}
+	} else {
+		targetPM = mpm.pageManagers[rand.Intn(mpm.kvcacheNum)] // 随机选择
+	}
+
+	targetPMID := targetPM.pmID
+	start := time.Now()
+	_, freedIDs, evtCost, allCost := targetPM.LoadItem(itemID, itemLength, int(weight))
+	mpm.loadDuration += time.Since(start)
+	mpm.evtDuration += evtCost
+	mpm.allDuration += allCost
+	mpm.cachedIDs[targetPMID][itemID] = struct{}{}
+	for _, freedID := range freedIDs {
+		delete(mpm.cachedIDs[targetPMID], freedID)
+	}
 }
 
 // AccessItem 访问缓存中的列表
@@ -481,15 +531,32 @@ func (pm *MultiPageManager) ShowFreePages() {
 	}
 }
 
-func (pm *MultiPageManager) ReadPreparedData(filePath string) {
-	file, _ := os.ReadFile(filePath)
+func (pm *MultiPageManager) ReadPreparedData(dataPath string, indexPath string) {
+	// TODO 估计预取数据量
+	file, _ := os.ReadFile(dataPath)
 	var data map[string]int
 	json.Unmarshal(file, &data)
 	log.Printf("读取预加载数据: %d 条\n", len(data))
-	for k, v := range data {
-		var intKey int
-		fmt.Sscanf(k, "%d", &intKey)
-		pm.LoadItem(int32(intKey), v, 0, "prepared")
+	indexFile, _ := os.ReadFile(indexPath)
+	var userIDs []int
+	json.Unmarshal(indexFile, &userIDs)
+	log.Printf("读取预加载数据热度索引: %d 条\n", len(userIDs))
+	maxNumPages := pm.kvcacheNum * pm.numPages
+	totalPages := 0
+	for _, k := range userIDs {
+		var v int
+		if strings.Contains(indexPath, "user") {
+			v = data[fmt.Sprintf("%d", k+2000000)]
+		} else {
+			v = data[fmt.Sprintf("%d", k)]
+		}
+		pageNum := (v + pm.pageSize - 1) / pm.pageSize
+		pm.LoadPreparedItem(int32(k), v, 0, "prepared")
+		totalPages += pageNum
+		if totalPages > maxNumPages {
+			log.Printf("预加载数据超过最大页数限制: %d > %d\n", totalPages, maxNumPages)
+			break
+		}
 	}
 	pm.ShowFreePages()
 }

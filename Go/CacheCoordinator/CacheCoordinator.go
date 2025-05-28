@@ -60,7 +60,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, ser
 		cc.cpuStateTable[i] = map[string]string{"status": "idle"}
 	}
 	if config.Coordinator.ReadPreparedData {
-		cc.pageManager.ReadPreparedData(config.Coordinator.PrepareDataPath)
+		cc.pageManager.ReadPreparedData(config.Coordinator.PrepareDataPath, config.Coordinator.PrepareIndexPath)
 	}
 	log.Println("[CacheCoordinator] 初始化完成")
 	return cc
