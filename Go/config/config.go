@@ -53,6 +53,7 @@ type Config struct {
 		GCIntreval       int    `yaml:"gc_interval"`
 		TTLINterval      int    `yaml:"ttl_interval"`
 		PrepareDataPath  string `yaml:"prepare_data_path"`
+		PrepareIndexPath string `yaml:"prepare_index_path"`
 		ReadPreparedData bool   `yaml:"read_prepared_data"`
 	} `yaml:"coordinator"`
 }
