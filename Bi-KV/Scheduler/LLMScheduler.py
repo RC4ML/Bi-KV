@@ -54,7 +54,6 @@ class LLMScheduler:
             self.prompt_list.append(i)
                 
     def process_prompt_batch(self,hack_option = None):
-        # TODO 100作为参数可调
         for i in range(0,len(self.prompt_list),self.batchsize):
             plan_tokens_num = 0
             working_prompt_list = []
@@ -67,7 +66,7 @@ class LLMScheduler:
                 elif hack_option != None:
                     prompt.order = hack_option
                 else:
-                    prompt.order = schedule_order_budget(prompt,ans_dict)
+                    prompt.order = schedule_order_budget(prompt,self.max_batch_token)
                 prompt.miss_user_history_tokens = ans_dict[str(prompt.task_id)]['user miss']
                 prompt.miss_item_tokens = ans_dict[str(prompt.task_id)]['item miss']
                 # UHF User前缀 item全重算
@@ -259,7 +258,6 @@ class LLMScheduler:
             #     for item in i.items:
             #         test_item_counter[item.item_id] = 0
         # self.process_prompt()
-        self.cold_start_flag = False
         # logging.info(f"[LLMScheduler] Test User Num: {len(test_user_counter)} Test Item Num: {len(test_item_counter)}")
         self.process_prompt_batch(hack_option=hack_option)
         
@@ -367,25 +365,19 @@ def schedule_order(prompt: InputPrompt,ans_dict = None, hook_option = None) -> s
     else:
         return "Item First"
 
-def schedule_order_budget(prompt: InputPrompt, ans_dict = None, compute_budget = 2000) -> str:
-    # TODO compute_budget可调
+def schedule_order_budget(prompt: InputPrompt, compute_budget) -> str:
+    user_compute_tokens = prompt.user_history_tokens + prompt.miss_item_tokens
+    item_compute_tokens = prompt.item_tokens + prompt.miss_user_history_tokens
     # 假设 item first 情况下 user his+item miss 超 budget 变 用户first 
+    if user_compute_tokens >= compute_budget:
+        return "User History First"
+    elif item_compute_tokens >= compute_budget:
+        logging.warning(f"[LLMScheduler] Item First compute tokens {item_compute_tokens} exceed budget {compute_budget}, still keep item first")
+        return "Item First"
     # *其他*情况保持item first
-    # 如果两者不满足（即变user还是超budget）报错
-    compute_budget = 2000
-    user_tokens = prompt.user_history_tokens
-    # item_tokens = sum([item.token_count for item in prompt.items])
-    if user_tokens >= compute_budget:
-        if ans_dict != None:
-            # logging.info(f"[LLMScheduler] ans_dict keys: {list(ans_dict.keys())}")
-            # 如果用户cache命中则用户优先，否则商品优先
-            if ans_dict[str(prompt.task_id)]['user miss']==0:
-                return "User History First"
-            else:
-                # 需要用cache空间判断
-                return "Item First"
     else:
         return "Item First"
+    # 如果两者不满足（即变user还是超budget）报错
     
 def schedule_order_compete(prompt: InputPrompt) -> str:
     user_tokens = prompt.user_history_tokens
