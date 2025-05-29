@@ -183,7 +183,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
             
             total_bytes = recv_tensor.numel() * recv_tensor.element_size()  # 正确计算总字节
             time_diff = end_read - start_read
-            throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
+            # throughput = total_bytes / time_diff / 1e9  # 转换为GB/s
             # logging.info(f"[ipc_service.consumer_receive]shared once time: {time_diff}s, torch.size{recv_tensor.size()},total_bytes:{total_bytes/(1024**2)}MB, "
                     #  f"throughput: {throughput} GB/s\n")
         else: 
