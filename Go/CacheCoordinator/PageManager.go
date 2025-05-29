@@ -532,7 +532,6 @@ func (pm *MultiPageManager) ShowFreePages() {
 }
 
 func (pm *MultiPageManager) ReadPreparedData(dataPath string, indexPath string) {
-	// TODO 估计预取数据量
 	file, _ := os.ReadFile(dataPath)
 	var data map[string]int
 	json.Unmarshal(file, &data)
