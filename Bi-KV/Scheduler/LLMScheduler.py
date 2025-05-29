@@ -121,7 +121,7 @@ class LLMScheduler:
                     type = 'user cache',
                     task_num = 1,
                     # NOTE weight为0为测试用
-                    weight = 0,
+                    weight = 1,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
