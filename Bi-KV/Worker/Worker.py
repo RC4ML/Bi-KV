@@ -158,14 +158,6 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
     def receive_task_info_batch(self, task_info_list):
         # 按照req_id分组
         self.receive_task_info(task_info_list)
-        # task_info_dict = {}
-        # for i in task_info_list:
-        #     req_id = i['request_id']
-        #     if req_id not in task_info_dict:
-        #         task_info_dict[req_id] = []
-        #     task_info_dict[req_id].append(i)
-        # for i in task_info_dict.values():
-        #     self.receive_task_info(i)
 
     def receive_kvcache_data_batch(self, combined_task_info):
         cache_worker = combined_task_info.cache_worker
@@ -207,44 +199,6 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         buffer_indices = torch.empty(total_token_num, dtype=torch.long)
         send_indices = torch.empty(total_token_num, dtype=torch.long)
 
-        # 第一步：收集索引
-        # buffer_pos = 0
-        # send_pos = 0
-        # for id_pair in id_pair_list:
-        #     i = id_pair.id
-        #     token_num = id_pair.token_num
-            
-        #     if i not in self.page_manager.get_loaded_lists():
-        #         print(f"[Worker][RANK {self.rank}][{time.time()}] Error: id {i} not in page manager")
-            
-        #     page_set = self.page_manager.access_item(i)
-            
-        #     # 生成索引
-        #     for idx, page in enumerate(page_set):
-        #         if idx == len(page_set) - 1:
-        #             size = token_num % self.page_size if token_num % self.page_size != 0 else self.page_size
-        #             buffer_indices[buffer_pos:buffer_pos + size] = torch.arange(
-        #                 page * self.page_size,
-        #                 page * self.page_size + size
-        #             )
-        #             send_indices[send_pos:send_pos + size] = torch.arange(
-        #                 send_pos,
-        #                 send_pos + size
-        #             )
-        #             buffer_pos += size
-        #             send_pos += size
-        #         else:
-        #             buffer_indices[buffer_pos:buffer_pos + self.page_size] = torch.arange(
-        #                 page * self.page_size,
-        #                 (page + 1) * self.page_size
-        #             )
-        #             send_indices[send_pos:send_pos + self.page_size] = torch.arange(
-        #                 send_pos,
-        #                 send_pos + self.page_size
-        #             )
-        #             buffer_pos += self.page_size
-        #             send_pos += self.page_size
-
         # # 第二步：一次性创建并填充 send_tensor
         send_tensor = torch.empty(
             (total_token_num,) + token_shape,
@@ -266,16 +220,13 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
     def forward_with_computation_grpc(self, tasks):
         tasks_list = tasks
         tasks = TaskInfo_pb2.TaskInfoList(tasks=tasks)
-        # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
         channel = self.channelpool.get_channel(self.cache_coordinator_address)
         stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
         stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
         if DEBUG:
             print(f"{now_time()}[Worker {self.rank}] try to poll_batch")
-        # with grpc.insecure_channel(self.cache_coordinator_address) as channel:
         channel = self.channelpool.get_channel(self.cache_coordinator_address)
         stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
-        # stub.PollBatchFromInferWorker(tasks)
         time1 = time.time()
         future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
         if DEBUG:
@@ -288,7 +239,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         # cache_miss_dict = future_call_poll.result()
         for req_id in cache_miss_dict:
             self.cache_miss_dict[req_id] = cache_miss_dict[req_id]
-        # ## start model inference
+        # start model inference
         time3 = time.time()
         # NOTE 测workload的时候要恢复 
         queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
