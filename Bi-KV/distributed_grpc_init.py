@@ -57,9 +57,9 @@ def init_process(rank, world_size, yaml_config):
     
     master_port = int(os.environ['MASTER_PORT']) # 50500
     if process_type == 'scheduler':
-        timeout = 1000
+        timeout = 100000
     else:
-        timeout = 360
+        timeout = 36000
 
     init_backend(rank, world_size, process_type, type_index, timeout=timeout)
 
@@ -72,12 +72,12 @@ def init_process(rank, world_size, yaml_config):
         batch_size = yaml_config['scheduler']['batch_size']
         input_batch_size = yaml_config['scheduler']['input_batch_size']
         hack_option_dict = {0:"compete", 1:"User History First", 2:"Item First"}
-        hack_option = None
+        hack_option = None # hack_option_dict[0]
 
-        with open(f'./data/{args.dataset_code}/prepare_cache_data_user_all.json', 'r') as f:
+        with open(f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{args.dataset_code}/prepare_cache_data_user_all.json', 'r') as f:
             load_data_user = json.load(f)
 
-        with open(f'./data/{args.dataset_code}/prepare_cache_data_item_all.json', 'r') as f:
+        with open(f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{args.dataset_code}/prepare_cache_data_item_all.json', 'r') as f:
             load_item_user = json.load(f)
 
         timestamp_map_path = f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{args.dataset_code}/timestep_map.json'

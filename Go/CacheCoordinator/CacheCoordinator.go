@@ -73,8 +73,8 @@ func (cc *CacheCoordinator) Strategy(reqID int32) int32 {
 
 // ReceiveTasksFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.Empty, error) {
-	log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
-	cc.pageManager.ShowFreePages()
+	// log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
+	// cc.pageManager.ShowFreePages()
 	for _, task := range req.Tasks {
 		task.CacheWorker = int32(cc.Strategy(task.RequestId + task.Id))
 		cc.requestQueue <- task
@@ -84,8 +84,8 @@ func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req
 
 // PollBatchFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) PollBatchFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.ComfirmationMessage, error) {
-	start := time.Now()
-	log.Println("[CacheCoordinator] Start poll")
+	// start := time.Now()
+	// log.Println("[CacheCoordinator] Start poll")
 	requestToTaskNum := make(map[int32]int32)
 	for _, task := range req.Tasks {
 		if _, ok := requestToTaskNum[task.RequestId]; !ok {
@@ -118,8 +118,8 @@ func (cc *CacheCoordinator) PollBatchFromInferWorker(ctx context.Context, req *p
 	if err != nil {
 		return nil, err
 	}
-	duration := time.Since(start)
-	log.Printf("[CacheCoordinator] Finish poll time cost:%v\n", duration)
+	// duration := time.Since(start)
+	// log.Printf("[CacheCoordinator] Finish poll time cost:%v\n", duration)
 	return &pb.ComfirmationMessage{Msg: string(data)}, nil
 }
 
@@ -135,6 +135,10 @@ func (cc *CacheCoordinator) processRequests() {
 	fmt.Println("[CacheCoordinator] 开始处理请求")
 	idleTimeCounter := 0
 	hasExecuted := false
+
+	cc.pageManager.ShowUserCacheCount()
+
+
 	for cc.processFlag {
 		executableRequests := make(map[int][]*pb.TaskInfo)
 		for {
@@ -160,7 +164,7 @@ func (cc *CacheCoordinator) processRequests() {
 					}
 
 					// 测试用 全hit
-					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum))
+					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight, taskInfo.Type)
 					// taskInfo.CacheWorker = cacheWorker
 					// taskInfo.CachePagesList = pages
 					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
@@ -171,6 +175,8 @@ func (cc *CacheCoordinator) processRequests() {
 					// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
+					cc.pageManager.ShowUserCacheCount()
+
 				}
 
 				cacheWorker := int(taskInfo.CacheWorker)
@@ -182,7 +188,7 @@ func (cc *CacheCoordinator) processRequests() {
 				cc.lock.Unlock()
 			default:
 				if cc.pageManager.loadDuration > 0 {
-					fmt.Printf("load duration:%v evt:%v all:%v\n", cc.pageManager.loadDuration, cc.pageManager.evtDuration, cc.pageManager.allDuration)
+					// fmt.Printf("load duration:%v evt:%v all:%v\n", cc.pageManager.loadDuration, cc.pageManager.evtDuration, cc.pageManager.allDuration)
 					cc.pageManager.loadDuration = 0
 					cc.pageManager.allDuration = 0
 					cc.pageManager.evtDuration = 0
@@ -190,7 +196,6 @@ func (cc *CacheCoordinator) processRequests() {
 				goto process
 			}
 		}
-
 	process:
 		if len(executableRequests) == 0 && !hasExecuted {
 			continue

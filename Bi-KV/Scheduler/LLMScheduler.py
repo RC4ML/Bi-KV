@@ -16,6 +16,7 @@ from DistributedStorage.CacheCoordinator import CacheCoordinator, KVCache
 from DistributedStorage.Signals import SIGNAL_SKIP, SIGNAL_CHECK, SIGNAL_CHECK
 from Remote.remote_call import call_remote_method
 import time
+from Scheduler.restoreinput import *
 
 import torch.distributed.rpc as rpc
 
@@ -54,13 +55,14 @@ class LLMScheduler:
             self.prompt_list.append(i)
                 
     def process_prompt_batch(self,hack_option = None):
+        unique_user = {}
         for i in range(0,len(self.prompt_list),self.batchsize):
             plan_tokens_num = 0
             working_prompt_list = []
             batch_list = self.prompt_list[i:i+self.batchsize]
             ans_dict = self._check_batch(batch_list)
             for ind, prompt in enumerate(batch_list):
-                
+                unique_user[prompt.user_id] = 1
                 if hack_option == 'compete':
                     prompt.order = schedule_order_compete(prompt)
                 elif hack_option != None:
@@ -76,8 +78,9 @@ class LLMScheduler:
                     compute_token_num = prompt.user_history_tokens + prompt.miss_item_tokens
                 
                 working_prompt_list.append(prompt)
+                # logging.info(f"plan tokens {plan_tokens_num}")
                 plan_tokens_num += compute_token_num
-                if plan_tokens_num > self.max_batch_token:
+                if plan_tokens_num > self.max_batch_token * self.num_workers: # Note: Regard system a super worker
                     # logging.info(f"[LLMScheduler] Plan tokens num: {plan_tokens_num}, max batch token: {self.max_batch_token} send batch {len(working_prompt_list)}")
                     self._send_prompt_batch(working_prompt_list,ans_dict)
                     working_prompt_list = []
@@ -85,6 +88,7 @@ class LLMScheduler:
             # 处理尾巴部分（未整除的 prompts）
             if len(working_prompt_list) > 0:  # 检查是否有剩余
                 self._send_prompt_batch(working_prompt_list,ans_dict)
+        logging.info(f"[LLMScheduler] unique user count: {len(unique_user)}")
                         
     def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict = None,prepare_flag=False):
         future_list = []
@@ -104,10 +108,13 @@ class LLMScheduler:
             #     prompt.order = schedule_order_budget(prompt, ans_dict)
             # prompt_order = schedule_order(prompt)
             # 历史优先，调度用户历史kvcache
+            # logging.info(f"[LLMScheduler] User ID {prompt.user_id}")
+
             if prompt.order == "User History First":
             # if prompt_order == "User History First":
             # if ans_dict[str(prompt.task_id)] == 1:
             # if True:
+
                 user_counter += 1
                 infer_worker = self.strategy(prompt.task_id)
                 token_num = prompt.user_history_tokens
@@ -121,7 +128,7 @@ class LLMScheduler:
                     type = 'user cache',
                     task_num = 1,
                     # NOTE weight为0为测试用
-                    weight = 1,
+                    weight = 0,
                 )
                 if task_info_list_dict.get(infer_worker):
                     task_info_list_dict[infer_worker].append(task_info)
@@ -141,7 +148,7 @@ class LLMScheduler:
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
                     task_num = 1,
-                    weight=0,
+                    weight = 0,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
 
@@ -246,12 +253,13 @@ class LLMScheduler:
         if not self.prompt_generator:
             print("[LLMScheduler] Error: prompt_generator is NONE!")
             return
-        for timestep in range(iter_round):
-            if loaded_datas != None:
-                input_prompt_list = self.prompt_generator.generate_time_series_without_dataloader(batchsize,timestep,timestep_map,user_item_data,load_data_user,load_item_user)
-            else:
-                input_prompt_list = self.prompt_generator.generate(batchsize)
-            self.add_prompt_list(input_prompt_list)
+
+        # for timestep in range(iter_round):
+        #     if loaded_datas != None:
+        #         input_prompt_list = self.prompt_generator.generate_time_series_repeat_sampling_new(batchsize,timestep,timestep_map,user_item_data,load_data_user,load_item_user)
+        #     else:
+        #         input_prompt_list = self.prompt_generator.generate(batchsize)
+        #     self.add_prompt_list(input_prompt_list)
             # NOTE 平时不用运行，看商品数量能不能填满
             # for i in input_prompt_list:
             #     test_user_counter[i.user_id] = 0
@@ -259,6 +267,20 @@ class LLMScheduler:
             #         test_item_counter[item.item_id] = 0
         # self.process_prompt()
         # logging.info(f"[LLMScheduler] Test User Num: {len(test_user_counter)} Test Item Num: {len(test_item_counter)}")
+        file_path = "prompts_cache.ndjson"
+        if os.path.exists(file_path):
+            restored = load_prompt_list(file_path)
+            self.add_prompt_list(restored)
+            logging.info(f"[LLMScheduler] Loaded {len(self.prompt_list)} prompts")
+        else:
+            for timestep in range(iter_round):
+                if loaded_datas != None:
+                    input_prompt_list = self.prompt_generator.generate_time_series_repeat_sampling_new(batchsize,timestep,timestep_map,user_item_data,load_data_user,load_item_user)
+                else:
+                    input_prompt_list = self.prompt_generator.generate(batchsize)
+                self.add_prompt_list(input_prompt_list)
+            logging.info(f"[LLMScheduler] Generate {len(self.prompt_list)} prompts")
+            save_prompt_list(self.prompt_list, file_path)
         self.process_prompt_batch(hack_option=hack_option)
         
     def calculate_data_len(self,token_num:int):

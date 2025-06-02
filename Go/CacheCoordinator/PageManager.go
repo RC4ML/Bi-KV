@@ -182,10 +182,10 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 			pm.freePages[page] = struct{}{}
 		}
 		freedIDs = append(freedIDs, item.id)
-		if DEBUG {
-			log.Printf("[[%d]] 换出列表 %d，优先级 %d，释放页数 %d 空闲页数: %d\n",
-				time.Now().Unix(), item.id, item.priority, len(item.pages), len(pm.freePages))
-		}
+		
+		// log.Printf("[[%d]] 换出列表 %d，优先级 %d，释放页数 %d 空闲页数: %d\n",
+		// 	time.Now().Unix(), item.id, item.priority, len(item.pages), len(pm.freePages))
+		
 	}
 
 	if len(pm.freePages) < requiredPages {
@@ -273,6 +273,7 @@ type MultiPageManager struct {
 	gcInterval   time.Duration
 	ttlInterval  time.Duration
 	mu           sync.Mutex
+	userCacheCount int 
 }
 
 // NewMultiPageManager 初始化 MultiPageManager
@@ -291,6 +292,7 @@ func NewMultiPageManager(cacheSize, pageSize, kvcacheNum, gcInterval, ttlInterva
 		loadDuration: 0,
 		evtDuration:  0,
 		allDuration:  0,
+		userCacheCount: 0, // 【新增】用户类型缓存计数
 	}
 	for i := range kvcacheNum {
 		mpm.pageManagers[i] = NewPageManager(cacheSize, pageSize, int32(i))
@@ -559,6 +561,10 @@ func (pm *MultiPageManager) ReadPreparedData(dataPath string, indexPath string) 
 		}
 	}
 	pm.ShowFreePages()
+}
+
+func (mpm *MultiPageManager) ShowUserCacheCount() {
+	log.Printf("当前用户类型缓存数量（ID > 2000000）: %d\n", len(mpm.p2Items))
 }
 
 // 调试开关

@@ -443,13 +443,15 @@ def prepare_attention_meta(
     batch_size = len(queried_task_info_list)
     kv_seq_lens = []
     q_seq_lens = []
-    total_communication_cost = 0
+    total_cached_tokens = 0
+    total_tokens = 0
     for taskinfo in queried_task_info_list:
         kv_seq_lens.append(taskinfo['cached_tokens'] + taskinfo['recomputing_tokens'])
         # q_seq_lens.append(taskinfo['cached_tokens'] + taskinfo['recomputing_tokens'])
         q_seq_lens.append(taskinfo['recomputing_tokens'])
 
-        total_communication_cost += taskinfo['cached_tokens']
+        total_cached_tokens += taskinfo['cached_tokens']
+        total_tokens += taskinfo['cached_tokens'] + taskinfo['recomputing_tokens']
     # Compute qo_indptr 
     qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     qo_indptr[1:] = torch.cumsum(torch.tensor(q_seq_lens, dtype=torch.int32, device=device), dim=0)
@@ -467,7 +469,7 @@ def prepare_attention_meta(
 
     paged_kv_indices = torch.arange(paged_kv_indptr[-1], dtype=torch.int32, device=device)
 
-    return AttentionMetadata(nnz_qo, qo_indptr, paged_kv_indptr, paged_kv_indices, paged_kv_last_page_len), total_communication_cost
+    return AttentionMetadata(nnz_qo, qo_indptr, paged_kv_indptr, paged_kv_indices, paged_kv_last_page_len), total_cached_tokens, total_tokens, batch_size
 
 hidden_size = 1536
 intermediate_size = 8960

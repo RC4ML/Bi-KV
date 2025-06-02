@@ -292,11 +292,12 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         time3 = time.time()
         # NOTE 测workload的时候要恢复 
         queried_task_info_list = process_task_info(tasks_list, cache_miss_dict)
-        attn_metadata, cached_tokens = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
+        attn_metadata, cached_tokens, total_tokens, batch_size = prepare_attention_meta(queried_task_info_list, self.local_kv_cache_block_size, self.local_max_kv_cache_blocks, self.device)
+        logging.info(f"Cached Token Ratio: {cached_tokens/total_tokens}, cached {cached_tokens}, total {total_tokens}, batchsize {batch_size}")
         input_ids = torch.zeros(attn_metadata.nnz_qo, dtype=torch.int32, device=self.device)
         positions = torch.arange(attn_metadata.nnz_qo, dtype=torch.int64, device=self.device)
-        time4 = time.time()
-        # print(f"shape {input_ids.shape} {cached_tokens}")
+        # time4 = time.time()
+        # # print(f"shape {input_ids.shape} {cached_tokens}")
         output = self.model(input_ids, positions, self.local_kvcache, attn_metadata)    
         time5 = time.time()
         logging.info(f"[WORKER {self.rank}] read kv cache time {time3-time1}s, compute time: {time5-time3}s")
@@ -310,6 +311,9 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         length_counter_user = 0
         hit_counter_item = 0
         length_counter_item = 0
+        
+        hit_token_counter = 0
+        total_token_counter = 0
         
         for task_info in task_info_list:
             item_id = task_info.id
@@ -337,7 +341,7 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         user_hit_rate = hit_counter_user/length_counter_user if length_counter_user != 0 else 0
         item_hit_rate = hit_counter_item/length_counter_item if length_counter_item != 0 else 0
         # if hit_rate > 0.7 and DEBUG:
-        logging.info(f"[Worker {self.rank}] User Hit rate: {user_hit_rate} Item Hit rate: {item_hit_rate} Total Hit rate: {hit_rate}") 
+        # logging.info(f"[Worker {self.rank}] User Hit rate: {user_hit_rate} Item Hit rate: {item_hit_rate} Total Hit rate: {hit_rate}") 
         # print(f"[Worker][RANK {self.rank}] Sending data to kvcache")
         if len(send_task_list)>0:
             send_task_list_gprc = TaskInfo_pb2.TaskInfoList(tasks=send_task_list)
