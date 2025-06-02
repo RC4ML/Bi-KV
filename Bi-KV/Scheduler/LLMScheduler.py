@@ -55,15 +55,18 @@ class LLMScheduler:
             self.prompt_list.append(i)
                 
     def process_prompt_batch(self,hack_option = None):
-        unique_user = {}
+        if self.cold_start_flag:
+            logging.info(f"[LLMScheduler] Cold start, processing prompts...")
         for i in range(0,len(self.prompt_list),self.batchsize):
             plan_tokens_num = 0
             working_prompt_list = []
             batch_list = self.prompt_list[i:i+self.batchsize]
             ans_dict = self._check_batch(batch_list)
             for ind, prompt in enumerate(batch_list):
-                unique_user[prompt.user_id] = 1
-                if hack_option == 'compete':
+                
+                if self.cold_start_flag:
+                    prompt.order = "User History First"
+                elif hack_option == 'compete':
                     prompt.order = schedule_order_compete(prompt)
                 elif hack_option != None:
                     prompt.order = hack_option
@@ -88,7 +91,9 @@ class LLMScheduler:
             # 处理尾巴部分（未整除的 prompts）
             if len(working_prompt_list) > 0:  # 检查是否有剩余
                 self._send_prompt_batch(working_prompt_list,ans_dict)
-        logging.info(f"[LLMScheduler] unique user count: {len(unique_user)}")
+            if self.cold_start_flag:
+                logging.info(f"[LLMScheduler] Cold start completed, {len(self.prompt_list)} prompts processed.")
+                self.cold_start_flag = False
                         
     def _send_prompt_batch(self, prompt_list:List[InputPrompt],ans_dict = None,prepare_flag=False):
         future_list = []
@@ -99,11 +104,7 @@ class LLMScheduler:
         total_counter = 0
         for ind,prompt in enumerate(prompt_list): 
             total_counter += 1
-            # TODO 残留代码
-            if prepare_flag:
-                prompt.order = "Item First"
-            elif self.cold_start_flag:
-                prompt.order = "User History First"
+            
             # else:
             #     prompt.order = schedule_order_budget(prompt, ans_dict)
             # prompt_order = schedule_order(prompt)
@@ -148,7 +149,7 @@ class LLMScheduler:
                     task_type = SIGNAL_SKIP,
                     type = 'compute',
                     task_num = 1,
-                    weight = 0,
+                    weight=1,
                  )                                       
                 task_info_list_dict[infer_worker].append(task_info)
 
