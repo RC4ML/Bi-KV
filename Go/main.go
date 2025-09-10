@@ -3,9 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	coordinator "github.com/RC4ML/Bi-KV/CacheCoordinator"
 	cfg "github.com/RC4ML/Bi-KV/config"
@@ -36,7 +38,14 @@ func getRankToIP(rankToIPGRPC []string) (map[int]string, error) {
 func main() {
 	configPath := flag.String("config", "../config.yml", "path to config file")
 	flag.Parse()
-
+	date := time.Now().Format("2006-01-02")
+	logFilename := "test-" + date + "-6.log"
+	logFile, err := os.OpenFile(logFilename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(multiWriter)
 	// 读取配置
 	config, err := cfg.ReadConfig(*configPath)
 	if err != nil {
@@ -76,4 +85,5 @@ func main() {
 	if err := s.Serve(lis); err != nil {
 		fmt.Printf("Failed to serve: %v\n", err)
 	}
+	logFile.Close()
 }

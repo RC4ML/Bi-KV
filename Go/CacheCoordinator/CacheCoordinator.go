@@ -14,16 +14,38 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+type RequestQueue struct {
+	queue chan *pb.TaskInfo
+}
+
+func NewMultiqueue(NumQueues, size int) []RequestQueue {
+	qs := make([]RequestQueue, NumQueues)
+	for i := range qs {
+		qs[i] = RequestQueue{
+			queue: make(chan *pb.TaskInfo, size),
+		}
+	}
+	return qs
+}
+
+func selectQueue(NumQueues int, id int32) int {
+	if id == -1 {
+		return 0 // 如果 id 为 -1，返回第一个队列
+	}
+	return int(id % int32(NumQueues))
+}
+
 // CacheCoordinator 定义调度器的结构体
 type CacheCoordinator struct {
 	pb.UnimplementedCacheCoordinatorServiceServer
-	rank                 int
-	masterPort           int
-	cacheRanks           []int
-	inferRanks           []int
-	rankToIP             map[int]string
-	kvcacheNum           int32
-	requestQueue         chan *pb.TaskInfo // 使用 channel 替代 Python 的 Queue
+	rank       int
+	masterPort int
+	cacheRanks []int
+	inferRanks []int
+	rankToIP   map[int]string
+	kvcacheNum int32
+	// requestQueue         chan *pb.TaskInfo // 使用 channel 替代 Python 的 Queue
+	queues               []RequestQueue
 	finishedCounterTable map[int32]int32
 	processFlag          bool
 	cpuStateTable        map[int]map[string]string
@@ -36,6 +58,8 @@ type CacheCoordinator struct {
 	server               *grpc.Server
 }
 
+const NumQueues = 8 // 队列数量
+
 // NewCacheCoordinator 初始化调度器
 func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, server *grpc.Server, rankToIP map[int]string, config *cfg.Config) *CacheCoordinator {
 	cc := &CacheCoordinator{
@@ -45,7 +69,7 @@ func NewCacheCoordinator(rank, masterPort int, cacheRanks, inferRanks []int, ser
 		inferRanks:           inferRanks,
 		rankToIP:             rankToIP,
 		kvcacheNum:           int32(len(cacheRanks)),
-		requestQueue:         make(chan *pb.TaskInfo, 2000), // 无缓冲的channel作为queue
+		queues:               NewMultiqueue(NumQueues, 2000), // 无缓冲的channel作为queue
 		finishedCounterTable: make(map[int32]int32),
 		cpuStateTable:        make(map[int]map[string]string),
 		stopLimit:            50000,
@@ -73,11 +97,12 @@ func (cc *CacheCoordinator) Strategy(reqID int32) int32 {
 
 // ReceiveTasksFromInferWorker gRPC 服务方法
 func (cc *CacheCoordinator) ReceiveTasksFromInferWorker(ctx context.Context, req *pb.TaskInfoList) (*pb.Empty, error) {
-	// log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
+	log.Printf("[CacheCoordinator] 收到请求，长度为%d\n", len(req.Tasks))
 	// cc.pageManager.ShowFreePages()
 	for _, task := range req.Tasks {
 		task.CacheWorker = int32(cc.Strategy(task.RequestId + task.Id))
-		cc.requestQueue <- task
+		idx := selectQueue(NumQueues, task.Id) // 根据 Id 做 hash 分配
+		cc.queues[idx].queue <- task
 	}
 	return &pb.Empty{}, nil
 }
@@ -126,57 +151,65 @@ func (cc *CacheCoordinator) PollBatchFromInferWorker(ctx context.Context, req *p
 // StartProcessRequest gRPC 服务方法
 func (cc *CacheCoordinator) StartProcessRequest(ctx context.Context, req *pb.StartRequest) (*pb.Empty, error) {
 	cc.processFlag = true
-	go cc.processRequests() // 在 goroutine 中处理请求
+	go cc.StartWorkers() // 在 goroutine 中处理请求
 	return &pb.Empty{}, nil
 }
 
-// processRequests 处理请求的主逻辑
-func (cc *CacheCoordinator) processRequests() {
-	fmt.Println("[CacheCoordinator] 开始处理请求")
+func (cc *CacheCoordinator) StartWorkers() {
+	for i := range cc.queues {
+		go cc.processQueue(i, cc.queues[i].queue)
+	}
+}
+
+func (cc *CacheCoordinator) processQueue(queueIndex int, queue chan *pb.TaskInfo) {
+	log.Printf("[CacheCoordinator] Queue[%d] started processing\n", queueIndex)
+
 	idleTimeCounter := 0
+	executeCounter := 0
+	totalRequestCount := 0
+	totalAccessDuration := time.Duration(0)
+	executeStartTime := time.Now()
 	hasExecuted := false
-
-	cc.pageManager.ShowUserCacheCount()
-
 
 	for cc.processFlag {
 		executableRequests := make(map[int][]*pb.TaskInfo)
+		currentBatchCount := 0
+		if len(queue) > 0 {
+			log.Printf("[CacheCoordinator] 队列%d当前请求长度: %d\n", queueIndex, len(queue))
+		}
 		for {
 			select {
-			case taskInfo := <-cc.requestQueue:
+			case taskInfo, ok := <-queue:
+				if !ok {
+					goto process
+				}
+				totalRequestCount++
 				idleTimeCounter = 0
+
 				reqID := taskInfo.RequestId
 				cc.lock.Lock()
+
 				if taskInfo.TaskType == SIGNAL_CHECK {
 					if _, ok := cc.cacheMissDict[reqID]; !ok {
 						cc.cacheMissDict[reqID] = make(map[int32]int32)
 					}
-					// 查cache
+					start := time.Now()
 					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+					elapsed := time.Since(start)
+					totalAccessDuration += elapsed
+
 					if cacheWorker == -1 {
 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
 					} else {
 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-						// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 						taskInfo.TaskType = SIGNAL_SEND
 						taskInfo.CacheWorker = cacheWorker
 						taskInfo.CachePagesList = pages
 					}
-
-					// 测试用 全hit
-					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight, taskInfo.Type)
-					// taskInfo.CacheWorker = cacheWorker
-					// taskInfo.CachePagesList = pages
-					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
-					// taskInfo.TaskType = SIGNAL_SEND
-
 				} else if taskInfo.TaskType == SIGNAL_RECV {
 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight, taskInfo.Type)
-					// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
 					taskInfo.CacheWorker = cacheWorker
 					taskInfo.CachePagesList = pages
-					cc.pageManager.ShowUserCacheCount()
-
 				}
 
 				cacheWorker := int(taskInfo.CacheWorker)
@@ -185,24 +218,32 @@ func (cc *CacheCoordinator) processRequests() {
 				}
 				executableRequests[cacheWorker] = append(executableRequests[cacheWorker], taskInfo)
 				hasExecuted = true
+				currentBatchCount++
+
 				cc.lock.Unlock()
+
 			default:
-				if cc.pageManager.loadDuration > 0 {
-					// fmt.Printf("load duration:%v evt:%v all:%v\n", cc.pageManager.loadDuration, cc.pageManager.evtDuration, cc.pageManager.allDuration)
-					cc.pageManager.loadDuration = 0
-					cc.pageManager.allDuration = 0
-					cc.pageManager.evtDuration = 0
-				}
 				goto process
 			}
 		}
+
 	process:
 		if len(executableRequests) == 0 && !hasExecuted {
 			continue
 		}
+
 		if len(executableRequests) > 0 {
-			log.Printf("[CacheCoordinator] start execute")
+			if totalAccessDuration > 0 {
+				log.Printf("[CacheCoordinator] Total access duration: %v\n", totalAccessDuration)
+				totalAccessDuration = 0
+			}
+			executeDuration := time.Since(executeStartTime)
+			log.Printf("[CacheCoordinator] 队列%d executeRequestBatch (Num: %d) start, duration since last execute: %v\n", queueIndex, currentBatchCount, executeDuration)
+			executeStartTime = time.Now()
+			executeCounter += 1
+			currentBatchCount = 0
 		}
+
 		startTime := time.Now()
 		var wg sync.WaitGroup
 		for cacheWorker, tasks := range executableRequests {
@@ -219,7 +260,7 @@ func (cc *CacheCoordinator) processRequests() {
 		}
 
 		cc.lock.Lock()
-		if idleTimeCounter > cc.stopLimit && len(cc.requestQueue) == 0 {
+		if idleTimeCounter > cc.stopLimit && len(queue) == 0 {
 			log.Println("[CacheCoordinator] Empty request table. B R E A K")
 			cc.sendTerminateSignal()
 			cc.lock.Unlock()
@@ -227,13 +268,149 @@ func (cc *CacheCoordinator) processRequests() {
 		}
 		cc.lock.Unlock()
 
-		if len(cc.requestQueue) == 0 {
+		if len(queue) == 0 {
 			idleTimeCounter++
-			time.Sleep(500 * time.Microsecond)
+			time.Sleep(100 * time.Microsecond)
 		}
 	}
-	log.Println("[CacheCoordinator] 所有请求处理完成")
+
+	log.Printf("[CacheCoordinator] Queue[%d] finished. executeCounter: %d, 总请求数: %d\n", queueIndex, executeCounter, totalRequestCount)
 }
+
+// // processRequests 处理请求的主逻辑
+// func (cc *CacheCoordinator) processRequests() {
+// 	fmt.Println("[CacheCoordinator] 开始处理请求")
+// 	idleTimeCounter := 0
+// 	executeCounter := 0
+// 	totalRequestCount := 0
+// 	totalAccessDuration := time.Duration(0)
+// 	executeStartTime := time.Now()
+// 	hasExecuted := false
+
+// 	cc.pageManager.ShowUserCacheCount()
+
+// 	// const batchSize = 500
+
+// 	for cc.processFlag {
+// 		executableRequests := make(map[int][]*pb.TaskInfo)
+// 		currentBatchCount := 0
+// 		if len(cc.requestQueue) > 0 {
+// 			log.Printf("[CacheCoordinator] 当前请求队列长度: %d\n", len(cc.requestQueue))
+// 		}
+// 		for {
+// 			select {
+// 			case taskInfo := <-cc.requestQueue:
+// 				totalRequestCount++
+// 				idleTimeCounter = 0
+// 				reqID := taskInfo.RequestId
+// 				cc.lock.Lock()
+// 				if taskInfo.TaskType == SIGNAL_CHECK {
+// 					if _, ok := cc.cacheMissDict[reqID]; !ok {
+// 						cc.cacheMissDict[reqID] = make(map[int32]int32)
+// 					}
+// 					start := time.Now() // 记录开始时间
+// 					// 查cache
+// 					cacheWorker, pages := cc.pageManager.AccessItem(taskInfo.Id)
+// 					elapsed := time.Since(start) // 计算本次耗时
+// 					totalAccessDuration += elapsed
+// 					if cacheWorker == -1 {
+// 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_MISS
+// 					} else {
+// 						cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+// 						// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+// 						taskInfo.TaskType = SIGNAL_SEND
+// 						taskInfo.CacheWorker = cacheWorker
+// 						taskInfo.CachePagesList = pages
+// 					}
+
+// 					// 测试用 全hit
+// 					// cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight, taskInfo.Type)
+// 					// taskInfo.CacheWorker = cacheWorker
+// 					// taskInfo.CachePagesList = pages
+// 					// cc.cacheMissDict[reqID][taskInfo.Id] = CACHE_HIT
+// 					// taskInfo.TaskType = SIGNAL_SEND
+
+// 				} else if taskInfo.TaskType == SIGNAL_RECV {
+// 					cacheWorker, pages := cc.pageManager.LoadItem(taskInfo.Id, int(taskInfo.TokenNum), taskInfo.Weight, taskInfo.Type)
+// 					// cc.pageManager.pageManagers[cacheWorker].SetProtected(taskInfo.Id)
+// 					taskInfo.CacheWorker = cacheWorker
+// 					taskInfo.CachePagesList = pages
+// 					cc.pageManager.ShowUserCacheCount()
+
+// 				}
+
+// 				cacheWorker := int(taskInfo.CacheWorker)
+// 				if _, ok := cc.finishedCounterTable[reqID]; !ok {
+// 					cc.finishedCounterTable[reqID] = 0
+// 				}
+// 				executableRequests[cacheWorker] = append(executableRequests[cacheWorker], taskInfo)
+// 				hasExecuted = true
+// 				currentBatchCount++
+// 				cc.lock.Unlock()
+// 				// 如果超过批处理大小，则跳出循环
+// 				// if currentBatchCount >= batchSize {
+// 				// 	goto process
+// 				// }
+// 			default:
+// 				if cc.pageManager.loadDuration > 0 {
+// 					// log.Printf("load duration:%v evt:%v all:%v\n", cc.pageManager.loadDuration, cc.pageManager.evtDuration, cc.pageManager.allDuration)
+// 					cc.pageManager.loadDuration = 0
+// 					cc.pageManager.allDuration = 0
+// 					cc.pageManager.evtDuration = 0
+// 				}
+// 				goto process
+// 			}
+// 		}
+// 	process:
+
+// 		if len(executableRequests) == 0 && !hasExecuted {
+// 			continue
+// 		}
+// 		if len(executableRequests) > 0 {
+// 			// log.Printf("[CacheCoordinator] start execute")
+// 			if totalAccessDuration > 0 {
+// 				log.Printf("[CacheCoordinator] Total access duration: %v\n", totalAccessDuration)
+// 				totalAccessDuration = 0 // 重置总访问时间
+// 			}
+// 			executeDuration := time.Since(executeStartTime)
+// 			log.Printf("[CacheCoordinator] executeRequestBatch (Num: %d) start, duration since last execute: %v\n", currentBatchCount, executeDuration)
+// 			executeStartTime = time.Now()
+// 			executeCounter += 1
+// 			currentBatchCount = 0
+// 		}
+// 		startTime := time.Now()
+// 		var wg sync.WaitGroup
+// 		for cacheWorker, tasks := range executableRequests {
+// 			wg.Add(1)
+// 			go func(worker int, taskList []*pb.TaskInfo) {
+// 				defer wg.Done()
+// 				cc.executeRequestBatch(worker, taskList)
+// 			}(cacheWorker, tasks)
+// 		}
+// 		wg.Wait()
+// 		duration := time.Since(startTime)
+// 		if len(executableRequests) > 0 {
+// 			log.Printf("[CacheCoordinator] executeRequestBatch time cost: %v\n", duration)
+// 		}
+
+// 		cc.lock.Lock()
+// 		if idleTimeCounter > cc.stopLimit && len(cc.requestQueue) == 0 {
+// 			log.Println("[CacheCoordinator] Empty request table. B R E A K")
+// 			cc.sendTerminateSignal()
+// 			cc.lock.Unlock()
+// 			break
+// 		}
+// 		cc.lock.Unlock()
+
+// 		if len(cc.requestQueue) == 0 {
+// 			idleTimeCounter++
+// 			time.Sleep(500 * time.Microsecond)
+// 		}
+// 	}
+// 	log.Printf("[CacheCoordinator] executeCounter: %d\n", executeCounter)
+// 	log.Printf("[CacheCoordinator] 总请求数: %d\n", totalRequestCount)
+// 	log.Println("[CacheCoordinator] 所有请求处理完成")
+// }
 
 // executeRequestBatch 执行批量请求
 func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.TaskInfo) {
@@ -247,7 +424,7 @@ func (cc *CacheCoordinator) executeRequestBatch(cacheWorker int, reqList []*pb.T
 	defer conn.Close()
 
 	client := pb.NewKVCacheServiceClient(conn)
-	// fmt.Printf("[CacheCoordinator] Try to execute...len=%d\n", len(reqList))
+	log.Printf("[CacheCoordinator] Try to execute to cache worker %d len=%d\n", cacheRank, len(reqList))
 	resp, err := client.ReceiveTasksFromCoordinator(context.Background(), &pb.TaskInfoList{Tasks: reqList})
 	if err != nil {
 		log.Printf("[CacheCoordinator] Failed to send tasks: %v\n", err)

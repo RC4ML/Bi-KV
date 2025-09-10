@@ -182,10 +182,10 @@ func (pm *PageManager) performEviction(requiredPages int) []int32 {
 			pm.freePages[page] = struct{}{}
 		}
 		freedIDs = append(freedIDs, item.id)
-		
+
 		// log.Printf("[[%d]] 换出列表 %d，优先级 %d，释放页数 %d 空闲页数: %d\n",
 		// 	time.Now().Unix(), item.id, item.priority, len(item.pages), len(pm.freePages))
-		
+
 	}
 
 	if len(pm.freePages) < requiredPages {
@@ -259,39 +259,39 @@ func (pm *PageManager) ShowFreePages() {
 
 // MultiPageManager 多个 PageManager 的集合
 type MultiPageManager struct {
-	kvcacheNum   int
-	pageManagers []*PageManager
-	bufferSize   int
-	pageSize     int
-	numPages     int
-	p1MaxPages   int
-	cachedIDs    []map[int32]struct{} // 每个 PM 的缓存 ID 集合
-	p2Items      map[int32]struct{}   // 优先级为2的缓存项
-	loadDuration time.Duration
-	evtDuration  time.Duration
-	allDuration  time.Duration
-	gcInterval   time.Duration
-	ttlInterval  time.Duration
-	mu           sync.Mutex
-	userCacheCount int 
+	kvcacheNum     int
+	pageManagers   []*PageManager
+	bufferSize     int
+	pageSize       int
+	numPages       int
+	p1MaxPages     int
+	cachedIDs      []map[int32]struct{} // 每个 PM 的缓存 ID 集合
+	p2Items        map[int32]struct{}   // 优先级为2的缓存项
+	loadDuration   time.Duration
+	evtDuration    time.Duration
+	allDuration    time.Duration
+	gcInterval     time.Duration
+	ttlInterval    time.Duration
+	mu             sync.Mutex
+	userCacheCount int
 }
 
 // NewMultiPageManager 初始化 MultiPageManager
 func NewMultiPageManager(cacheSize, pageSize, kvcacheNum, gcInterval, ttlInterval int) *MultiPageManager {
 	mpm := &MultiPageManager{
-		kvcacheNum:   kvcacheNum,
-		pageManagers: make([]*PageManager, kvcacheNum),
-		bufferSize:   cacheSize,
-		pageSize:     pageSize,
-		numPages:     cacheSize / pageSize,
-		p1MaxPages:   cacheSize / pageSize / 4,
-		cachedIDs:    make([]map[int32]struct{}, kvcacheNum),
-		p2Items:      make(map[int32]struct{}),
-		gcInterval:   time.Duration(gcInterval) * time.Second,
-		ttlInterval:  time.Duration(ttlInterval) * time.Second,
-		loadDuration: 0,
-		evtDuration:  0,
-		allDuration:  0,
+		kvcacheNum:     kvcacheNum,
+		pageManagers:   make([]*PageManager, kvcacheNum),
+		bufferSize:     cacheSize,
+		pageSize:       pageSize,
+		numPages:       cacheSize / pageSize,
+		p1MaxPages:     cacheSize / pageSize / 4,
+		cachedIDs:      make([]map[int32]struct{}, kvcacheNum),
+		p2Items:        make(map[int32]struct{}),
+		gcInterval:     time.Duration(gcInterval) * time.Second,
+		ttlInterval:    time.Duration(ttlInterval) * time.Second,
+		loadDuration:   0,
+		evtDuration:    0,
+		allDuration:    0,
 		userCacheCount: 0, // 【新增】用户类型缓存计数
 	}
 	for i := range kvcacheNum {
@@ -563,7 +563,7 @@ func (pm *MultiPageManager) ReadPreparedData(dataPath string, indexPath string) 
 }
 
 func (mpm *MultiPageManager) ShowUserCacheCount() {
-	log.Printf("当前用户类型缓存数量（ID > 2000000）: %d\n", len(mpm.p2Items))
+	// log.Printf("当前用户类型缓存数量（ID > 2000000）: %d\n", len(mpm.p2Items))
 }
 
 // 调试开关

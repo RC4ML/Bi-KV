@@ -75,7 +75,10 @@ class LLMScheduler:
             plan_tokens_num = 0
             working_prompt_list = []
             batch_list = self.prompt_list[i:i+self.batchsize]
+            start_time = time.time()
             ans_dict = self._check_batch(batch_list)
+            end_time = time.time()
+            logging.info(f"[LLMScheduler] Check batch time cost: {end_time - start_time} seconds")
             for ind, prompt in enumerate(batch_list):
                 
                 if self.cold_start_flag:

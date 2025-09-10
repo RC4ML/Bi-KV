@@ -368,8 +368,8 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
     def receive_task_info_batch_gprc(self, task_info_list): ## only support send from kvcache to worker, all tasks have the same cache worker        
         combined_task_info = {} ## key: infer worker
         confirmation_msg = {} ## key: request id
-        if DEBUG:
-            print(f"[KVCache {self.rank}] receive_task_info_batch_gprc len:{len(task_info_list)}")
+        # if DEBUG:
+        logging.info(f"[KVCache {self.rank}] receive_task_info_batch_gprc len:{len(task_info_list)}")
         for task_info in task_info_list:
             infer_worker = task_info.infer_worker
             if infer_worker !=0 and DEBUG:
@@ -415,6 +415,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                 confirmation_msg[req_id] = 1
             else:
                 confirmation_msg[req_id] += 1
+        logging.info(f"[KVCache {self.rank}] receive_task_info_batch_gprc finish, len(combined_task_info): {len(combined_task_info)}")
         # 初始状态下，第一轮是全空的任务
         for task_infer_worker in combined_task_info:
             combined_task_list = combined_task_info[task_infer_worker]
@@ -434,6 +435,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     channel = self.channelpool.get_channel(infer_worker_addr)
                     stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                     remote_recv = stub.RecvKVCacheData.future(combined_task_info_pb)
+                    logging.info(f"[KVCache {self.rank}] 发送数据到 worker {2*infer_worker+2}，长度为 {task_info['token_num']}")
                     if cache_worker == infer_worker:
                         remote_recv.result()
                     else:
@@ -451,6 +453,7 @@ class KVCache(TaskInfo_pb2_grpc.KVCacheServiceServicer):
                     channel = self.channelpool.get_channel(infer_worker_addr)
                     stub = TaskInfo_pb2_grpc.InferWorkerServiceStub(channel)
                     remote_send = stub.SendKVCacheData.future(combined_task_info_pb)
+                    logging.info(f"[KVCache {self.rank}] 接收数据从 worker {2*infer_worker+2}，长度为 {task_info['token_num']}")
                     self.receive_data_batch(task_info)
                     remote_send.result()
                     now = datetime.now()

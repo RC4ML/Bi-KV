@@ -17,3 +17,8 @@ next_batch.json
 *.ipynb
 *.csv
 !Bi-KV/data/gendata.py
+*.png
+Bi-KV/prompts_cache.ndjson
+Go/analyze_queue_intervals.py
+Go/analyze2_queue.py
+Bi-KV/caculate_user_history.py

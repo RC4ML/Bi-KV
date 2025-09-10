@@ -33,6 +33,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("distributed_system.log"),
+        logging.FileHandler("item-debug-250606-3.log"),
         logging.StreamHandler()
     ]
 )
@@ -72,7 +73,7 @@ def init_process(rank, world_size, yaml_config):
         batch_size = yaml_config['scheduler']['batch_size']
         input_batch_size = yaml_config['scheduler']['input_batch_size']
         hack_option_dict = {0:"compete", 1:"User History First", 2:"Item First"}
-        hack_option = None # hack_option_dict[0]
+        hack_option = hack_option_dict[2] # hack_option_dict[0]
 
         with open(f'/share/nfs/wsh/Bi-KV/Bi-KV/data/{args.dataset_code}/prepare_cache_data_user_all.json', 'r') as f:
             load_data_user = json.load(f)

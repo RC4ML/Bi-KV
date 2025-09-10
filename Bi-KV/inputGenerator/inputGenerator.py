@@ -21,7 +21,7 @@ class PromptItem():
         return self.__str__()
 
 class InputPrompt():
-    def __init__(self,user_id:int,user_history_tokens:int,items:List[PromptItem],timestamp:int,weight:int) -> None:
+    def __init__(self,user_id:int,user_history_tokens:int,items:List[PromptItem],timestamp:int,weight:int,token_num = 0) -> None:
         self.user_id = user_id
         self.user_history_tokens = user_history_tokens
         self.items = items
@@ -32,6 +32,7 @@ class InputPrompt():
         self.order = None
         self.miss_user_history_tokens = 0
         self.miss_item_tokens = 0
+        self.token_num = token_num
 
 class LLMInput():
     def __init__(self,k:int,poisson_lambda:500,args:Namespace,user_expand_ratio=1,use_dataloader=True) -> None:
@@ -45,6 +46,7 @@ class LLMInput():
         else:
             logging.warning("Using LLMInput without dataloader, this may cause issues with dataset initialization.")
             self.k = k
+            self.args.llm_negative_sample_size = k-1
 
     def generate(self,batch_size: int) -> List[InputPrompt]:
         prompts = []
@@ -91,7 +93,7 @@ class LLMInput():
             data_ind = user_list[i][0]
             item_list = user_item_map[data_ind]
             user_history_tokens = user_token_map[str(data_ind+2000000)]
-            items = [PromptItem(item_id, item_token_map[str(item_id)]) for item_id in item_list]
+            items = [PromptItem(item_id, item_token_map[str(item_id)]) for item_id in item_list[:self.k]]
             timestamp = timestep
             prompt = InputPrompt(data_ind,user_history_tokens,items,timestamp,0)
             prompts.append(prompt)
@@ -217,6 +219,7 @@ class LLMInput():
             user_id = data_point['user_id']
             user_history_tokens = data_point["history_length"]*self.user_expand_ratio # 用户历史的token数量, NOTE: expand raw prompt length by 4x
             items = [PromptItem(data_point["candidates_id"][jnd],(len(j))) for jnd,j in enumerate(data_point["goods_index"])]
-            return InputPrompt(user_id,user_history_tokens,items,0,0)
+            token_num = len(data_point["input_ids"])
+            return InputPrompt(user_id,user_history_tokens,items,0,0,token_num)
         else:
             raise IndexError("Index out of bounds for the dataset.")

@@ -222,6 +222,8 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         tasks = TaskInfo_pb2.TaskInfoList(tasks=tasks)
         channel = self.channelpool.get_channel(self.cache_coordinator_address)
         stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
+        start_time = time.time()
+        logging.info(f"[Worker {self.rank}] start call coord len: {len(tasks_list)}")
         stub.ReceiveTasksFromInferWorker(tasks)  # 直接转发整个 TaskInfoList
         if DEBUG:
             print(f"{now_time()}[Worker {self.rank}] try to poll_batch")
@@ -229,9 +231,10 @@ class Worker(TaskInfo_pb2_grpc.InferWorkerServiceServicer):
         stub = TaskInfo_pb2_grpc.CacheCoordinatorServiceStub(channel)
         time1 = time.time()
         future_call_poll = stub.PollBatchFromInferWorker.future(tasks)  # 直接转发整个 TaskInfoList
-        if DEBUG:
-            print(f"[Worker.forward_with_computation][RANK {self.rank}] finsh CacheCoordinator.poll_batch")
+        # if DEBUG:
         cache_miss_dict_data = future_call_poll.result()
+        now_time = time.time()
+        logging.info(f"[Worker {self.rank}] finsh CacheCoordinator.poll_batch {now_time-start_time}s")
         time2 = time.time()
         # logging.info(f"[Worker][RANK {self.rank}] poll time {time2-time1}s")
         cache_miss_dict = json.loads(cache_miss_dict_data.msg)
